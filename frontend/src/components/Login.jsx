@@ -1,0 +1,136 @@
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { User, Lock, KeyRound, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
+
+const Login = ({ onLogin }) => {
+  const { toast } = useToast();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    // Simulate network delay for fun
+    setTimeout(() => {
+      const result = onLogin(email, password);
+      setIsLoading(false);
+
+      if (!result.success) {
+        toast({
+          title: "¡Oh no! 🙈",
+          description: result.message,
+          variant: "destructive",
+          className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+        });
+      }
+    }, 800);
+  };
+
+  return (
+    <div className="min-h-[90vh] flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      {/* Floating Elements */}
+      <motion.div 
+        animate={{ y: [0, -20, 0] }} 
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute top-20 left-[10%] text-6xl opacity-20"
+      >🦠</motion.div>
+      <motion.div 
+        animate={{ y: [0, 20, 0] }} 
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+        className="absolute bottom-20 right-[10%] text-6xl opacity-20"
+      >✨</motion.div>
+
+      <motion.div 
+        initial={{ scale: 0.5, opacity: 0, rotate: -10 }}
+        animate={{ scale: 1, opacity: 1, rotate: 0 }}
+        transition={{ type: "spring", bounce: 0.6 }}
+        className="w-full max-w-md"
+      >
+        <div className="bg-white rounded-[3rem] p-10 shadow-2xl border-8 border-orange-200 relative">
+          <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-yellow-400 p-6 rounded-full border-8 border-white shadow-lg">
+            <span className="text-5xl">🦁</span>
+          </div>
+
+          <div className="mt-8 text-center mb-8">
+            <h1 className="text-4xl font-black text-orange-500 mb-2 tracking-wide drop-shadow-sm">
+              ChaoP iojos
+            </h1>
+            <p className="text-gray-400 font-bold text-lg">
+              ¡Entra a la zona sin piojos!
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-4">
+              <div className="relative group">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 bg-orange-100 p-2 rounded-xl group-focus-within:bg-orange-500 transition-colors">
+                  <User className="w-5 h-5 text-orange-500 group-focus-within:text-white transition-colors" />
+                </div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-16 pr-6 py-5 bg-orange-50 border-4 border-transparent rounded-2xl focus:border-orange-300 focus:bg-white outline-none font-bold text-gray-700 placeholder-orange-200 transition-all text-lg"
+                  placeholder="Correo electrónico"
+                  required
+                />
+              </div>
+
+              <div className="relative group">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 bg-orange-100 p-2 rounded-xl group-focus-within:bg-orange-500 transition-colors">
+                  <Lock className="w-5 h-5 text-orange-500 group-focus-within:text-white transition-colors" />
+                </div>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-16 pr-6 py-5 bg-orange-50 border-4 border-transparent rounded-2xl focus:border-orange-300 focus:bg-white outline-none font-bold text-gray-700 placeholder-orange-200 transition-all text-lg"
+                  placeholder="Contraseña secreta"
+                  required
+                />
+              </div>
+            </div>
+
+            <Button 
+              type="submit" 
+              disabled={isLoading}
+              className="w-full bg-gradient-to-r from-orange-400 to-red-400 hover:from-orange-500 hover:to-red-500 text-white font-black text-xl py-8 rounded-2xl shadow-lg border-b-8 border-red-600 active:border-b-0 active:translate-y-2 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {isLoading ? (
+                <span className="animate-spin mr-2">💫</span>
+              ) : (
+                <span className="mr-2">🚀</span>
+              )}
+              {isLoading ? 'Entrando...' : '¡A la Aventura!'}
+            </Button>
+          </form>
+
+          {/* Demo Credentials Hint */}
+          <div className="mt-8 p-4 bg-blue-50 rounded-2xl border-2 border-blue-100 text-xs text-blue-600 font-medium">
+            <p className="font-bold mb-1 text-center text-blue-700 uppercase tracking-wider">🔐 Accesos Demo:</p>
+            <div className="grid grid-cols-2 gap-2 text-center">
+              <div>
+                <span className="block font-bold">Admin:</span> admin@chaopiojos.com
+              </div>
+              <div>
+                <span className="block font-bold">Doc:</span> maria@chaopiojos.com
+              </div>
+              <div>
+                <span className="block font-bold">Cliente:</span> cliente@chaopiojos.com
+              </div>
+              <div className="col-span-1">
+                <span className="font-bold">Pass:</span> 123
+              </div>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+export default Login;
