@@ -36,12 +36,12 @@ const Login = ({ onLogin }) => {
       <motion.div 
         animate={{ y: [0, -20, 0] }} 
         transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute top-20 left-[10%] text-6xl opacity-20"
+        className="absolute top-20 left-[10%] text-4xl opacity-20"
       >🦠</motion.div>
       <motion.div 
         animate={{ y: [0, 20, 0] }} 
         transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-        className="absolute bottom-20 right-[10%] text-6xl opacity-20"
+        className="absolute bottom-20 right-[10%] text-4xl opacity-20"
       >✨</motion.div>
 
       <motion.div 
@@ -50,45 +50,46 @@ const Login = ({ onLogin }) => {
         transition={{ type: "spring", bounce: 0.6 }}
         className="w-full max-w-md"
       >
-        <div className="bg-white rounded-[3rem] p-10 shadow-2xl border-8 border-orange-200 relative">
-          <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-yellow-400 p-6 rounded-full border-8 border-white shadow-lg">
-            <span className="text-5xl">🦁</span>
+        <div className="bg-white rounded-3xl p-6 shadow-2xl border-4 border-orange-200 relative">
+          <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-yellow-400 p-3 rounded-full border-4 border-white shadow-lg">
+            <span className="text-3xl">🦁</span>
           </div>
 
-          <div className="mt-8 text-center mb-8">
-            <h1 className="text-4xl font-black text-orange-500 mb-2 tracking-wide drop-shadow-sm">
-              ChaoP iojos
+          <div className="mt-6 text-center mb-6">
+            <h1 className="text-3xl font-black mb-1 tracking-wide drop-shadow-sm">
+              <span className="text-orange-500">Chao</span>{' '}
+              <span className="text-blue-500">Piojos</span>
             </h1>
-            <p className="text-gray-400 font-bold text-lg">
+            <p className="text-gray-400 font-bold text-base">
               ¡Entra a la zona sin piojos!
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-3">
               <div className="relative group">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 bg-orange-100 p-2 rounded-xl group-focus-within:bg-orange-500 transition-colors">
-                  <User className="w-5 h-5 text-orange-500 group-focus-within:text-white transition-colors" />
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 bg-orange-100 p-2 rounded-xl group-focus-within:bg-orange-500 transition-colors">
+                  <User className="w-4 h-4 text-orange-500 group-focus-within:text-white transition-colors" />
                 </div>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-16 pr-6 py-5 bg-orange-50 border-4 border-transparent rounded-2xl focus:border-orange-300 focus:bg-white outline-none font-bold text-gray-700 placeholder-orange-200 transition-all text-lg"
+                  className="w-full pl-14 pr-4 py-3 bg-orange-50 border-4 border-transparent rounded-2xl focus:border-orange-300 focus:bg-white outline-none font-bold text-gray-700 placeholder-orange-200 transition-all text-base"
                   placeholder="Correo electrónico"
                   required
                 />
               </div>
 
               <div className="relative group">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 bg-orange-100 p-2 rounded-xl group-focus-within:bg-orange-500 transition-colors">
-                  <Lock className="w-5 h-5 text-orange-500 group-focus-within:text-white transition-colors" />
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 bg-orange-100 p-2 rounded-xl group-focus-within:bg-orange-500 transition-colors">
+                  <Lock className="w-4 h-4 text-orange-500 group-focus-within:text-white transition-colors" />
                 </div>
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-16 pr-6 py-5 bg-orange-50 border-4 border-transparent rounded-2xl focus:border-orange-300 focus:bg-white outline-none font-bold text-gray-700 placeholder-orange-200 transition-all text-lg"
+                  className="w-full pl-14 pr-4 py-3 bg-orange-50 border-4 border-transparent rounded-2xl focus:border-orange-300 focus:bg-white outline-none font-bold text-gray-700 placeholder-orange-200 transition-all text-base"
                   placeholder="Contraseña secreta"
                   required
                 />
@@ -98,7 +99,7 @@ const Login = ({ onLogin }) => {
             <Button 
               type="submit" 
               disabled={isLoading}
-              className="w-full bg-gradient-to-r from-orange-400 to-red-400 hover:from-orange-500 hover:to-red-500 text-white font-black text-xl py-8 rounded-2xl shadow-lg border-b-8 border-red-600 active:border-b-0 active:translate-y-2 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full bg-gradient-to-r from-orange-400 to-red-400 hover:from-orange-500 hover:to-red-500 text-white font-black text-lg py-5 rounded-2xl shadow-lg border-b-4 border-red-600 active:border-b-0 active:translate-y-2 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <span className="animate-spin mr-2">💫</span>
@@ -110,20 +111,17 @@ const Login = ({ onLogin }) => {
           </form>
 
           {/* Demo Credentials Hint */}
-          <div className="mt-8 p-4 bg-blue-50 rounded-2xl border-2 border-blue-100 text-xs text-blue-600 font-medium">
-            <p className="font-bold mb-1 text-center text-blue-700 uppercase tracking-wider">🔐 Accesos Demo:</p>
-            <div className="grid grid-cols-2 gap-2 text-center">
+          <div className="mt-4 p-3 bg-blue-50 rounded-2xl border-2 border-blue-100 text-xs text-blue-600 font-medium">
+            <p className="font-bold mb-1 text-center text-blue-700 uppercase tracking-wider text-[10px]">🔐 Accesos Demo:</p>
+            <div className="grid grid-cols-2 gap-2 text-center text-[10px]">
               <div>
                 <span className="block font-bold">Admin:</span> admin@chaopiojos.com
               </div>
               <div>
-                <span className="block font-bold">Doc:</span> maria@chaopiojos.com
+                <span className="block font-bold">Piojóloga:</span> maria@chaopiojos.com
               </div>
-              <div>
-                <span className="block font-bold">Cliente:</span> cliente@chaopiojos.com
-              </div>
-              <div className="col-span-1">
-                <span className="font-bold">Pass:</span> 123
+              <div className="col-span-2">
+                <span className="font-bold">Password:</span> 123
               </div>
             </div>
           </div>

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { Toaster } from '@/components/ui/toaster';
-import ClientView from '@/components/ClientView';
 import PiojologistView from '@/components/PiojologistView';
 import AdminView from '@/components/AdminView';
 import Login from '@/components/Login';
@@ -16,8 +15,7 @@ function App() {
   const defaultUsers = [
     { id: 1, name: 'Admin Jefe', email: 'admin@chaopiojos.com', password: '123', role: 'admin' },
     { id: 2, name: 'Dr. María González', email: 'maria@chaopiojos.com', password: '123', role: 'piojologist', specialty: 'Experta en Rastreo', available: true, earnings: 0 },
-    { id: 3, name: 'Dr. Carlos Ramírez', email: 'carlos@chaopiojos.com', password: '123', role: 'piojologist', specialty: 'Cazador de Liendres', available: true, earnings: 0 },
-    { id: 4, name: 'Familia Pérez', email: 'cliente@chaopiojos.com', password: '123', role: 'client' }
+    { id: 3, name: 'Dr. Carlos Ramírez', email: 'carlos@chaopiojos.com', password: '123', role: 'piojologist', specialty: 'Cazador de Liendres', available: true, earnings: 0 }
   ];
 
   const [users, setUsers] = useState(() => {
@@ -33,19 +31,26 @@ function App() {
   const [products, setProducts] = useState(() => {
     const saved = localStorage.getItem('products');
     return saved ? JSON.parse(saved) : [
-      { id: 1, name: 'Spray Anti-Piojos', price: 15, stock: 50, image: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&q=80&w=200' },
-      { id: 2, name: 'Peine Metálico Fino', price: 25, stock: 30, image: 'https://images.unsplash.com/photo-1596462502278-27bfdd403cc2?auto=format&fit=crop&q=80&w=200' },
-      { id: 3, name: 'Champú Repelente', price: 20, stock: 40, image: 'https://images.unsplash.com/photo-1631729371254-42c2892f0e6e?auto=format&fit=crop&q=80&w=200' }
+      { id: 1, name: 'Spray Anti-Piojos', price: 15000, stock: 50, image: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&q=80&w=200' },
+      { id: 2, name: 'Peine Metálico Fino', price: 25000, stock: 30, image: 'https://images.unsplash.com/photo-1596462502278-27bfdd403cc2?auto=format&fit=crop&q=80&w=200' },
+      { id: 3, name: 'Champú Repelente', price: 20000, stock: 40, image: 'https://images.unsplash.com/photo-1631729371254-42c2892f0e6e?auto=format&fit=crop&q=80&w=200' }
     ];
   });
 
   // Services with prices definition
   const serviceCatalog = {
-    '✨ Limpieza Mágica Total': 80,
-    '🔍 Rastreo de Huevitos': 40,
-    '🛡️ Escudo Protector': 60,
-    '👨‍👩‍👧‍👦 Pack Familiar Súper Héroes': 150,
-    '👀 Chequeo Rápido': 30
+    'Normal': 70000,
+    'Elevado': 100000,
+    'Muy Alto': 120000
+  };
+
+  // Format currency to COP
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: 'COP',
+      minimumFractionDigits: 0
+    }).format(amount);
   };
 
   // Sync data with localStorage
@@ -142,10 +147,24 @@ function App() {
   // Derived list of piojologists for assignment logic
   const piojologists = users.filter(u => u.role === 'piojologist');
 
+  // Get page title based on current user role
+  const getPageTitle = () => {
+    if (!currentUser) return "Chao Piojos | Login";
+    
+    switch(currentUser.role) {
+      case 'admin':
+        return "Chao Piojos | Administrador";
+      case 'piojologist':
+        return "Chao Piojos | Piojóloga";
+      default:
+        return "Chao Piojos";
+    }
+  };
+
   return (
     <div className="min-h-screen bg-orange-50 font-fredoka overflow-x-hidden text-gray-800">
       <Helmet>
-        <title>ChaoP iojos - ¡Diversión sin comezón!</title>
+        <title>{getPageTitle()}</title>
         <meta name="description" content="El sistema más divertido para decir adiós a los piojitos." />
       </Helmet>
 
@@ -173,8 +192,9 @@ function App() {
                     <Sparkles className="w-8 h-8 text-white animate-pulse" />
                   </div>
                   <div>
-                    <h1 className="text-4xl font-black text-orange-500 tracking-wide drop-shadow-sm">
-                      ChaoP iojos
+                    <h1 className="text-4xl font-black tracking-wide drop-shadow-sm">
+                      <span className="text-orange-500">Chao</span>{' '}
+                      <span className="text-blue-500">Piojos</span>
                     </h1>
                     <p className="text-lg text-gray-500 font-bold bg-orange-100 px-3 py-1 rounded-full inline-block mt-1">
                       Hola, {currentUser.name} 👋
@@ -193,16 +213,6 @@ function App() {
 
               {/* Main Content Area */}
               <div className="bg-white/60 backdrop-blur-sm rounded-[2.5rem] p-4 md:p-8 shadow-2xl border-4 border-white">
-                {currentUser.role === 'client' && (
-                  <ClientView 
-                    currentUser={currentUser}
-                    appointments={appointments}
-                    updateAppointments={updateAppointments}
-                    piojologists={piojologists}
-                    serviceCatalog={serviceCatalog}
-                  />
-                )}
-
                 {currentUser.role === 'piojologist' && (
                   <PiojologistView 
                     currentUser={currentUser}
@@ -210,6 +220,7 @@ function App() {
                     updateAppointments={updateAppointments}
                     products={products}
                     handleCompleteService={handleCompleteService}
+                    formatCurrency={formatCurrency}
                   />
                 )}
 
@@ -225,6 +236,7 @@ function App() {
                     products={products}
                     updateProducts={updateProducts}
                     serviceCatalog={serviceCatalog}
+                    formatCurrency={formatCurrency}
                   />
                 )}
               </div>

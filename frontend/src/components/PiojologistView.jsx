@@ -14,14 +14,14 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 
-const PiojologistView = ({ currentUser, appointments, updateAppointments, products, handleCompleteService }) => {
+const PiojologistView = ({ currentUser, appointments, updateAppointments, products, handleCompleteService, formatCurrency }) => {
   const { toast } = useToast();
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [finishingAppointmentId, setFinishingAppointmentId] = useState(null);
 
   const handleAccept = (appointmentId) => {
     const updatedAppointments = appointments.map(apt => 
-      apt.id === appointmentId ? { ...apt, status: 'confirmed', piojologistId: currentUser.id, piojologistName: currentUser.name } : apt
+      apt.id === appointmentId ? { ...apt, status: 'confirmed' } : apt
     );
     updateAppointments(updatedAppointments);
     
@@ -60,8 +60,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, produc
     });
   };
 
-  const pendingAppointments = appointments.filter(apt => apt.status === 'pending');
-  const myAppointments = appointments.filter(apt => apt.piojologistId === currentUser.id && apt.status === 'confirmed');
+  const assignedToMe = appointments.filter(apt => apt.piojologistId === currentUser.id && apt.status === 'confirmed');
   const completedHistory = appointments.filter(apt => apt.piojologistId === currentUser.id && apt.status === 'completed');
 
   return (
@@ -89,81 +88,36 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, produc
            
            <div className="flex gap-4">
             <div className="bg-white/20 p-4 rounded-3xl backdrop-blur-md text-center min-w-[150px]">
-              <span className="block text-4xl font-black">${(currentUser.earnings || 0).toFixed(0)}</span>
+              <span className="block text-4xl font-black">{formatCurrency(currentUser.earnings || 0)}</span>
               <span className="text-sm font-bold opacity-90">Mis Ganancias</span>
             </div>
             <div className="bg-white/20 p-4 rounded-3xl backdrop-blur-md text-center min-w-[150px]">
-              <span className="block text-4xl font-black">{pendingAppointments.length}</span>
-              <span className="text-sm font-bold opacity-90">Misiones Nuevas</span>
+              <span className="block text-4xl font-black">{assignedToMe.length}</span>
+              <span className="text-sm font-bold opacity-90">Servicios Asignados</span>
             </div>
            </div>
          </div>
       </motion.div>
 
-      <Tabs defaultValue="pending" className="w-full">
+      <Tabs defaultValue="agenda" className="w-full">
         <TabsList className="w-full bg-white/50 p-2 rounded-[2rem] border-2 border-green-100 mb-8 flex-wrap h-auto gap-2">
-          <TabsTrigger value="pending" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-yellow-400 data-[state=active]:text-white transition-all">
-            🔔 Alertas ({pendingAppointments.length})
-          </TabsTrigger>
           <TabsTrigger value="agenda" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-green-400 data-[state=active]:text-white transition-all">
-            📅 Agenda ({myAppointments.length})
+            📅 Mis Servicios ({assignedToMe.length})
           </TabsTrigger>
           <TabsTrigger value="history" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-blue-400 data-[state=active]:text-white transition-all">
             📜 Historial
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="pending">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {pendingAppointments.length === 0 ? (
-              <div className="col-span-full py-20 text-center bg-white/60 rounded-[3rem] border-4 border-dashed border-yellow-200">
-                <Star className="w-24 h-24 mx-auto mb-4 text-yellow-300 animate-spin-slow" />
-                <p className="text-2xl font-black text-gray-400">¡Zona despejada!</p>
-              </div>
-            ) : (
-              pendingAppointments.map(apt => (
-                <motion.div 
-                  key={apt.id}
-                  whileHover={{ y: -5 }}
-                  className="bg-white rounded-[2rem] p-6 shadow-lg border-4 border-yellow-100 flex flex-col"
-                >
-                  <div className="bg-yellow-50 rounded-2xl p-4 mb-4">
-                     <h3 className="text-xl font-black text-gray-800">{apt.clientName}</h3>
-                     <p className="text-yellow-600 font-bold text-sm">{apt.serviceType}</p>
-                  </div>
-                  
-                  <div className="flex-grow space-y-2 mb-6 pl-2">
-                    <p className="flex items-center gap-2 text-gray-500 font-bold">
-                      <Calendar className="w-5 h-5 text-blue-400" /> {new Date(apt.date).toLocaleDateString()}
-                    </p>
-                    <p className="flex items-center gap-2 text-gray-500 font-bold">
-                      <Clock className="w-5 h-5 text-blue-400" /> {apt.time}
-                    </p>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button onClick={() => handleAccept(apt.id)} className="flex-1 bg-green-400 hover:bg-green-500 text-white rounded-xl py-6 font-black shadow-md border-b-4 border-green-600 active:border-b-0 active:translate-y-1">
-                      ¡Vamos!
-                    </Button>
-                    <Button onClick={() => handleReject(apt.id)} className="w-14 bg-red-100 hover:bg-red-200 text-red-500 rounded-xl py-6 font-black">
-                      <X />
-                    </Button>
-                  </div>
-                </motion.div>
-              ))
-            )}
-          </div>
-        </TabsContent>
-
         <TabsContent value="agenda">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {myAppointments.length === 0 ? (
+            {assignedToMe.length === 0 ? (
                <div className="col-span-full py-20 text-center bg-white/60 rounded-[3rem] border-4 border-dashed border-green-200">
                 <Calendar className="w-24 h-24 mx-auto mb-4 text-green-200" />
-                <p className="text-2xl font-black text-gray-400">Día libre... por ahora.</p>
+                <p className="text-2xl font-black text-gray-400">No hay servicios asignados todavía.</p>
               </div>
             ) : (
-              myAppointments.map(apt => (
+              assignedToMe.map(apt => (
                 <div key={apt.id} className="bg-white rounded-[2rem] p-6 shadow-lg border-4 border-green-200 relative overflow-hidden flex flex-col">
                    <div className="absolute top-0 right-0 bg-green-400 text-white px-4 py-1 rounded-bl-2xl font-black text-xs uppercase tracking-wider">
                      Confirmado
@@ -173,13 +127,17 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, produc
                      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-2xl">
                        😊
                      </div>
-                     <div>
+                     <div className="flex-grow">
                        <h3 className="font-black text-gray-800 text-lg leading-tight">{apt.clientName}</h3>
                        <p className="text-xs text-green-600 font-bold uppercase">{apt.serviceType}</p>
                      </div>
                    </div>
 
                    <div className="bg-green-50 p-4 rounded-2xl space-y-2 mb-4">
+                      <div className="flex justify-between items-center text-sm font-bold text-gray-600">
+                        <span>💰 Valor:</span>
+                        <span className="text-purple-600">{formatCurrency(apt.estimatedPrice || 0)}</span>
+                      </div>
                       <div className="flex justify-between items-center text-sm font-bold text-gray-600">
                         <span>📅 Fecha:</span>
                         <span className="text-green-600">{new Date(apt.date).toLocaleDateString()}</span>
@@ -226,7 +184,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, produc
                                     {product.name}
                                   </Label>
                                   <span className="text-xs font-black bg-pink-100 text-pink-600 px-2 py-1 rounded-md">
-                                    -${product.price}
+                                    -{formatCurrency(product.price)}
                                   </span>
                                 </div>
                               ))
@@ -269,9 +227,9 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, produc
                       <p className="text-xs text-gray-500">{new Date(apt.date).toLocaleDateString()} - {apt.serviceType}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-green-600 font-black text-lg">+${(apt.earnings || 0).toFixed(2)}</p>
+                      <p className="text-green-600 font-black text-lg">+{formatCurrency(apt.earnings || 0)}</p>
                       {apt.deductions > 0 && (
-                        <p className="text-xs text-red-400 font-bold">-${apt.deductions} en productos</p>
+                        <p className="text-xs text-red-400 font-bold">-{formatCurrency(apt.deductions)} en productos</p>
                       )}
                     </div>
                   </div>

@@ -13,7 +13,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 
-const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, updateAppointments, piojologists, products, updateProducts, serviceCatalog }) => {
+const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, updateAppointments, piojologists, products, updateProducts, serviceCatalog, formatCurrency }) => {
   const { toast } = useToast();
   
   // User Management State
@@ -23,13 +23,26 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     name: '',
     email: '',
     password: '',
-    role: 'client',
+    role: 'piojologist',
     specialty: '',
     available: true
   });
 
+  // Service Creation State
+  const [isServiceDialogOpen, setIsServiceDialogOpen] = useState(false);
+  const [serviceFormData, setServiceFormData] = useState({
+    clientName: '',
+    serviceType: '',
+    date: '',
+    time: '',
+    piojologistId: ''
+  });
+
   // Product Management State
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
+  const [isProductDetailOpen, setIsProductDetailOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [selectedProduct, setSelectedProduct] = useState(null);
   const [productFormData, setProductFormData] = useState({
     name: '',
     price: '',
@@ -42,11 +55,42 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
       name: '',
       email: '',
       password: '',
-      role: 'client',
+      role: 'piojologist',
       specialty: '',
       available: true
     });
     setEditingUser(null);
+  };
+
+  const resetServiceForm = () => {
+    setServiceFormData({
+      clientName: '',
+      serviceType: '',
+      date: '',
+      time: '',
+      piojologistId: ''
+    });
+  };
+
+  const resetProductForm = () => {
+    setProductFormData({
+      name: '',
+      price: '',
+      stock: '',
+      image: ''
+    });
+    setEditingProduct(null);
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProductFormData({...productFormData, image: reader.result});
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleOpenUserDialog = (user = null) => {
@@ -72,20 +116,83 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     resetUserForm();
   };
 
+  // Service Creation
+  const handleServiceSubmit = (e) => {
+    e.preventDefault();
+    const piojologist = piojologists.find(p => p.id === parseInt(serviceFormData.piojologistId));
+    const servicePrice = serviceCatalog[serviceFormData.serviceType] || 0;
+    
+    const newService = {
+      id: Date.now(),
+      clientName: serviceFormData.clientName,
+      serviceType: serviceFormData.serviceType,
+      date: serviceFormData.date,
+      time: serviceFormData.time,
+      piojologistId: parseInt(serviceFormData.piojologistId),
+      piojologistName: piojologist?.name || null,
+      status: 'confirmed',
+      estimatedPrice: servicePrice
+    };
+
+    updateAppointments([...appointments, newService]);
+    setIsServiceDialogOpen(false);
+    resetServiceForm();
+    toast({ 
+      title: "¡Servicio Creado! ✨", 
+      description: `Asignado a ${piojologist?.name}`,
+      className: "bg-purple-100 text-purple-800 rounded-2xl border-2 border-purple-200" 
+    });
+  };
+
   // Product Logic
   const handleProductSubmit = (e) => {
     e.preventDefault();
-    const newProduct = {
-      id: Date.now(),
-      name: productFormData.name,
-      price: parseFloat(productFormData.price),
-      stock: parseInt(productFormData.stock),
-      image: productFormData.image || 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&q=80&w=200'
-    };
-    updateProducts([...products, newProduct]);
+    
+    if (editingProduct) {
+      // Editar producto existente
+      const updatedProducts = products.map(p => 
+        p.id === editingProduct.id 
+          ? {
+              ...p,
+              name: productFormData.name,
+              price: parseFloat(productFormData.price),
+              stock: parseInt(productFormData.stock),
+              image: productFormData.image || p.image
+            }
+          : p
+      );
+      updateProducts(updatedProducts);
+      toast({ title: "¡Producto Actualizado! ✨", className: "bg-pink-100 text-pink-800 rounded-2xl border-2 border-pink-200" });
+    } else {
+      // Crear nuevo producto
+      const newProduct = {
+        id: Date.now(),
+        name: productFormData.name,
+        price: parseFloat(productFormData.price),
+        stock: parseInt(productFormData.stock),
+        image: productFormData.image || 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&q=80&w=200'
+      };
+      updateProducts([...products, newProduct]);
+      toast({ title: "¡Producto en Estantería! 🛍️", className: "bg-pink-100 text-pink-800 rounded-2xl border-2 border-pink-200" });
+    }
+    
     setIsProductDialogOpen(false);
-    setProductFormData({ name: '', price: '', stock: '', image: '' });
-    toast({ title: "¡Producto en Estantería! 🛍️", className: "bg-pink-100 text-pink-800 rounded-2xl border-2 border-pink-200" });
+    resetProductForm();
+  };
+
+  const handleOpenProductDialog = (product = null) => {
+    if (product) {
+      setEditingProduct(product);
+      setProductFormData({
+        name: product.name,
+        price: product.price.toString(),
+        stock: product.stock.toString(),
+        image: product.image
+      });
+    } else {
+      resetProductForm();
+    }
+    setIsProductDialogOpen(true);
   };
 
   const handleDeleteProduct = (prodId) => {
@@ -145,7 +252,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
               { label: 'Total Citas', val: appointments.length, color: 'bg-blue-100 text-blue-600', icon: PieChart },
               { label: 'Pendientes', val: appointments.filter(a => a.status === 'pending').length, color: 'bg-yellow-100 text-yellow-600', icon: Calendar },
               { label: 'Héroes', val: piojologists.length, color: 'bg-green-100 text-green-600', icon: Users },
-              { label: 'Ingresos Totales', val: `$${appointments.filter(a => a.status === 'completed').reduce((acc, curr) => acc + (curr.price || 0), 0)}`, color: 'bg-purple-100 text-purple-600', icon: DollarSign },
+              { label: 'Ingresos Totales', val: formatCurrency(appointments.filter(a => a.status === 'completed').reduce((acc, curr) => acc + (curr.price || 0), 0)), color: 'bg-purple-100 text-purple-600', icon: DollarSign },
             ].map((stat, idx) => (
               <motion.div 
                 key={idx}
@@ -159,40 +266,124 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
             ))}
           </div>
 
-          {/* Assignments Panel */}
+          {/* Services Management Panel */}
           <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-yellow-100 relative overflow-hidden">
              <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-200 rounded-bl-full opacity-50 -mr-4 -mt-4"></div>
              
-             <h3 className="text-2xl font-black text-gray-800 mb-6 flex items-center gap-3 relative z-10">
-               <span className="text-3xl">🧙‍♂️</span> Asignar Misiones
-             </h3>
+             <div className="flex justify-between items-center mb-6 relative z-10">
+               <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3">
+                 <span className="text-3xl">📋</span> Servicios Activos
+               </h3>
+               <Dialog open={isServiceDialogOpen} onOpenChange={setIsServiceDialogOpen}>
+                 <DialogTrigger asChild>
+                   <Button className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-2xl px-6 py-6 font-bold text-lg shadow-md border-b-4 border-yellow-600 active:border-b-0 active:translate-y-1">
+                     <Calendar className="w-6 h-6 mr-2" />
+                     Crear Servicio
+                   </Button>
+                 </DialogTrigger>
+                 <DialogContent className="rounded-[2.5rem] border-8 border-yellow-100 p-0 overflow-hidden sm:max-w-md bg-white">
+                   <div className="bg-yellow-400 p-6 text-white text-center">
+                     <DialogHeader>
+                       <DialogTitle className="text-3xl font-black">Nuevo Servicio ✨</DialogTitle>
+                     </DialogHeader>
+                   </div>
+                   <form onSubmit={handleServiceSubmit} className="p-8 space-y-4">
+                     <div>
+                       <Label className="font-bold text-gray-500 ml-2 mb-1 block">Nombre del Cliente</Label>
+                       <input 
+                         required
+                         value={serviceFormData.clientName}
+                         onChange={e => setServiceFormData({...serviceFormData, clientName: e.target.value})}
+                         className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-yellow-400"
+                         placeholder="Ej. Familia Pérez"
+                       />
+                     </div>
+                     <div>
+                       <Label className="font-bold text-gray-500 ml-2 mb-1 block">Nivel de Infestación</Label>
+                       <select 
+                         required
+                         value={serviceFormData.serviceType}
+                         onChange={e => setServiceFormData({...serviceFormData, serviceType: e.target.value})}
+                         className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-yellow-400 cursor-pointer"
+                       >
+                         <option value="">Seleccionar...</option>
+                         {Object.keys(serviceCatalog).map(service => (
+                           <option key={service} value={service}>
+                             {service} - {formatCurrency(serviceCatalog[service])}
+                           </option>
+                         ))}
+                       </select>
+                     </div>
+                     <div className="grid grid-cols-2 gap-4">
+                       <div>
+                         <Label className="font-bold text-gray-500 ml-2 mb-1 block">Fecha</Label>
+                         <input 
+                           required
+                           type="date"
+                           value={serviceFormData.date}
+                           onChange={e => setServiceFormData({...serviceFormData, date: e.target.value})}
+                           className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-yellow-400"
+                         />
+                       </div>
+                       <div>
+                         <Label className="font-bold text-gray-500 ml-2 mb-1 block">Hora</Label>
+                         <input 
+                           required
+                           type="time"
+                           value={serviceFormData.time}
+                           onChange={e => setServiceFormData({...serviceFormData, time: e.target.value})}
+                           className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-yellow-400"
+                         />
+                       </div>
+                     </div>
+                     <div>
+                       <Label className="font-bold text-gray-500 ml-2 mb-1 block">Asignar a Piojóloga</Label>
+                       <select 
+                         required
+                         value={serviceFormData.piojologistId}
+                         onChange={e => setServiceFormData({...serviceFormData, piojologistId: e.target.value})}
+                         className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-yellow-400 cursor-pointer"
+                       >
+                         <option value="">Seleccionar piojóloga...</option>
+                         {piojologists.map(p => (
+                           <option key={p.id} value={p.id}>{p.name} - {p.specialty}</option>
+                         ))}
+                       </select>
+                     </div>
+                     <Button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-2xl py-6 font-bold mt-4 shadow-md border-b-4 border-yellow-700">
+                       Crear y Asignar Servicio
+                     </Button>
+                   </form>
+                 </DialogContent>
+               </Dialog>
+             </div>
 
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
-                {unassignedAppointments.length === 0 ? (
+                {appointments.filter(apt => apt.status !== 'completed').length === 0 ? (
                   <div className="col-span-full py-12 text-center bg-yellow-50 rounded-[2rem] border-2 border-dashed border-yellow-300">
-                    <p className="text-xl font-bold text-yellow-600">¡Todo tranquilo por aquí! 🌟</p>
+                    <p className="text-xl font-bold text-yellow-600">¡No hay servicios activos! 🌟</p>
                   </div>
                 ) : (
-                  unassignedAppointments.map(apt => (
+                  appointments.filter(apt => apt.status !== 'completed').map(apt => (
                     <div key={apt.id} className="bg-white border-2 border-gray-100 p-5 rounded-3xl shadow-md hover:border-yellow-300 transition-colors">
                       <div className="flex justify-between items-start mb-3">
                         <span className="font-bold text-lg truncate">{apt.clientName}</span>
-                        <span className="bg-yellow-100 text-yellow-700 text-xs font-bold px-2 py-1 rounded-full">Pendiente</span>
+                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                          apt.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {apt.status === 'confirmed' ? 'Asignado' : 'Pendiente'}
+                        </span>
                       </div>
-                      <p className="text-sm text-gray-500 mb-4 font-medium flex items-center gap-2">
-                        <Calendar className="w-4 h-4" /> {apt.date} at {apt.time}
+                      <p className="text-sm text-gray-600 mb-1 font-bold">{apt.serviceType}</p>
+                      <p className="text-lg text-purple-600 mb-2 font-black">{formatCurrency(serviceCatalog[apt.serviceType] || 0)}</p>
+                      <p className="text-sm text-gray-500 mb-3 font-medium flex items-center gap-2">
+                        <Calendar className="w-4 h-4" /> {apt.date} - {apt.time}
                       </p>
-                      
-                      <select 
-                        className="w-full p-3 bg-gray-50 border-2 border-gray-200 rounded-xl font-bold text-sm outline-none focus:border-yellow-400 cursor-pointer"
-                        onChange={(e) => handleAssignPiojologist(apt.id, e.target.value)}
-                        defaultValue=""
-                      >
-                        <option value="" disabled>Elegir Héroe...</option>
-                        {piojologists.map(p => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
+                      <div className="bg-green-50 p-2 rounded-xl">
+                        <p className="text-xs font-bold text-green-700">
+                          👨‍⚕️ {apt.piojologistName || 'Sin asignar'}
+                        </p>
+                      </div>
                     </div>
                   ))
                 )}
@@ -204,7 +395,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
           <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-blue-100">
             <div className="flex justify-between items-center mb-8">
               <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3">
-                <span className="text-3xl">👪</span> La Familia ChaoPiojos
+                <span className="text-3xl">👪</span> La Familia <span className="text-orange-500">Chao</span><span className="text-blue-500">Piojos</span>
               </h3>
               <Button 
                 onClick={() => handleOpenUserDialog()}
@@ -349,24 +540,42 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {products.map(product => (
-                <div key={product.id} className="bg-white border-4 border-pink-100 rounded-[2rem] p-4 flex flex-col gap-4 shadow-sm hover:border-pink-300 transition-colors">
-                  <div className="w-full h-32 bg-gray-100 rounded-2xl overflow-hidden relative">
-                    <img src={product.image} alt={product.name} className="w-full h-full object-cover" src="https://images.unsplash.com/photo-1635865165118-917ed9e20936" />
-                    <div className="absolute top-2 right-2 bg-white px-2 py-1 rounded-lg text-xs font-black shadow-sm">
-                      Stock: {product.stock}
+                <div key={product.id} className="bg-white border-4 border-pink-100 rounded-[2rem] p-4 flex flex-col gap-4 shadow-sm hover:border-pink-300 hover:shadow-xl transition-all transform hover:scale-105 cursor-pointer group">
+                  <div 
+                    onClick={() => {
+                      setSelectedProduct(product);
+                      setIsProductDetailOpen(true);
+                    }}
+                    className="w-full h-32 bg-gradient-to-br from-pink-50 to-purple-50 rounded-2xl overflow-hidden relative"
+                  >
+                    <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                    <div className="absolute top-2 right-2 bg-white px-3 py-1 rounded-full text-xs font-black shadow-lg border-2 border-pink-200">
+                      📦 {product.stock}
                     </div>
                   </div>
-                  <div>
-                    <h4 className="text-lg font-black text-gray-800">{product.name}</h4>
-                    <p className="text-pink-500 font-bold text-xl">${product.price}</p>
+                  <div onClick={() => {
+                    setSelectedProduct(product);
+                    setIsProductDetailOpen(true);
+                  }}>
+                    <h4 className="text-lg font-black text-gray-800 truncate">{product.name}</h4>
+                    <p className="text-pink-500 font-bold text-xl">{formatCurrency(product.price)}</p>
                   </div>
-                  <Button 
-                    onClick={() => handleDeleteProduct(product.id)}
-                    variant="ghost" 
-                    className="mt-auto bg-red-50 text-red-500 hover:bg-red-100 rounded-xl"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" /> Eliminar
-                  </Button>
+                  <div className="flex gap-2 mt-auto">
+                    <Button 
+                      onClick={() => handleOpenProductDialog(product)}
+                      variant="ghost" 
+                      className="flex-1 bg-blue-50 text-blue-500 hover:bg-blue-100 rounded-xl font-bold"
+                    >
+                      <Edit className="w-4 h-4 mr-2" /> Editar
+                    </Button>
+                    <Button 
+                      onClick={() => handleDeleteProduct(product.id)}
+                      variant="ghost" 
+                      className="flex-1 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl font-bold"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" /> Eliminar
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -413,11 +622,11 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                            {pioj.name}
                          </td>
                          <td className="p-4 font-medium">{completedServices.length}</td>
-                         <td className="p-4 text-right font-medium text-blue-600">${grossEarnings.toFixed(2)}</td>
-                         <td className="p-4 text-right font-medium text-red-500">-${totalDeductions.toFixed(2)}</td>
+                         <td className="p-4 text-right font-medium text-blue-600">{formatCurrency(grossEarnings)}</td>
+                         <td className="p-4 text-right font-medium text-red-500">-{formatCurrency(totalDeductions)}</td>
                          <td className="p-4 text-right">
                            <span className="bg-green-100 text-green-700 px-3 py-1 rounded-xl font-black">
-                             ${netPayable.toFixed(2)}
+                             {formatCurrency(netPayable)}
                            </span>
                          </td>
                        </tr>
@@ -462,7 +671,6 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                     value={userFormData.role}
                     onChange={e => setUserFormData({...userFormData, role: e.target.value})}
                  >
-                   <option value="client">👶 Cliente</option>
                    <option value="piojologist">🦸 Piojólogo</option>
                    <option value="admin">👑 Admin</option>
                  </select>
@@ -521,6 +729,81 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Product Detail Modal */}
+      <Dialog open={isProductDetailOpen} onOpenChange={setIsProductDetailOpen}>
+        <DialogContent className="rounded-[2.5rem] border-8 border-pink-100 p-0 overflow-hidden sm:max-w-lg bg-white">
+          {selectedProduct && (
+            <>
+              <div className="bg-gradient-to-r from-pink-400 to-purple-400 p-6 text-white text-center relative overflow-hidden">
+                <div className="absolute top-0 right-0 text-9xl opacity-10">🎨</div>
+                <DialogHeader>
+                  <DialogTitle className="text-3xl font-black relative z-10">¡Producto Mágico! ✨</DialogTitle>
+                </DialogHeader>
+              </div>
+              
+              <div className="p-8 space-y-6">
+                {/* Image */}
+                <div className="w-full h-64 bg-gradient-to-br from-pink-50 to-purple-50 rounded-3xl overflow-hidden border-4 border-pink-200 shadow-lg relative">
+                  <img 
+                    src={selectedProduct.image} 
+                    alt={selectedProduct.name} 
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute top-4 right-4 bg-white px-4 py-2 rounded-full shadow-lg border-2 border-pink-300">
+                    <span className="text-2xl font-black text-pink-500">📦 {selectedProduct.stock}</span>
+                  </div>
+                </div>
+
+                {/* Details */}
+                <div className="space-y-4">
+                  <div className="bg-pink-50 p-4 rounded-2xl border-2 border-pink-200">
+                    <h3 className="text-2xl font-black text-gray-800 mb-2">
+                      {selectedProduct.name}
+                    </h3>
+                    <p className="text-3xl font-black text-pink-500">
+                      {formatCurrency(selectedProduct.price)}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-purple-50 p-4 rounded-2xl border-2 border-purple-200 text-center">
+                      <p className="text-sm font-bold text-purple-600 mb-1">Stock Disponible</p>
+                      <p className="text-3xl font-black text-purple-700">{selectedProduct.stock}</p>
+                    </div>
+                    <div className="bg-blue-50 p-4 rounded-2xl border-2 border-blue-200 text-center">
+                      <p className="text-sm font-bold text-blue-600 mb-1">Precio Unitario</p>
+                      <p className="text-lg font-black text-blue-700">{formatCurrency(selectedProduct.price)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    onClick={() => {
+                      setIsProductDetailOpen(false);
+                      handleOpenProductDialog(selectedProduct);
+                    }}
+                    className="flex-1 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl py-6 font-bold shadow-lg border-b-4 border-blue-700"
+                  >
+                    <Edit className="w-5 h-5 mr-2" /> Editar
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      handleDeleteProduct(selectedProduct.id);
+                      setIsProductDetailOpen(false);
+                    }}
+                    className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-2xl py-6 font-bold shadow-lg border-b-4 border-red-700"
+                  >
+                    <Trash2 className="w-5 h-5 mr-2" /> Eliminar
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
