@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import ScheduleCalendar from '@/components/ScheduleCalendar';
 
 const PiojologistView = ({ currentUser, appointments, updateAppointments, products, handleCompleteService, formatCurrency }) => {
   const { toast } = useToast();
@@ -61,6 +62,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, produc
   };
 
   const assignedToMe = appointments.filter(apt => apt.piojologistId === currentUser.id && apt.status === 'confirmed');
+  const myCalendarAppointments = appointments.filter(apt => apt.piojologistId === currentUser.id && apt.status !== 'cancelled');
   const completedHistory = appointments.filter(apt => apt.piojologistId === currentUser.id && apt.status === 'completed');
 
   return (
@@ -110,6 +112,14 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, produc
         </TabsList>
 
         <TabsContent value="agenda">
+          <div className="mb-8">
+            <ScheduleCalendar
+              appointments={myCalendarAppointments}
+              piojologists={[currentUser]}
+              title="Mi Agenda"
+            />
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {assignedToMe.length === 0 ? (
                <div className="col-span-full py-20 text-center bg-white/60 rounded-[3rem] border-4 border-dashed border-green-200">

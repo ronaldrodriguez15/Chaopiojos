@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import ScheduleCalendar from '@/components/ScheduleCalendar';
 
 const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, updateAppointments, piojologists, products, updateProducts, serviceCatalog, formatCurrency }) => {
   const { toast } = useToast();
@@ -265,6 +266,13 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
               </motion.div>
             ))}
           </div>
+
+          <ScheduleCalendar
+            appointments={appointments}
+            piojologists={piojologists}
+            enablePiojologistFilter
+            title="Agenda General"
+          />
 
           {/* Services Management Panel */}
           <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-yellow-100 relative overflow-hidden">
