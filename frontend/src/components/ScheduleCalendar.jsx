@@ -14,21 +14,24 @@ const statusColors = {
   pending: 'bg-yellow-100 text-yellow-700 border-yellow-200',
   confirmed: 'bg-green-100 text-green-700 border-green-200',
   completed: 'bg-purple-100 text-purple-700 border-purple-200',
-  cancelled: 'bg-red-100 text-red-600 border-red-200'
+  cancelled: 'bg-red-100 text-red-600 border-red-200',
+  external: 'bg-blue-100 text-blue-700 border-blue-200'
 };
 
 const statusLabels = {
   pending: 'Pendiente',
   confirmed: 'Confirmado',
   completed: 'Completado',
-  cancelled: 'Cancelado'
+  cancelled: 'Cancelado',
+  external: 'Cita Externa'
 };
 
 const statusBadgeStyles = {
   pending: 'bg-yellow-200 text-yellow-700 border-yellow-300',
   confirmed: 'bg-green-200 text-green-700 border-green-300',
   completed: 'bg-purple-200 text-purple-700 border-purple-300',
-  cancelled: 'bg-red-200 text-red-700 border-red-300'
+  cancelled: 'bg-red-200 text-red-700 border-red-300',
+  external: 'bg-blue-200 text-blue-700 border-blue-300'
 };
 
 const pad = (value) => (value < 10 ? `0${value}` : `${value}`);
@@ -299,16 +302,20 @@ const ScheduleCalendar = ({
               {dayAppointments.length > 0 && (
                 <div className="space-y-2 overflow-y-auto pr-1">
                   {dayAppointments.map((appointment) => {
-                    const color = statusColors[appointment.status] || 'bg-blue-100 text-blue-700 border-blue-200';
+                    const statusKey = appointment.isExternal ? 'external' : appointment.status;
+                    const color = statusColors[statusKey] || 'bg-blue-100 text-blue-700 border-blue-200';
                     const time = appointment.time || 'Sin hora';
                     const piojologist = piojologists.find((p) => Number(p.id) === Number(appointment.piojologistId));
                     return (
                       <div
                         key={appointment.id}
-                        className={`rounded-2xl border px-3 py-2 text-left text-xs font-bold space-y-1 ${color}`}
+                        className={`rounded-2xl border px-3 py-2 text-left text-xs font-bold space-y-1 ${color} ${appointment.isExternal ? 'border-2 border-dashed' : ''}`}
                       >
                         <div className="flex justify-between items-center">
-                          <span className="truncate max-w-[110px]">{appointment.clientName}</span>
+                          <div className="flex items-center gap-1 truncate max-w-[110px]">
+                            {appointment.isExternal && <span>🔗</span>}
+                            <span className="truncate">{appointment.clientName}</span>
+                          </div>
                           <span className="text-[10px] uppercase">{time}</span>
                         </div>
                         {piojologist && (
@@ -316,9 +323,14 @@ const ScheduleCalendar = ({
                             👩‍⚕️ {piojologist.name}
                           </p>
                         )}
+                        {appointment.isExternal && (
+                          <p className="text-[10px] text-blue-600 font-semibold opacity-80">
+                            🌐 {appointment.piojologistName}
+                          </p>
+                        )}
                         <div className="flex justify-between items-center text-[9px] uppercase tracking-wide">
                           <span>{appointment.serviceType}</span>
-                          <span>{statusLabels[appointment.status] || appointment.status}</span>
+                          <span>{statusLabels[statusKey] || appointment.status}</span>
                         </div>
                       </div>
                     );
@@ -343,24 +355,31 @@ const ScheduleCalendar = ({
 
           <div className="p-6 md:p-8 space-y-4 max-h-[420px] overflow-y-auto">
             {selectedDay?.appointments.map((appointment) => {
-              const statusStyle = statusBadgeStyles[appointment.status] || 'bg-blue-200 text-blue-700 border-blue-300';
+              const statusKey = appointment.isExternal ? 'external' : appointment.status;
+              const statusStyle = statusBadgeStyles[statusKey] || 'bg-blue-200 text-blue-700 border-blue-300';
               const timeLabel = formatTimeRange(appointment);
-              const label = statusLabels[appointment.status] || appointment.status;
+              const label = statusLabels[statusKey] || appointment.status;
               const assignedPiojologist = piojologists.find((p) => Number(p.id) === Number(appointment.piojologistId));
 
               return (
                 <div
                   key={appointment.id}
-                  className="bg-white border-4 border-orange-100 rounded-[2rem] p-5 shadow-sm hover:shadow-md transition-all"
+                  className={`bg-white border-4 rounded-[2rem] p-5 shadow-sm hover:shadow-md transition-all ${appointment.isExternal ? 'border-blue-200 border-dashed' : 'border-orange-100'}`}
                 >
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div>
                       <h4 className="text-lg font-black text-gray-800 flex items-center gap-2">
-                        <ShieldCheck className="w-5 h-5 text-orange-500" /> {appointment.clientName}
+                        {appointment.isExternal ? <span>🔗</span> : <ShieldCheck className="w-5 h-5 text-orange-500" />}
+                        {appointment.clientName}
                       </h4>
                       <p className="text-sm font-bold text-gray-500 uppercase tracking-wide mt-1">
                         {appointment.serviceType}
                       </p>
+                      {appointment.isExternal && (
+                        <p className="text-xs font-bold text-blue-600 mt-2">
+                          🌐 Vinculado desde: {appointment.piojologistName}
+                        </p>
+                      )}
                     </div>
                     <span className={`px-3 py-1 rounded-full border text-xs font-black uppercase tracking-wide ${statusStyle}`}>
                       {label}

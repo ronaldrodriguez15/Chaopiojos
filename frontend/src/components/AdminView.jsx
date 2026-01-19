@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Settings, UserPlus, Calendar, User, CheckCircle, PieChart, Crown, Users, Trash2, Edit, Save, X, ShoppingBag, DollarSign, PackagePlus } from 'lucide-react';
+import { Settings, UserPlus, Calendar, User, CheckCircle, PieChart, Crown, Users, Trash2, Edit, Save, X, ShoppingBag, DollarSign, PackagePlus, Map, Loader } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
@@ -13,6 +13,9 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import ScheduleCalendar from '@/components/ScheduleCalendar';
+import PiojologistMap from '@/components/PiojologistMap';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { geocodeAddress } from '@/lib/geocoding';
 
 const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, updateAppointments, piojologists, products, updateProducts, serviceCatalog, formatCurrency }) => {
   const { toast } = useToast();
@@ -20,13 +23,15 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
   // User Management State
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [isGeocodifying, setIsGeocodifying] = useState(false);
   const [userFormData, setUserFormData] = useState({
     name: '',
     email: '',
     password: '',
     role: 'piojologist',
     specialty: '',
-    available: true
+    available: true,
+    address: ''
   });
 
   // Service Creation State
@@ -58,7 +63,8 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
       password: '',
       role: 'piojologist',
       specialty: '',
-      available: true
+      available: true,
+      address: ''
     });
     setEditingUser(null);
   };
@@ -104,17 +110,58 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     setIsUserDialogOpen(true);
   };
 
-  const handleUserSubmit = (e) => {
+  const handleUserSubmit = async (e) => {
     e.preventDefault();
-    if (editingUser) {
-      handleUpdateUser({ ...userFormData, id: editingUser.id });
-      toast({ title: "¡Usuario Actualizado! 🎉", className: "bg-green-100 text-green-800 rounded-2xl border-2 border-green-200" });
-    } else {
-      handleCreateUser(userFormData);
-      toast({ title: "¡Nuevo Amigo Añadido! 🎈", className: "bg-blue-100 text-blue-800 rounded-2xl border-2 border-blue-200" });
+    setIsGeocodifying(true);
+
+    try {
+      let userToSave = { ...userFormData };
+
+      // Si la piojóloga tiene dirección y es piojologist, ya tiene coordenadas del autocomplete
+      if (userToSave.role === 'piojologist' && userToSave.address && !userToSave.lat) {
+        // Si no tiene coordenadas (edición de usuario sin autocomplete), geocodificar
+        const coordinates = await geocodeAddress(userToSave.address);
+        if (coordinates) {
+          userToSave = {
+            ...userToSave,
+            lat: coordinates.lat,
+            lng: coordinates.lng
+          };
+          toast({
+            title: "📍 Ubicación encontrada",
+            description: `Coordenadas: ${coordinates.lat.toFixed(4)}, ${coordinates.lng.toFixed(4)}`,
+            className: "bg-cyan-100 text-cyan-800 rounded-2xl border-2 border-cyan-200"
+          });
+        } else {
+          toast({
+            title: "⚠️ Ubicación no encontrada",
+            description: "Se guardará sin coordenadas. Verifica la dirección.",
+            variant: "destructive",
+            className: "rounded-3xl border-4 border-yellow-200 bg-yellow-50 text-yellow-600 font-bold"
+          });
+        }
+      }
+
+      if (editingUser) {
+        handleUpdateUser({ ...userToSave, id: editingUser.id });
+        toast({ title: "¡Usuario Actualizado! 🎉", className: "bg-green-100 text-green-800 rounded-2xl border-2 border-green-200" });
+      } else {
+        handleCreateUser(userToSave);
+        toast({ title: "¡Nuevo Amigo Añadido! 🎈", className: "bg-blue-100 text-blue-800 rounded-2xl border-2 border-blue-200" });
+      }
+      setIsUserDialogOpen(false);
+      resetUserForm();
+    } catch (error) {
+      console.error('Error al procesar usuario:', error);
+      toast({
+        title: "Error",
+        description: "Hubo un error procesando el usuario",
+        variant: "destructive",
+        className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+      });
+    } finally {
+      setIsGeocodifying(false);
     }
-    setIsUserDialogOpen(false);
-    resetUserForm();
   };
 
   // Service Creation
@@ -237,6 +284,9 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
           </TabsTrigger>
           <TabsTrigger value="users" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-blue-400 data-[state=active]:text-white transition-all">
             👥 Usuarios
+          </TabsTrigger>
+          <TabsTrigger value="map" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-cyan-400 data-[state=active]:text-white transition-all">
+            🗺️ Mapa
           </TabsTrigger>
           <TabsTrigger value="products" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-pink-400 data-[state=active]:text-white transition-all">
             🛍️ Productos
@@ -645,6 +695,41 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
              </div>
           </div>
         </TabsContent>
+
+        <TabsContent value="map" className="space-y-6">
+          <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-cyan-100">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="p-4 bg-cyan-100 text-cyan-600 rounded-full">
+                  <Map className="w-8 h-8" />
+                </div>
+                <h3 className="text-2xl font-black text-gray-800">
+                  Ubicaciones de Piojólogas
+                </h3>
+              </div>
+              <div className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded-full text-sm font-bold">
+                🎯 {users.filter(u => u.role === 'piojologist' && u.lat && u.lng).length} ubicadas
+              </div>
+            </div>
+            
+            <div style={{ height: '600px' }} className="rounded-2xl overflow-hidden">
+              <PiojologistMap key={users.length} piojologists={users} />
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-cyan-50 p-4 rounded-2xl border-2 border-cyan-200">
+                <p className="text-sm text-gray-600">
+                  <span className="font-bold">📍 Nota:</span> El mapa se actualiza automáticamente cuando agregas piojólogas con dirección.
+                </p>
+              </div>
+              <div className="bg-green-50 p-4 rounded-2xl border-2 border-green-200">
+                <p className="text-sm text-gray-600">
+                  <span className="font-bold">💡 Tip:</span> Usa el autocomplete al crear piojólogas para ubicaciones precisas.
+                </p>
+              </div>
+            </div>
+          </div>
+        </TabsContent>
       </Tabs>
 
       {/* User Dialog Modal */}
@@ -720,20 +805,64 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
               </motion.div>
             )}
 
+            {userFormData.role === 'piojologist' && (
+              <div>
+                <Label className="font-bold text-gray-500 ml-2 mb-1 block">📍 Dirección</Label>
+                <AddressAutocomplete
+                  value={userFormData.address || ''}
+                  onChange={(address) => setUserFormData({...userFormData, address})}
+                  onSelect={(suggestion) => {
+                    setUserFormData({
+                      ...userFormData,
+                      address: suggestion.fullName,
+                      lat: suggestion.lat,
+                      lng: suggestion.lng
+                    });
+                    toast({
+                      title: "📍 Ubicación seleccionada",
+                      description: `${suggestion.name}`,
+                      className: "bg-cyan-100 text-cyan-800 rounded-2xl border-2 border-cyan-200"
+                    });
+                  }}
+                />
+              </div>
+            )}
+
+            {userFormData.role !== 'piojologist' && (
+              <div>
+                <Label className="font-bold text-gray-500 ml-2 mb-1 block">📍 Dirección (Opcional)</Label>
+                <input 
+                  className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-blue-400 focus:bg-white transition-all"
+                  value={userFormData.address || ''}
+                  onChange={e => setUserFormData({...userFormData, address: e.target.value})}
+                  placeholder="Ej. Cra 7 #45-90, Bogotá"
+                />
+              </div>
+            )}
+
             <div className="pt-4 flex gap-3">
               <Button 
                 type="button" 
                 variant="ghost" 
                 onClick={() => setIsUserDialogOpen(false)}
-                className="flex-1 rounded-2xl py-6 font-bold text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                disabled={isGeocodifying}
+                className="flex-1 rounded-2xl py-6 font-bold text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-50"
               >
                 Cancelar
               </Button>
               <Button 
                 type="submit"
-                className="flex-1 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl py-6 font-bold shadow-lg border-b-4 border-blue-700 active:border-b-0 active:translate-y-1 transition-all"
+                disabled={isGeocodifying}
+                className="flex-1 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl py-6 font-bold shadow-lg border-b-4 border-blue-700 active:border-b-0 active:translate-y-1 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {editingUser ? 'Guardar Cambios' : '¡Crear!'}
+                {isGeocodifying ? (
+                  <>
+                    <Loader className="w-4 h-4 animate-spin" />
+                    Localizando...
+                  </>
+                ) : (
+                  editingUser ? 'Guardar Cambios' : '¡Crear!'
+                )}
               </Button>
             </div>
           </form>

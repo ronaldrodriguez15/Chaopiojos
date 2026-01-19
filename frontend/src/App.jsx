@@ -7,15 +7,16 @@ import Login from '@/components/Login';
 import { LogOut, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
+import { fetchICalEvents, convertICalEventsToAppointments } from '@/lib/icalService';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
   
   // Default users for the demo
   const defaultUsers = [
-    { id: 1, name: 'Admin Jefe', email: 'admin@chaopiojos.com', password: '123', role: 'admin' },
-    { id: 2, name: 'Dr. María González', email: 'maria@chaopiojos.com', password: '123', role: 'piojologist', specialty: 'Experta en Rastreo', available: true, earnings: 0 },
-    { id: 3, name: 'Dr. Carlos Ramírez', email: 'carlos@chaopiojos.com', password: '123', role: 'piojologist', specialty: 'Cazador de Liendres', available: true, earnings: 0 }
+    { id: 1, name: 'Admin Jefe', email: 'admin@chaopiojos.com', password: '123', role: 'admin', address: 'Cra 7 #45-90, Bogotá' },
+    { id: 2, name: 'Dr. María González', email: 'maria@chaopiojos.com', password: '123', role: 'piojologist', specialty: 'Experta en Rastreo', available: true, earnings: 0, address: 'Cra 11 #92-34, Bogotá', lat: 4.7110, lng: -74.0141 },
+    { id: 3, name: 'Dr. Carlos Ramírez', email: 'carlos@chaopiojos.com', password: '123', role: 'piojologist', specialty: 'Cazador de Liendres', available: true, earnings: 0, address: 'Av Calle 26 #78-15, Bogotá', lat: 4.7069, lng: -74.0813 }
   ];
 
   const [users, setUsers] = useState(() => {
@@ -73,6 +74,56 @@ function App() {
   const updateProducts = (newProducts) => {
     setProducts(newProducts);
   };
+
+  // URL del feed iCal externo
+  const ICAL_URL = 'https://chaopiojos.com/?booked_ical&sh=f337b19223cc15bded974b91f266043c';
+
+  // Cargar eventos del iCal automáticamente (cada 5 minutos)
+  useEffect(() => {
+    const loadICalEvents = async () => {
+      try {
+        console.log('🌐 Iniciando carga de eventos iCal...');
+        const icalEvents = await fetchICalEvents(ICAL_URL);
+        console.log('📥 Eventos iCal recibidos:', icalEvents.length);
+        
+        const convertedAppointments = convertICalEventsToAppointments(icalEvents);
+        console.log('🔄 Eventos convertidos:', convertedAppointments.length);
+        
+        if (convertedAppointments.length > 0) {
+          console.log('✅ Agregando eventos al calendario');
+          // Combinar eventos iCal con citas locales, eliminando duplicados
+          setAppointments(prevAppointments => {
+            const localAppointments = prevAppointments.filter(a => !a.isExternal);
+            const combined = [...localAppointments, ...convertedAppointments];
+            
+            // Eliminar duplicados basados en ID
+            const uniqueMap = new Map();
+            combined.forEach(app => {
+              if (!uniqueMap.has(app.id)) {
+                uniqueMap.set(app.id, app);
+              }
+            });
+            
+            const result = Array.from(uniqueMap.values());
+            console.log('📊 Total citas en calendario:', result.length);
+            return result;
+          });
+        } else {
+          console.warn('⚠️ No hay eventos para agregar');
+        }
+      } catch (error) {
+        console.error('❌ Error cargando eventos iCal:', error);
+      }
+    };
+
+    // Cargar al montar el componente
+    loadICalEvents();
+
+    // Recargar cada 5 minutos
+    const interval = setInterval(loadICalEvents, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const handleLogin = (email, password) => {
     const user = users.find(u => u.email === email && u.password === password);
