@@ -78,50 +78,48 @@ function App() {
   // URL del feed iCal externo
   const ICAL_URL = 'https://chaopiojos.com/?booked_ical&sh=f337b19223cc15bded974b91f266043c';
 
-  // Cargar eventos del iCal automáticamente (cada 5 minutos)
-  useEffect(() => {
-    const loadICalEvents = async () => {
-      try {
-        console.log('🌐 Iniciando carga de eventos iCal...');
-        const icalEvents = await fetchICalEvents(ICAL_URL);
-        console.log('📥 Eventos iCal recibidos:', icalEvents.length);
-        
-        const convertedAppointments = convertICalEventsToAppointments(icalEvents);
-        console.log('🔄 Eventos convertidos:', convertedAppointments.length);
-        
-        if (convertedAppointments.length > 0) {
-          console.log('✅ Agregando eventos al calendario');
-          // Combinar eventos iCal con citas locales, eliminando duplicados
-          setAppointments(prevAppointments => {
-            const localAppointments = prevAppointments.filter(a => !a.isExternal);
-            const combined = [...localAppointments, ...convertedAppointments];
-            
-            // Eliminar duplicados basados en ID
-            const uniqueMap = new Map();
-            combined.forEach(app => {
-              if (!uniqueMap.has(app.id)) {
-                uniqueMap.set(app.id, app);
-              }
-            });
-            
-            const result = Array.from(uniqueMap.values());
-            console.log('📊 Total citas en calendario:', result.length);
-            return result;
+  // Función para sincronizar iCal (manual y automática)
+  const syncICalEvents = async () => {
+    try {
+      console.log('🌐 Sincronizando eventos iCal...');
+      const icalEvents = await fetchICalEvents(ICAL_URL);
+      console.log('📥 Eventos iCal recibidos:', icalEvents.length);
+      
+      const convertedAppointments = convertICalEventsToAppointments(icalEvents);
+      console.log('🔄 Eventos convertidos:', convertedAppointments.length);
+      
+      if (convertedAppointments.length > 0) {
+        console.log('✅ Agregando eventos al calendario');
+        setAppointments(prevAppointments => {
+          const localAppointments = prevAppointments.filter(a => !a.isExternal);
+          const combined = [...localAppointments, ...convertedAppointments];
+          
+          const uniqueMap = new Map();
+          combined.forEach(app => {
+            if (!uniqueMap.has(app.id)) {
+              uniqueMap.set(app.id, app);
+            }
           });
-        } else {
-          console.warn('⚠️ No hay eventos para agregar');
-        }
-      } catch (error) {
-        console.error('❌ Error cargando eventos iCal:', error);
+          
+          const result = Array.from(uniqueMap.values());
+          console.log('📊 Total citas en calendario:', result.length);
+          return result;
+        });
+        return { success: true, count: convertedAppointments.length };
+      } else {
+        console.warn('⚠️ No hay eventos nuevos');
+        return { success: true, count: 0 };
       }
-    };
+    } catch (error) {
+      console.error('❌ Error sincronizando iCal:', error);
+      return { success: false, error: error.message };
+    }
+  };
 
-    // Cargar al montar el componente
-    loadICalEvents();
-
-    // Recargar cada 5 minutos
-    const interval = setInterval(loadICalEvents, 5 * 60 * 1000);
-
+  // Auto-sync cada 5 minutos
+  useEffect(() => {
+    syncICalEvents();
+    const interval = setInterval(syncICalEvents, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -288,6 +286,7 @@ function App() {
                     updateProducts={updateProducts}
                     serviceCatalog={serviceCatalog}
                     formatCurrency={formatCurrency}
+                    syncICalEvents={syncICalEvents}
                   />
                 )}
               </div>

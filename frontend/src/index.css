@@ -53,3 +53,22 @@ body {
 .animate-wiggle {
   animation: wiggle 1s ease-in-out infinite;
 }
+
+/* Form Layout Utilities */
+@layer components {
+  .form-grid {
+    @apply grid grid-cols-1 md:grid-cols-2 gap-6; /* separa columnas con buen espacio */
+  }
+  .form-field {
+    @apply space-y-2; /* separa label y control */
+  }
+  .field-label {
+    @apply font-bold text-gray-600 ml-2 mb-1 block; /* estilo consistente de labels */
+  }
+  .form-input {
+    @apply w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:bg-white; /* base para inputs */
+  }
+  .form-select {
+    @apply w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none cursor-pointer appearance-none; /* base para selects */
+  }
+}

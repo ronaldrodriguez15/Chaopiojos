@@ -2,8 +2,12 @@
  * Servicio para descargar y parsear eventos de un feed iCal
  */
 
-// Proxy CORS gratuito
-const CORS_PROXY = 'https://cors-anywhere.herokuapp.com/';
+// Proxies CORS alternativos (intentar en orden de confiabilidad)
+const CORS_PROXIES = [
+  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  url => `https://cors-anywhere.herokuapp.com/${url}`,
+];
 
 /**
  * Descargar eventos del feed iCal
@@ -14,37 +18,67 @@ export const fetchICalEvents = async (icalUrl) => {
   try {
     console.log('🔄 Descargando iCal desde:', icalUrl);
     
-    // Intentar primero sin proxy
     let response;
+    let lastError;
+
+    // Intentar primero sin proxy
     try {
+      console.log('📡 Intentando descarga directa...');
       response = await fetch(icalUrl, {
         headers: {
           'Accept': 'text/calendar'
         }
       });
+      
+      if (response.ok) {
+        console.log('✅ Descarga directa exitosa');
+        const icalText = await response.text();
+        console.log('✅ iCal descargado, tamaño:', icalText.length, 'caracteres');
+        const events = parseICalEvents(icalText);
+        console.log('✅ Eventos parseados:', events.length);
+        return events;
+      }
     } catch (corsError) {
-      // Si hay error de CORS, intentar con proxy
-      console.warn('⚠️ Error CORS, intentando con proxy...');
-      const proxyUrl = CORS_PROXY + icalUrl;
-      response = await fetch(proxyUrl, {
-        headers: {
-          'Accept': 'text/calendar'
+      console.warn('⚠️ Descarga directa falló, intentando con proxies...');
+      lastError = corsError;
+    }
+
+    // Intentar con proxies CORS
+    for (let i = 0; i < CORS_PROXIES.length; i++) {
+      try {
+        const proxyUrl = CORS_PROXIES[i](icalUrl);
+        console.log(`🔀 Proxy #${i + 1}:`, proxyUrl.substring(0, 60) + '...');
+        
+        response = await fetch(proxyUrl, {
+          headers: {
+            'Accept': 'text/calendar'
+          }
+        });
+
+        if (response.ok) {
+          console.log(`✅ Proxy #${i + 1} exitoso`);
+          const icalText = await response.text();
+          
+          if (!icalText || icalText.length === 0) {
+            console.warn(`⚠️ Proxy #${i + 1} retornó vacío`);
+            continue;
+          }
+          
+          console.log('✅ iCal descargado, tamaño:', icalText.length, 'caracteres');
+          const events = parseICalEvents(icalText);
+          console.log('✅ Eventos parseados:', events.length);
+          return events;
+        } else {
+          console.warn(`⚠️ Proxy #${i + 1} status:`, response.status);
         }
-      });
+      } catch (proxyError) {
+        console.warn(`⚠️ Proxy #${i + 1} error:`, proxyError.message);
+        lastError = proxyError;
+      }
     }
 
-    if (!response.ok) {
-      console.error('❌ Error descargando iCal:', response.statusText);
-      return [];
-    }
-
-    const icalText = await response.text();
-    console.log('✅ iCal descargado, tamaño:', icalText.length, 'caracteres');
-    
-    const events = parseICalEvents(icalText);
-    console.log('✅ Eventos parseados:', events.length);
-    
-    return events;
+    console.error('❌ Todos los métodos fallaron. Error final:', lastError?.message);
+    return [];
   } catch (error) {
     console.error('❌ Error al descargar iCal:', error);
     return [];

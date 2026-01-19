@@ -104,7 +104,7 @@ const ClientView = ({ currentUser, appointments, updateAppointments, serviceCata
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="form-grid">
                 <div>
                   <Label className="text-blue-800 font-black text-lg mb-2 flex items-center gap-2">
                     <Calendar className="w-5 h-5" />
@@ -115,7 +115,7 @@ const ClientView = ({ currentUser, appointments, updateAppointments, serviceCata
                     type="date"
                     value={formData.date}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-4 rounded-xl border-2 border-blue-200 focus:border-blue-400 outline-none bg-white text-gray-700 font-bold shadow-sm"
+                    className="form-input px-4 rounded-xl border-blue-200 focus:border-blue-400 bg-white text-gray-700 shadow-sm"
                   />
                 </div>
                 <div>
@@ -128,7 +128,7 @@ const ClientView = ({ currentUser, appointments, updateAppointments, serviceCata
                     type="time"
                     value={formData.time}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-4 rounded-xl border-2 border-blue-200 focus:border-blue-400 outline-none bg-white text-gray-700 font-bold shadow-sm"
+                    className="form-input px-4 rounded-xl border-blue-200 focus:border-blue-400 bg-white text-gray-700 shadow-sm"
                   />
                 </div>
               </div>
@@ -142,7 +142,7 @@ const ClientView = ({ currentUser, appointments, updateAppointments, serviceCata
                   name="serviceType"
                   value={formData.serviceType}
                   onChange={handleInputChange}
-                  className="w-full px-5 py-4 rounded-xl border-2 border-blue-200 focus:border-blue-400 outline-none bg-white text-gray-700 font-bold shadow-sm cursor-pointer appearance-none"
+                  className="form-select px-5 rounded-xl border-blue-200 focus:border-blue-400 bg-white text-gray-700 shadow-sm"
                 >
                   <option value="">Elige tu súper poder...</option>
                   {Object.keys(serviceCatalog).map((s, i) => <option key={i} value={s}>{s} (${serviceCatalog[s]})</option>)}
@@ -214,6 +214,39 @@ const ClientView = ({ currentUser, appointments, updateAppointments, serviceCata
                     <div className="mt-3 bg-blue-50 p-3 rounded-xl border border-blue-100 text-blue-600 font-bold flex items-center gap-2">
                       <User className="w-5 h-5" />
                       Héroe: {appointment.piojologistName}
+                    </div>
+                  )}
+
+                  {/* Datos Críticos para Cliente */}
+                  {(appointment.yourLoss || appointment.ourPayment || appointment.total || appointment.age) && (
+                    <div className="mt-3 bg-yellow-50 p-3 rounded-xl border border-yellow-200">
+                      <p className="text-xs font-bold text-yellow-600 uppercase mb-2">📊 Información del Servicio</p>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        {appointment.yourLoss && (
+                          <div className="bg-red-100 p-2 rounded-lg text-center">
+                            <p className="text-red-600 font-bold">Pierdes</p>
+                            <p className="text-red-700 font-black">$ {appointment.yourLoss}</p>
+                          </div>
+                        )}
+                        {appointment.ourPayment && (
+                          <div className="bg-green-100 p-2 rounded-lg text-center">
+                            <p className="text-green-600 font-bold">Te Pagamos</p>
+                            <p className="text-green-700 font-black">$ {appointment.ourPayment}</p>
+                          </div>
+                        )}
+                        {appointment.total && (
+                          <div className="bg-blue-100 p-2 rounded-lg text-center">
+                            <p className="text-blue-600 font-bold">Total</p>
+                            <p className="text-blue-700 font-black">$ {appointment.total}</p>
+                          </div>
+                        )}
+                        {appointment.age && (
+                          <div className="bg-purple-100 p-2 rounded-lg text-center">
+                            <p className="text-purple-600 font-bold">Edad</p>
+                            <p className="text-purple-700 font-black">{appointment.age} años</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </motion.div>

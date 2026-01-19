@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Settings, UserPlus, Calendar, User, CheckCircle, PieChart, Crown, Users, Trash2, Edit, Save, X, ShoppingBag, DollarSign, PackagePlus, Map, Loader } from 'lucide-react';
+import { Settings, UserPlus, Calendar, User, CheckCircle, PieChart, Crown, Users, Trash2, Edit, Save, X, ShoppingBag, DollarSign, PackagePlus, Map, Loader, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -17,8 +18,11 @@ import PiojologistMap from '@/components/PiojologistMap';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { geocodeAddress } from '@/lib/geocoding';
 
-const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, updateAppointments, piojologists, products, updateProducts, serviceCatalog, formatCurrency }) => {
+const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, updateAppointments, piojologists, products, updateProducts, serviceCatalog, formatCurrency, syncICalEvents }) => {
   const { toast } = useToast();
+  
+  // Sync State
+  const [isSyncing, setIsSyncing] = useState(false);
   
   // User Management State
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
@@ -41,7 +45,19 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     serviceType: '',
     date: '',
     time: '',
-    piojologistId: ''
+    piojologistId: '',
+    yourLoss: '',
+    ourPayment: '',
+    total: '',
+    age: '',
+    whatsapp: '',
+    direccion: '',
+    barrio: '',
+    numPersonas: '',
+    hasAlergias: false,
+    detalleAlergias: '',
+    referidoPor: '',
+    terminosAceptados: false
   });
 
   // Product Management State
@@ -75,7 +91,19 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
       serviceType: '',
       date: '',
       time: '',
-      piojologistId: ''
+      piojologistId: '',
+      yourLoss: '',
+      ourPayment: '',
+      total: '',
+      age: '',
+      whatsapp: '',
+      direccion: '',
+      barrio: '',
+      numPersonas: '',
+      hasAlergias: false,
+      detalleAlergias: '',
+      referidoPor: '',
+      terminosAceptados: false
     });
   };
 
@@ -87,6 +115,45 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
       image: ''
     });
     setEditingProduct(null);
+  };
+
+  // Manejar sincronización manual del iCal
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      const result = await syncICalEvents();
+      if (result.success) {
+        if (result.count > 0) {
+          toast({
+            title: "✅ Sincronización Completada",
+            description: `Se cargaron ${result.count} agendamiento${result.count !== 1 ? 's' : ''} externo${result.count !== 1 ? 's' : ''}.`,
+            className: "bg-green-100 text-green-800 rounded-2xl border-2 border-green-200"
+          });
+        } else {
+          toast({
+            title: "ℹ️ Sincronización Sin Cambios",
+            description: "No hay nuevos agendamientos para cargar en este momento.",
+            className: "bg-blue-100 text-blue-800 rounded-2xl border-2 border-blue-200"
+          });
+        }
+      } else {
+        toast({
+          title: "⚠️ Error en la Sincronización",
+          description: "No se pudo conectar con el servidor de agendamientos. Verifica que el link iCal sea válido o intenta más tarde.",
+          variant: "destructive",
+          className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "❌ Error",
+        description: "Hubo un error durante la sincronización.",
+        variant: "destructive",
+        className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+      });
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleImageUpload = (e) => {
@@ -179,7 +246,18 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
       piojologistId: parseInt(serviceFormData.piojologistId),
       piojologistName: piojologist?.name || null,
       status: 'confirmed',
-      estimatedPrice: servicePrice
+      estimatedPrice: servicePrice,
+      yourLoss: serviceFormData.yourLoss || '0',
+      ourPayment: serviceFormData.ourPayment || '0',
+      total: serviceFormData.total || '0',
+      age: serviceFormData.age || '',
+      whatsapp: serviceFormData.whatsapp || '',
+      direccion: serviceFormData.direccion || '',
+      barrio: serviceFormData.barrio || '',
+      numPersonas: serviceFormData.numPersonas || '',
+      hasAlergias: serviceFormData.hasAlergias || '',
+      detalleAlergias: serviceFormData.detalleAlergias || '',
+      referidoPor: serviceFormData.referidoPor || ''
     };
 
     updateAppointments([...appointments, newService]);
@@ -297,6 +375,31 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-6">
+          {/* Botón de Sincronización Flotante */}
+          <motion.div
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.98 }}
+            className="flex justify-end mb-4"
+          >
+            <Button
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              className="bg-cyan-400 hover:bg-cyan-500 text-white rounded-2xl px-6 py-4 font-bold text-base shadow-lg hover:shadow-xl border-b-4 border-cyan-600 active:border-b-0 active:translate-y-1 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {isSyncing ? (
+                <>
+                  <Loader className="w-5 h-5 animate-spin" />
+                  Sincronizando...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-5 h-5" />
+                  🔄 Sincronizar Agendamientos
+                </>
+              )}
+            </Button>
+          </motion.div>
+
           {/* Stats Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
@@ -339,13 +442,13 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                      Crear Servicio
                    </Button>
                  </DialogTrigger>
-                 <DialogContent className="rounded-[2.5rem] border-8 border-yellow-100 p-0 overflow-hidden sm:max-w-md bg-white">
-                   <div className="bg-yellow-400 p-6 text-white text-center">
+                 <DialogContent className="rounded-[2.5rem] border-8 border-yellow-100 p-0 overflow-hidden sm:max-w-md bg-white max-h-[90vh] flex flex-col">
+                   <div className="bg-yellow-400 p-6 text-white text-center flex-shrink-0">
                      <DialogHeader>
                        <DialogTitle className="text-3xl font-black">Nuevo Servicio ✨</DialogTitle>
                      </DialogHeader>
                    </div>
-                   <form onSubmit={handleServiceSubmit} className="p-8 space-y-4">
+                   <form onSubmit={handleServiceSubmit} className="p-8 space-y-4 flex-1 overflow-y-auto">
                      <div>
                        <Label className="font-bold text-gray-500 ml-2 mb-1 block">Nombre del Cliente</Label>
                        <input 
@@ -372,35 +475,35 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                          ))}
                        </select>
                      </div>
-                     <div className="grid grid-cols-2 gap-4">
+                     <div className="form-grid">
                        <div>
-                         <Label className="font-bold text-gray-500 ml-2 mb-1 block">Fecha</Label>
+                         <Label className="field-label">Fecha</Label>
                          <input 
                            required
                            type="date"
                            value={serviceFormData.date}
                            onChange={e => setServiceFormData({...serviceFormData, date: e.target.value})}
-                           className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-yellow-400"
+                           className="form-input focus:border-yellow-400"
                          />
                        </div>
                        <div>
-                         <Label className="font-bold text-gray-500 ml-2 mb-1 block">Hora</Label>
+                         <Label className="field-label">Hora</Label>
                          <input 
                            required
                            type="time"
                            value={serviceFormData.time}
                            onChange={e => setServiceFormData({...serviceFormData, time: e.target.value})}
-                           className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-yellow-400"
+                           className="form-input focus:border-yellow-400"
                          />
                        </div>
                      </div>
                      <div>
-                       <Label className="font-bold text-gray-500 ml-2 mb-1 block">Asignar a Piojóloga</Label>
+                       <Label className="field-label">Asignar a Piojóloga</Label>
                        <select 
                          required
                          value={serviceFormData.piojologistId}
                          onChange={e => setServiceFormData({...serviceFormData, piojologistId: e.target.value})}
-                         className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-yellow-400 cursor-pointer"
+                         className="form-select focus:border-yellow-400"
                        >
                          <option value="">Seleccionar piojóloga...</option>
                          {piojologists.map(p => (
@@ -408,6 +511,162 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                          ))}
                        </select>
                      </div>
+
+                     {/* Datos Críticos: Tu pierdes, Nosotros te pagamos, Total, Edad */}
+                     {/* Contacto del Cliente */}
+                     <div className="bg-blue-50 p-4 rounded-2xl border-2 border-blue-200 space-y-3">
+                       <p className="text-xs font-bold text-blue-600 uppercase">📱 Contacto del Cliente</p>
+                       <div>
+                         <Label className="field-label text-xs">WhatsApp</Label>
+                         <input 
+                           type="tel"
+                           value={serviceFormData.whatsapp}
+                           onChange={e => setServiceFormData({...serviceFormData, whatsapp: e.target.value})}
+                           className="form-input focus:border-blue-400 text-sm"
+                           placeholder="Ej. +34 123 456 789"
+                         />
+                       </div>
+                       <div>
+                         <Label className="field-label text-xs">Dirección</Label>
+                         <input 
+                           type="text"
+                           value={serviceFormData.direccion}
+                           onChange={e => setServiceFormData({...serviceFormData, direccion: e.target.value})}
+                           className="form-input focus:border-blue-400 text-sm"
+                           placeholder="Calle, número, piso"
+                         />
+                       </div>
+                       <div className="form-grid">
+                         <div>
+                           <Label className="field-label text-xs">Barrio</Label>
+                           <input 
+                             type="text"
+                             value={serviceFormData.barrio}
+                             onChange={e => setServiceFormData({...serviceFormData, barrio: e.target.value})}
+                             className="form-input focus:border-blue-400 text-sm"
+                             placeholder="Ej. Centro"
+                           />
+                         </div>
+                         <div>
+                           <Label className="field-label text-xs">Nº de Personas a Atender</Label>
+                           <input 
+                             type="number"
+                             value={serviceFormData.numPersonas}
+                             onChange={e => setServiceFormData({...serviceFormData, numPersonas: e.target.value})}
+                             className="form-input focus:border-blue-400 text-sm"
+                             placeholder="1"
+                             min="1"
+                           />
+                         </div>
+                       </div>
+                     </div>
+
+                     {/* Datos de Salud */}
+                     <div className="bg-red-50 p-4 rounded-2xl border-2 border-red-200 space-y-3">
+                       <p className="text-xs font-bold text-red-600 uppercase">⚠️ Datos de Salud</p>
+                       <div className="flex items-center gap-3">
+                         <Checkbox 
+                           id="hasAlergias"
+                           checked={serviceFormData.hasAlergias}
+                           onCheckedChange={checked => setServiceFormData({...serviceFormData, hasAlergias: checked})}
+                           className="w-5 h-5 rounded"
+                         />
+                         <Label htmlFor="hasAlergias" className="font-bold text-gray-700 cursor-pointer">
+                           ¿Tiene alergias o afectaciones de salud?
+                         </Label>
+                       </div>
+                       {serviceFormData.hasAlergias && (
+                         <textarea
+                           value={serviceFormData.detalleAlergias}
+                           onChange={e => setServiceFormData({...serviceFormData, detalleAlergias: e.target.value})}
+                           className="form-input focus:border-red-400 text-sm resize-none"
+                           placeholder="Describe las alergias o afectaciones..."
+                           rows="3"
+                         />
+                       )}
+                     </div>
+
+                     {/* Referencias y Datos Críticos */}
+                     <div className="bg-purple-50 p-4 rounded-2xl border-2 border-purple-200 space-y-3">
+                       <p className="text-xs font-bold text-purple-600 uppercase">📌 Referencias Adicionales</p>
+                       <div>
+                         <Label className="field-label text-xs">Referido Por</Label>
+                         <input 
+                           type="text"
+                           value={serviceFormData.referidoPor}
+                           onChange={e => setServiceFormData({...serviceFormData, referidoPor: e.target.value})}
+                           className="form-input focus:border-purple-400 text-sm"
+                           placeholder="Nombre o fuente de referencia (opcional)"
+                         />
+                       </div>
+                     </div>
+
+                     {/* Datos Críticos: Tu pierdes, Nosotros te pagamos, Total, Edad */}
+                     <div className="bg-yellow-50 p-4 rounded-2xl border-2 border-yellow-200 space-y-3">
+                       <p className="text-xs font-bold text-yellow-600 uppercase">📊 Datos Críticos para el Vendedor</p>
+                       <div className="form-grid">
+                         <div>
+                           <Label className="field-label text-xs">Tu Pierdes ($)</Label>
+                           <input 
+                             type="number"
+                             value={serviceFormData.yourLoss}
+                             onChange={e => setServiceFormData({...serviceFormData, yourLoss: e.target.value})}
+                             className="form-input focus:border-yellow-400 text-sm"
+                             placeholder="0"
+                           />
+                         </div>
+                         <div>
+                           <Label className="field-label text-xs">Nosotros te Pagamos ($)</Label>
+                           <input 
+                             type="number"
+                             value={serviceFormData.ourPayment}
+                             onChange={e => setServiceFormData({...serviceFormData, ourPayment: e.target.value})}
+                             className="form-input focus:border-yellow-400 text-sm"
+                             placeholder="0"
+                           />
+                         </div>
+                       </div>
+                       <div className="form-grid">
+                         <div>
+                           <Label className="field-label text-xs">Total ($)</Label>
+                           <input 
+                             type="number"
+                             value={serviceFormData.total}
+                             onChange={e => setServiceFormData({...serviceFormData, total: e.target.value})}
+                             className="form-input focus:border-yellow-400 text-sm"
+                             placeholder="0"
+                           />
+                         </div>
+                         <div>
+                           <Label className="field-label text-xs">Edad (años)</Label>
+                           <input 
+                             type="number"
+                             value={serviceFormData.age}
+                             onChange={e => setServiceFormData({...serviceFormData, age: e.target.value})}
+                             className="form-input focus:border-yellow-400 text-sm"
+                             placeholder="18"
+                             min="0"
+                             max="150"
+                           />
+                         </div>
+                       </div>
+                     </div>
+
+                     {/* Términos y Condiciones */}
+                     <div className="bg-green-50 p-4 rounded-2xl border-2 border-green-200 space-y-3">
+                       <div className="flex items-start gap-3">
+                         <Checkbox 
+                           id="terminosAceptados"
+                           checked={serviceFormData.terminosAceptados}
+                           onCheckedChange={checked => setServiceFormData({...serviceFormData, terminosAceptados: checked})}
+                           className="w-5 h-5 rounded mt-1"
+                         />
+                         <Label htmlFor="terminosAceptados" className="font-bold text-gray-700 cursor-pointer text-sm">
+                           ✅ El cliente acepta que el valor de nuestros servicios incluye atención a domicilio
+                         </Label>
+                       </div>
+                     </div>
+
                      <Button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-2xl py-6 font-bold mt-4 shadow-md border-b-4 border-yellow-700">
                        Crear y Asignar Servicio
                      </Button>
@@ -437,6 +696,40 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                       <p className="text-sm text-gray-500 mb-3 font-medium flex items-center gap-2">
                         <Calendar className="w-4 h-4" /> {apt.date} - {apt.time}
                       </p>
+
+                      {/* Datos Críticos */}
+                      {(apt.yourLoss || apt.ourPayment || apt.total || apt.age) && (
+                        <div className="bg-yellow-50 p-3 rounded-xl mb-3 border border-yellow-200 space-y-2">
+                          <p className="text-xs font-bold text-yellow-600 uppercase">📊 Datos del Vendedor</p>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            {apt.yourLoss && (
+                              <div className="bg-red-100 p-2 rounded-lg">
+                                <p className="text-red-600 font-bold">Tu Pierdes</p>
+                                <p className="text-red-700 font-black">{formatCurrency(parseFloat(apt.yourLoss) || 0)}</p>
+                              </div>
+                            )}
+                            {apt.ourPayment && (
+                              <div className="bg-green-100 p-2 rounded-lg">
+                                <p className="text-green-600 font-bold">Te Pagamos</p>
+                                <p className="text-green-700 font-black">{formatCurrency(parseFloat(apt.ourPayment) || 0)}</p>
+                              </div>
+                            )}
+                            {apt.total && (
+                              <div className="bg-blue-100 p-2 rounded-lg">
+                                <p className="text-blue-600 font-bold">Total</p>
+                                <p className="text-blue-700 font-black">{formatCurrency(parseFloat(apt.total) || 0)}</p>
+                              </div>
+                            )}
+                            {apt.age && (
+                              <div className="bg-purple-100 p-2 rounded-lg">
+                                <p className="text-purple-600 font-bold">Edad</p>
+                                <p className="text-purple-700 font-black">{apt.age} años</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="bg-green-50 p-2 rounded-xl">
                         <p className="text-xs font-bold text-green-700">
                           👨‍⚕️ {apt.piojologistName || 'Sin asignar'}
@@ -734,7 +1027,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
 
       {/* User Dialog Modal */}
       <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
-        <DialogContent className="rounded-[2.5rem] border-8 border-blue-100 p-0 overflow-hidden sm:max-w-md bg-white">
+        <DialogContent className="rounded-[2.5rem] border-8 border-blue-100 p-0 sm:max-w-md bg-white max-h-[85vh] overflow-y-auto">
           <div className="bg-blue-400 p-6 text-white text-center relative overflow-hidden">
              <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
             <DialogHeader>
@@ -756,11 +1049,11 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
               />
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="form-grid">
               <div>
-                 <Label className="font-bold text-gray-500 ml-2 mb-1 block">Rol</Label>
+                <Label className="field-label">Rol</Label>
                  <select 
-                    className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-blue-400 cursor-pointer appearance-none"
+                  className="form-select focus:border-blue-400"
                     value={userFormData.role}
                     onChange={e => setUserFormData({...userFormData, role: e.target.value})}
                  >
@@ -769,11 +1062,11 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                  </select>
               </div>
                <div>
-                <Label className="font-bold text-gray-500 ml-2 mb-1 block">Password</Label>
+                <Label className="field-label">Password</Label>
                 <input 
                   required
                   type="text"
-                  className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-blue-400 focus:bg-white transition-all"
+                  className="form-input focus:border-blue-400 focus:bg-white transition-all"
                   value={userFormData.password}
                   onChange={e => setUserFormData({...userFormData, password: e.target.value})}
                   placeholder="***"
@@ -782,11 +1075,11 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
             </div>
 
             <div>
-              <Label className="font-bold text-gray-500 ml-2 mb-1 block">Email</Label>
+              <Label className="field-label">Email</Label>
               <input 
                 required
                 type="email"
-                className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-blue-400 focus:bg-white transition-all"
+                className="form-input focus:border-blue-400 focus:bg-white transition-all"
                 value={userFormData.email}
                 onChange={e => setUserFormData({...userFormData, email: e.target.value})}
                 placeholder="correo@ejemplo.com"
@@ -795,9 +1088,9 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
 
             {userFormData.role === 'piojologist' && (
               <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}>
-                <Label className="font-bold text-gray-500 ml-2 mb-1 block">Especialidad (Súper Poder)</Label>
+                <Label className="field-label">Especialidad (Súper Poder)</Label>
                 <input 
-                  className="w-full bg-green-50 border-2 border-green-200 rounded-2xl p-4 font-bold text-green-700 outline-none focus:border-green-400 focus:bg-white transition-all placeholder-green-300"
+                  className="form-input bg-green-50 border-green-200 text-green-700 focus:border-green-400 focus:bg-white transition-all placeholder-green-300"
                   value={userFormData.specialty || ''}
                   onChange={e => setUserFormData({...userFormData, specialty: e.target.value})}
                   placeholder="Ej. Visión de Rayos X"
@@ -807,7 +1100,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
 
             {userFormData.role === 'piojologist' && (
               <div>
-                <Label className="font-bold text-gray-500 ml-2 mb-1 block">📍 Dirección</Label>
+                <Label className="field-label">📍 Dirección</Label>
                 <AddressAutocomplete
                   value={userFormData.address || ''}
                   onChange={(address) => setUserFormData({...userFormData, address})}
@@ -830,9 +1123,9 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
 
             {userFormData.role !== 'piojologist' && (
               <div>
-                <Label className="font-bold text-gray-500 ml-2 mb-1 block">📍 Dirección (Opcional)</Label>
+                <Label className="field-label">📍 Dirección (Opcional)</Label>
                 <input 
-                  className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-blue-400 focus:bg-white transition-all"
+                  className="form-input focus:border-blue-400 focus:bg-white transition-all"
                   value={userFormData.address || ''}
                   onChange={e => setUserFormData({...userFormData, address: e.target.value})}
                   placeholder="Ej. Cra 7 #45-90, Bogotá"

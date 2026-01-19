@@ -158,6 +158,39 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, produc
                       </div>
                    </div>
 
+                   {/* Datos Críticos */}
+                   {(apt.yourLoss || apt.ourPayment || apt.total || apt.age) && (
+                     <div className="bg-yellow-50 p-3 rounded-xl mb-4 border border-yellow-200">
+                       <p className="text-xs font-bold text-yellow-600 uppercase mb-2">📊 Datos del Vendedor</p>
+                       <div className="grid grid-cols-2 gap-2 text-xs">
+                         {apt.yourLoss && (
+                           <div className="bg-red-100 p-2 rounded-lg">
+                             <p className="text-red-600 font-bold">Tu Pierdes</p>
+                             <p className="text-red-700 font-black">{formatCurrency(parseFloat(apt.yourLoss) || 0)}</p>
+                           </div>
+                         )}
+                         {apt.ourPayment && (
+                           <div className="bg-green-100 p-2 rounded-lg">
+                             <p className="text-green-600 font-bold">Te Pagamos</p>
+                             <p className="text-green-700 font-black">{formatCurrency(parseFloat(apt.ourPayment) || 0)}</p>
+                           </div>
+                         )}
+                         {apt.total && (
+                           <div className="bg-blue-100 p-2 rounded-lg">
+                             <p className="text-blue-600 font-bold">Total</p>
+                             <p className="text-blue-700 font-black">{formatCurrency(parseFloat(apt.total) || 0)}</p>
+                           </div>
+                         )}
+                         {apt.age && (
+                           <div className="bg-purple-100 p-2 rounded-lg">
+                             <p className="text-purple-600 font-bold">Edad</p>
+                             <p className="text-purple-700 font-black">{apt.age} años</p>
+                           </div>
+                         )}
+                       </div>
+                     </div>
+                   )}
+
                    <div className="mt-auto">
                      <Dialog>
                        <DialogTrigger asChild>
@@ -235,6 +268,11 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, produc
                     <div>
                       <p className="font-black text-gray-800">{apt.clientName}</p>
                       <p className="text-xs text-gray-500">{new Date(apt.date).toLocaleDateString()} - {apt.serviceType}</p>
+                      {(apt.yourLoss || apt.ourPayment || apt.age) && (
+                        <p className="text-xs text-yellow-600 font-bold mt-1">
+                          📊 {apt.age ? `${apt.age}a ` : ''}| Pierdes: {formatCurrency(parseFloat(apt.yourLoss) || 0)} | Te pagamos: {formatCurrency(parseFloat(apt.ourPayment) || 0)}
+                        </p>
+                      )}
                     </div>
                     <div className="text-right">
                       <p className="text-green-600 font-black text-lg">+{formatCurrency(apt.earnings || 0)}</p>
