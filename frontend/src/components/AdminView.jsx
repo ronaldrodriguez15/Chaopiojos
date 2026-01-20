@@ -18,7 +18,7 @@ import PiojologistMap from '@/components/PiojologistMap';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { geocodeAddress } from '@/lib/geocoding';
 
-const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, updateAppointments, piojologists, products, updateProducts, serviceCatalog, formatCurrency, syncICalEvents }) => {
+const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, updateAppointments, piojologists, products, updateProducts, serviceCatalog, formatCurrency, syncICalEvents, productRequests, onApproveRequest, onRejectRequest }) => {
   const { toast } = useToast();
   
   // User Management State
@@ -362,6 +362,9 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
           </TabsTrigger>
           <TabsTrigger value="earnings" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-green-400 data-[state=active]:text-white transition-all">
             💰 Ganancias
+          </TabsTrigger>
+          <TabsTrigger value="requests" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-purple-400 data-[state=active]:text-white transition-all">
+            📦 Solicitudes
           </TabsTrigger>
         </TabsList>
 
@@ -1156,6 +1159,158 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                 </p>
               </div>
             </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="requests" className="space-y-6">
+          <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-purple-100">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="p-4 bg-purple-100 text-purple-600 rounded-full">
+                  <PackagePlus className="w-8 h-8" />
+                </div>
+                <h3 className="text-2xl font-black text-gray-800">
+                  Solicitudes de Productos
+                </h3>
+              </div>
+              <div className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-bold">
+                {productRequests.filter(r => r.status === 'pending').length} pendientes
+              </div>
+            </div>
+
+            {productRequests.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <PackagePlus className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                <p className="font-bold text-lg">No hay solicitudes aún</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {productRequests.map(request => (
+                  <motion.div
+                    key={request.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`p-6 rounded-2xl border-4 ${
+                      request.status === 'pending' 
+                        ? 'bg-yellow-50 border-yellow-200' 
+                        : request.status === 'approved'
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-red-50 border-red-200'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h4 className="text-lg font-bold text-gray-800">
+                          {request.piojologistName}
+                        </h4>
+                        <p className="text-sm text-gray-600">
+                          {new Date(request.requestDate).toLocaleString('es-ES', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                      <span className={`px-4 py-2 rounded-xl text-sm font-bold ${
+                        request.status === 'pending'
+                          ? 'bg-yellow-200 text-yellow-800'
+                          : request.status === 'approved'
+                          ? 'bg-green-200 text-green-800'
+                          : 'bg-red-200 text-red-800'
+                      }`}>
+                        {request.status === 'pending' && '⏳ Pendiente'}
+                        {request.status === 'approved' && '✅ Aprobada'}
+                        {request.status === 'rejected' && '❌ Rechazada'}
+                      </span>
+                    </div>
+
+                    <div className="mb-4">
+                      <h5 className="font-bold text-gray-700 mb-2">
+                        {request.isKitCompleto ? '🎁 Kit Completo' : 'Productos Solicitados:'}
+                      </h5>
+                      {!request.isKitCompleto && (
+                        <ul className="space-y-1 bg-white p-3 rounded-xl">
+                          {request.items.map((item, idx) => (
+                            <li key={idx} className="text-sm text-gray-700 flex items-center gap-2">
+                              <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
+                              {item.productName} <span className="font-bold">x{item.quantity}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    {request.notes && (
+                      <div className="mb-4 bg-white p-3 rounded-xl">
+                        <p className="text-sm text-gray-600">
+                          <span className="font-bold">Notas:</span> {request.notes}
+                        </p>
+                      </div>
+                    )}
+
+                    {request.status === 'pending' ? (
+                      <div className="flex gap-3">
+                        <Button
+                          onClick={() => {
+                            const notes = prompt('Comentario de aprobación (opcional):');
+                            if (notes !== null) {
+                              onApproveRequest(request.id, notes);
+                              toast({
+                                title: "✅ Solicitud Aprobada",
+                                description: `La solicitud de ${request.piojologistName} fue aprobada`,
+                                className: "bg-green-100 text-green-800 rounded-2xl border-2 border-green-200"
+                              });
+                            }
+                          }}
+                          className="flex-1 bg-green-500 hover:bg-green-600 text-white rounded-xl py-3 font-bold"
+                        >
+                          ✅ Aprobar
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            const reason = prompt('Razón del rechazo:');
+                            if (reason) {
+                              onRejectRequest(request.id, reason);
+                              toast({
+                                title: "❌ Solicitud Rechazada",
+                                description: `La solicitud de ${request.piojologistName} fue rechazada`,
+                                variant: "destructive",
+                                className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+                              });
+                            }
+                          }}
+                          className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-xl py-3 font-bold"
+                        >
+                          ❌ Rechazar
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="bg-white p-4 rounded-xl border-2 border-gray-200">
+                        <p className="text-sm font-bold text-gray-700 mb-1">
+                          {request.status === 'approved' ? '✅ Aprobado' : '❌ Rechazado'} por {request.resolvedByName}
+                        </p>
+                        <p className="text-xs text-gray-600 mb-2">
+                          {new Date(request.resolvedDate).toLocaleString('es-ES', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                        {request.adminNotes && (
+                          <p className="text-sm text-gray-700">
+                            <span className="font-bold">Comentario:</span> {request.adminNotes}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+            )}
           </div>
         </TabsContent>
       </Tabs>

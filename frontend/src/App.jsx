@@ -59,6 +59,12 @@ function App() {
     ];
   });
 
+  // Product Requests State
+  const [productRequests, setProductRequests] = useState(() => {
+    const saved = localStorage.getItem('productRequests');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   // Services with prices definition
   const serviceCatalog = {
     'Normal': 70000,
@@ -123,6 +129,7 @@ function App() {
       // Crear notificaciones para los nuevos agendamientos
       const newNotifications = newAppointments.map(apt => ({
         id: `notif-${apt.id}-${Date.now()}`,
+        type: 'appointment',
         appointmentId: apt.id,
         message: currentUser.role === 'admin' 
           ? `Nuevo agendamiento: ${apt.clientName} - ${apt.serviceType}`
@@ -155,6 +162,28 @@ function App() {
   // Limpiar notificaciones
   const clearNotifications = () => {
     setNotifications([]);
+  };
+
+  // Filtrar notificaciones según el usuario actual
+  const getFilteredNotifications = () => {
+    if (!currentUser) return [];
+    
+    return notifications.filter(notif => {
+      // Notificaciones de agendamientos (todos las ven según su rol)
+      if (notif.type === 'appointment') return true;
+      
+      // Notificaciones de solicitud de productos (solo admins)
+      if (notif.type === 'product-request') {
+        return currentUser.role === 'admin' && notif.forRole === 'admin';
+      }
+      
+      // Notificaciones de aprobación/rechazo (solo la piojóloga específica)
+      if (notif.type === 'request-approved' || notif.type === 'request-rejected') {
+        return notif.forUserId === currentUser.id;
+      }
+      
+      return true;
+    });
   };
 
   // Cerrar dropdown de notificaciones al hacer clic fuera
@@ -220,6 +249,11 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // Sincronizar productRequests con localStorage
+  useEffect(() => {
+    localStorage.setItem('productRequests', JSON.stringify(productRequests));
+  }, [productRequests]);
+
   const handleLogin = (user) => {
     setCurrentUser(user);
   };
@@ -256,6 +290,110 @@ function App() {
       return result;
     }
     return result;
+  };
+
+  // Product Request Management
+  const handleCreateProductRequest = (requestData) => {
+    const newRequest = {
+      id: Date.now(),
+      piojologistId: currentUser.id,
+      piojologistName: currentUser.name,
+      items: requestData.items, // Array de {productId, productName, quantity} o {isKitCompleto: true}
+      isKitCompleto: requestData.isKitCompleto || false,
+      status: 'pending', // pending, approved, rejected
+      requestDate: new Date().toISOString(),
+      resolvedBy: null,
+      resolvedByName: null,
+      resolvedDate: null,
+      notes: requestData.notes || ''
+    };
+
+    setProductRequests(prev => [newRequest, ...prev]);
+
+    // Crear notificación para administradores
+    const notificationMessage = requestData.isKitCompleto 
+      ? `${currentUser.name} solicitó un Kit Completo`
+      : `${currentUser.name} solicitó ${requestData.items.length} producto${requestData.items.length > 1 ? 's' : ''}`;
+
+    const newNotification = {
+      id: `notif-request-${newRequest.id}`,
+      type: 'product-request',
+      requestId: newRequest.id,
+      message: notificationMessage,
+      timestamp: new Date(),
+      read: false,
+      forRole: 'admin'
+    };
+
+    setNotifications(prev => [newNotification, ...prev]);
+
+    return { success: true, request: newRequest };
+  };
+
+  const handleApproveProductRequest = (requestId, adminNotes = '') => {
+    setProductRequests(prev => prev.map(req => 
+      req.id === requestId 
+        ? {
+            ...req,
+            status: 'approved',
+            resolvedBy: currentUser.id,
+            resolvedByName: currentUser.name,
+            resolvedDate: new Date().toISOString(),
+            adminNotes
+          }
+        : req
+    ));
+
+    // Notificar a la piojóloga
+    const request = productRequests.find(r => r.id === requestId);
+    if (request) {
+      const newNotification = {
+        id: `notif-approved-${requestId}`,
+        type: 'request-approved',
+        requestId: requestId,
+        message: `Tu solicitud de productos fue aprobada por ${currentUser.name}`,
+        timestamp: new Date(),
+        read: false,
+        forUserId: request.piojologistId
+      };
+
+      setNotifications(prev => [newNotification, ...prev]);
+    }
+
+    return { success: true };
+  };
+
+  const handleRejectProductRequest = (requestId, reason = '') => {
+    setProductRequests(prev => prev.map(req => 
+      req.id === requestId 
+        ? {
+            ...req,
+            status: 'rejected',
+            resolvedBy: currentUser.id,
+            resolvedByName: currentUser.name,
+            resolvedDate: new Date().toISOString(),
+            adminNotes: reason
+          }
+        : req
+    ));
+
+    // Notificar a la piojóloga
+    const request = productRequests.find(r => r.id === requestId);
+    if (request) {
+      const newNotification = {
+        id: `notif-rejected-${requestId}`,
+        type: 'request-rejected',
+        requestId: requestId,
+        message: `Tu solicitud de productos fue rechazada por ${currentUser.name}${reason ? ': ' + reason : ''}`,
+        timestamp: new Date(),
+        read: false,
+        forUserId: request.piojologistId
+      };
+
+      setNotifications(prev => [newNotification, ...prev]);
+    }
+
+    return { success: true };
   };
 
   // Handle earnings logic: Add 50% of service price to piojologist earnings
@@ -381,9 +519,9 @@ function App() {
                       className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-2xl px-5 py-6 font-bold text-lg shadow-md hover:shadow-lg transition-all border-b-4 border-yellow-600 hover:border-yellow-700 active:border-b-0 active:translate-y-1 relative"
                     >
                       <Bell className="w-6 h-6" />
-                      {notifications.filter(n => !n.read).length > 0 && (
+                      {getFilteredNotifications().filter(n => !n.read).length > 0 && (
                         <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
-                          {notifications.filter(n => !n.read).length}
+                          {getFilteredNotifications().filter(n => !n.read).length}
                         </span>
                       )}
                     </Button>
@@ -410,6 +548,8 @@ function App() {
                     products={products}
                     handleCompleteService={handleCompleteService}
                     formatCurrency={formatCurrency}
+                    productRequests={productRequests}
+                    onCreateProductRequest={handleCreateProductRequest}
                   />
                 )}
 
@@ -426,6 +566,9 @@ function App() {
                     updateProducts={updateProducts}
                     serviceCatalog={serviceCatalog}
                     formatCurrency={formatCurrency}
+                    productRequests={productRequests}
+                    onApproveRequest={handleApproveProductRequest}
+                    onRejectRequest={handleRejectProductRequest}
                   />
                 )}
               </div>
@@ -452,7 +595,7 @@ function App() {
           <div className="bg-yellow-100 px-4 py-3 border-b-2 border-yellow-200 flex justify-between items-center">
             <h3 className="font-bold text-gray-800 text-lg">🔔 Notificaciones</h3>
             <div className="flex gap-2">
-              {notifications.length > 0 && (
+              {getFilteredNotifications().length > 0 && (
                 <>
                   <button
                     onClick={markAllAsRead}
@@ -471,13 +614,13 @@ function App() {
             </div>
           </div>
           <div className="overflow-y-auto flex-1">
-            {notifications.length === 0 ? (
+            {getFilteredNotifications().length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 <Bell className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p className="font-bold">No hay notificaciones</p>
               </div>
             ) : (
-              notifications.map(notif => (
+              getFilteredNotifications().map(notif => (
                 <div
                   key={notif.id}
                   className={`p-4 border-b border-gray-100 hover:bg-yellow-50 transition-colors cursor-pointer ${

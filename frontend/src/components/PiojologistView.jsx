@@ -14,8 +14,9 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import ScheduleCalendar from '@/components/ScheduleCalendar';
+import ProductRequestView from '@/components/ProductRequestView';
 
-const PiojologistView = ({ currentUser, appointments, updateAppointments, products, handleCompleteService, formatCurrency }) => {
+const PiojologistView = ({ currentUser, appointments, updateAppointments, products, handleCompleteService, formatCurrency, productRequests, onCreateProductRequest }) => {
   const { toast } = useToast();
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [finishingAppointmentId, setFinishingAppointmentId] = useState(null);
@@ -108,6 +109,9 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, produc
           </TabsTrigger>
           <TabsTrigger value="history" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-blue-400 data-[state=active]:text-white transition-all">
             📜 Historial
+          </TabsTrigger>
+          <TabsTrigger value="products" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-purple-400 data-[state=active]:text-white transition-all">
+            📦 Productos
           </TabsTrigger>
         </TabsList>
 
@@ -285,6 +289,15 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, produc
               </div>
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="products">
+          <ProductRequestView
+            products={products}
+            currentUser={currentUser}
+            onCreateRequest={onCreateProductRequest}
+            productRequests={productRequests || []}
+          />
         </TabsContent>
       </Tabs>
     </div>
