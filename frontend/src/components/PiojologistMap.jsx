@@ -33,14 +33,15 @@ const PiojologistMap = ({ piojologists = [] }) => {
       .filter(p => p.lat && p.lng) // Solo mostrar si tienen coordenadas geocodificadas
       .map(p => ({
         ...p,
-        coordinates: { lat: p.lat, lng: p.lng }
+        lat: Number(p.lat),
+        lng: Number(p.lng)
       }));
     
     setPiojologistsWithCoords(piojologistsData);
 
     // Si hay piojólogas, centrar el mapa en la primera
     if (piojologistsData.length > 0) {
-      setMapCenter([piojologistsData[0].coordinates.lat, piojologistsData[0].coordinates.lng]);
+      setMapCenter([piojologistsData[0].lat, piojologistsData[0].lng]);
     }
   }, [piojologists]);
 
@@ -84,7 +85,7 @@ const PiojologistMap = ({ piojologists = [] }) => {
         {piojologistsWithCoords.map(piojologist => (
           <Marker
             key={piojologist.id}
-            position={[piojologist.coordinates.lat, piojologist.coordinates.lng]}
+            position={[piojologist.lat, piojologist.lng]}
             icon={piojologistIcon}
           >
             <Popup className="rounded-xl">
@@ -99,7 +100,7 @@ const PiojologistMap = ({ piojologists = [] }) => {
                   <span className="font-semibold">Dirección:</span> {piojologist.address}
                 </p>
                 <p className="text-xs text-gray-500 mb-1">
-                  <span className="font-semibold">Coordenadas:</span> {piojologist.coordinates.lat.toFixed(4)}, {piojologist.coordinates.lng.toFixed(4)}
+                  <span className="font-semibold">Coordenadas:</span> {piojologist.lat.toFixed(4)}, {piojologist.lng.toFixed(4)}
                 </p>
                 <p className="text-sm">
                   <span className="font-semibold">Estado:</span> 

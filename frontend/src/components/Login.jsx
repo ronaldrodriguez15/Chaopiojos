@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { User, Lock, KeyRound, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
+import { authService } from '@/lib/api';
 
 const Login = ({ onLogin }) => {
   const { toast } = useToast();
@@ -14,12 +15,12 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate network delay for fun
-    setTimeout(() => {
-      const result = onLogin(email, password);
-      setIsLoading(false);
-
-      if (!result.success) {
+    try {
+      const result = await authService.login(email, password);
+      
+      if (result.success) {
+        onLogin(result.user);
+      } else {
         toast({
           title: "¡Oh no! 🙈",
           description: result.message,
@@ -27,7 +28,16 @@ const Login = ({ onLogin }) => {
           className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
         });
       }
-    }, 800);
+    } catch (error) {
+      toast({
+        title: "¡Error! 🙈",
+        description: "Ocurrió un error inesperado",
+        variant: "destructive",
+        className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

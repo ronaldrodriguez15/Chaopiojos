@@ -2,12 +2,8 @@
  * Servicio para descargar y parsear eventos de un feed iCal
  */
 
-// Proxies CORS alternativos (intentar en orden de confiabilidad)
-const CORS_PROXIES = [
-  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  url => `https://cors-anywhere.herokuapp.com/${url}`,
-];
+// URL del proxy en el backend
+const API_BASE_URL = 'http://127.0.0.1:8000/api';
 
 /**
  * Descargar eventos del feed iCal
@@ -16,71 +12,24 @@ const CORS_PROXIES = [
  */
 export const fetchICalEvents = async (icalUrl) => {
   try {
-    console.log('🔄 Descargando iCal desde:', icalUrl);
+    // Usar el proxy del backend para evitar problemas de CORS
+    const proxyUrl = `${API_BASE_URL}/ical-proxy?url=${encodeURIComponent(icalUrl)}`;
     
-    let response;
-    let lastError;
-
-    // Intentar primero sin proxy
-    try {
-      console.log('📡 Intentando descarga directa...');
-      response = await fetch(icalUrl, {
-        headers: {
-          'Accept': 'text/calendar'
-        }
-      });
-      
-      if (response.ok) {
-        console.log('✅ Descarga directa exitosa');
-        const icalText = await response.text();
-        console.log('✅ iCal descargado, tamaño:', icalText.length, 'caracteres');
-        const events = parseICalEvents(icalText);
-        console.log('✅ Eventos parseados:', events.length);
-        return events;
+    const response = await fetch(proxyUrl, {
+      headers: {
+        'Accept': 'text/calendar'
       }
-    } catch (corsError) {
-      console.warn('⚠️ Descarga directa falló, intentando con proxies...');
-      lastError = corsError;
+    });
+
+    if (!response.ok) {
+      return [];
     }
 
-    // Intentar con proxies CORS
-    for (let i = 0; i < CORS_PROXIES.length; i++) {
-      try {
-        const proxyUrl = CORS_PROXIES[i](icalUrl);
-        console.log(`🔀 Proxy #${i + 1}:`, proxyUrl.substring(0, 60) + '...');
-        
-        response = await fetch(proxyUrl, {
-          headers: {
-            'Accept': 'text/calendar'
-          }
-        });
-
-        if (response.ok) {
-          console.log(`✅ Proxy #${i + 1} exitoso`);
-          const icalText = await response.text();
-          
-          if (!icalText || icalText.length === 0) {
-            console.warn(`⚠️ Proxy #${i + 1} retornó vacío`);
-            continue;
-          }
-          
-          console.log('✅ iCal descargado, tamaño:', icalText.length, 'caracteres');
-          const events = parseICalEvents(icalText);
-          console.log('✅ Eventos parseados:', events.length);
-          return events;
-        } else {
-          console.warn(`⚠️ Proxy #${i + 1} status:`, response.status);
-        }
-      } catch (proxyError) {
-        console.warn(`⚠️ Proxy #${i + 1} error:`, proxyError.message);
-        lastError = proxyError;
-      }
-    }
-
-    console.error('❌ Todos los métodos fallaron. Error final:', lastError?.message);
-    return [];
+    const icalText = await response.text();
+    const events = parseICalEvents(icalText);
+    return events;
   } catch (error) {
-    console.error('❌ Error al descargar iCal:', error);
+    // Error silencioso - retornar array vacío
     return [];
   }
 };
@@ -97,23 +46,16 @@ export const parseICalEvents = (icalText) => {
     // Expresión regular para extraer eventos VEVENT
     const eventRegex = /BEGIN:VEVENT([\s\S]*?)END:VEVENT/g;
     let match;
-    let eventCount = 0;
 
     while ((match = eventRegex.exec(icalText)) !== null) {
-      eventCount++;
       const eventText = match[1];
       const event = parseVEvent(eventText);
       if (event) {
-        console.log(`📅 Evento parseado #${eventCount}:`, event.title);
         events.push(event);
-      } else {
-        console.warn(`⚠️ No se pudo parsear evento #${eventCount}`);
       }
     }
-    
-    console.log(`📊 Total eventos encontrados: ${eventCount}, parseados: ${events.length}`);
   } catch (error) {
-    console.error('❌ Error parseando iCal:', error);
+    // Error silencioso
   }
 
   return events;
@@ -201,7 +143,6 @@ const parseICalDate = (icalDate) => {
 
     return new Date(year, month - 1, day, hours, minutes);
   } catch (error) {
-    console.error('Error parseando fecha iCal:', icalDate, error);
     return null;
   }
 };

@@ -21,9 +21,6 @@ import { geocodeAddress } from '@/lib/geocoding';
 const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, updateAppointments, piojologists, products, updateProducts, serviceCatalog, formatCurrency, syncICalEvents }) => {
   const { toast } = useToast();
   
-  // Sync State
-  const [isSyncing, setIsSyncing] = useState(false);
-  
   // User Management State
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -58,6 +55,18 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     detalleAlergias: '',
     referidoPor: '',
     terminosAceptados: false
+  });
+
+  // Pagination for Active Services
+  const [servicesPage, setServicesPage] = useState(1);
+  const servicesPerPage = 6;
+
+  // Search filters for Active Services
+  const [serviceFilters, setServiceFilters] = useState({
+    clientName: '',
+    serviceType: '',
+    piojologist: '',
+    status: 'all'
   });
 
   // Product Management State
@@ -117,45 +126,6 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     setEditingProduct(null);
   };
 
-  // Manejar sincronización manual del iCal
-  const handleManualSync = async () => {
-    setIsSyncing(true);
-    try {
-      const result = await syncICalEvents();
-      if (result.success) {
-        if (result.count > 0) {
-          toast({
-            title: "✅ Sincronización Completada",
-            description: `Se cargaron ${result.count} agendamiento${result.count !== 1 ? 's' : ''} externo${result.count !== 1 ? 's' : ''}.`,
-            className: "bg-green-100 text-green-800 rounded-2xl border-2 border-green-200"
-          });
-        } else {
-          toast({
-            title: "ℹ️ Sincronización Sin Cambios",
-            description: "No hay nuevos agendamientos para cargar en este momento.",
-            className: "bg-blue-100 text-blue-800 rounded-2xl border-2 border-blue-200"
-          });
-        }
-      } else {
-        toast({
-          title: "⚠️ Error en la Sincronización",
-          description: "No se pudo conectar con el servidor de agendamientos. Verifica que el link iCal sea válido o intenta más tarde.",
-          variant: "destructive",
-          className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "❌ Error",
-        description: "Hubo un error durante la sincronización.",
-        variant: "destructive",
-        className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
-      });
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -209,15 +179,36 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
         }
       }
 
+      let result;
       if (editingUser) {
-        handleUpdateUser({ ...userToSave, id: editingUser.id });
-        toast({ title: "¡Usuario Actualizado! 🎉", className: "bg-green-100 text-green-800 rounded-2xl border-2 border-green-200" });
+        result = await handleUpdateUser({ ...userToSave, id: editingUser.id });
+        if (result.success) {
+          toast({ title: "¡Usuario Actualizado! 🎉", className: "bg-green-100 text-green-800 rounded-2xl border-2 border-green-200" });
+          setIsUserDialogOpen(false);
+          resetUserForm();
+        } else {
+          toast({
+            title: "Error al actualizar",
+            description: result.message || "No se pudo actualizar el usuario",
+            variant: "destructive",
+            className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+          });
+        }
       } else {
-        handleCreateUser(userToSave);
-        toast({ title: "¡Nuevo Amigo Añadido! 🎈", className: "bg-blue-100 text-blue-800 rounded-2xl border-2 border-blue-200" });
+        result = await handleCreateUser(userToSave);
+        if (result.success) {
+          toast({ title: "¡Nuevo Amigo Añadido! 🎈", className: "bg-blue-100 text-blue-800 rounded-2xl border-2 border-blue-200" });
+          setIsUserDialogOpen(false);
+          resetUserForm();
+        } else {
+          toast({
+            title: "Error al crear",
+            description: result.message || "No se pudo crear el usuario",
+            variant: "destructive",
+            className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+          });
+        }
       }
-      setIsUserDialogOpen(false);
-      resetUserForm();
     } catch (error) {
       console.error('Error al procesar usuario:', error);
       toast({
@@ -375,33 +366,9 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-6">
-          {/* Botón de Sincronización Flotante */}
-          <motion.div
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.98 }}
-            className="flex justify-end mb-4"
-          >
-            <Button
-              onClick={handleManualSync}
-              disabled={isSyncing}
-              className="bg-cyan-400 hover:bg-cyan-500 text-white rounded-2xl px-6 py-4 font-bold text-base shadow-lg hover:shadow-xl border-b-4 border-cyan-600 active:border-b-0 active:translate-y-1 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              {isSyncing ? (
-                <>
-                  <Loader className="w-5 h-5 animate-spin" />
-                  Sincronizando...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-5 h-5" />
-                  🔄 Sincronizar Agendamientos
-                </>
-              )}
-            </Button>
-          </motion.div>
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <>
+            {/* Stats Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { label: 'Total Citas', val: appointments.length, color: 'bg-blue-100 text-blue-600', icon: PieChart },
               { label: 'Pendientes', val: appointments.filter(a => a.status === 'pending').length, color: 'bg-yellow-100 text-yellow-600', icon: Calendar },
@@ -675,13 +642,121 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                </Dialog>
              </div>
 
+             {/* Search Filters */}
+             <div className="mb-6 bg-yellow-50 rounded-2xl p-4 border-2 border-yellow-200">
+               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                 <div>
+                   <Label className="text-xs font-bold text-gray-600 mb-1 block">🔍 Cliente</Label>
+                   <input
+                     type="text"
+                     placeholder="Buscar por nombre..."
+                     value={serviceFilters.clientName}
+                     onChange={(e) => {
+                       setServiceFilters({...serviceFilters, clientName: e.target.value});
+                       setServicesPage(1);
+                     }}
+                     className="w-full bg-white border-2 border-yellow-200 rounded-xl p-2 text-sm font-medium outline-none focus:border-yellow-400"
+                   />
+                 </div>
+                 <div>
+                   <Label className="text-xs font-bold text-gray-600 mb-1 block">📊 Tipo de Servicio</Label>
+                   <select
+                     value={serviceFilters.serviceType}
+                     onChange={(e) => {
+                       setServiceFilters({...serviceFilters, serviceType: e.target.value});
+                       setServicesPage(1);
+                     }}
+                     className="w-full bg-white border-2 border-yellow-200 rounded-xl p-2 text-sm font-medium outline-none focus:border-yellow-400"
+                   >
+                     <option value="">Todos</option>
+                     {Object.keys(serviceCatalog).map(service => (
+                       <option key={service} value={service}>{service}</option>
+                     ))}
+                   </select>
+                 </div>
+                 <div>
+                   <Label className="text-xs font-bold text-gray-600 mb-1 block">🦸 Piojóloga</Label>
+                   <select
+                     value={serviceFilters.piojologist}
+                     onChange={(e) => {
+                       setServiceFilters({...serviceFilters, piojologist: e.target.value});
+                       setServicesPage(1);
+                     }}
+                     className="w-full bg-white border-2 border-yellow-200 rounded-xl p-2 text-sm font-medium outline-none focus:border-yellow-400"
+                   >
+                     <option value="">Todas</option>
+                     {piojologists.map(p => (
+                       <option key={p.id} value={p.id}>{p.name}</option>
+                     ))}
+                   </select>
+                 </div>
+                 <div>
+                   <Label className="text-xs font-bold text-gray-600 mb-1 block">🎯 Estado</Label>
+                   <select
+                     value={serviceFilters.status}
+                     onChange={(e) => {
+                       setServiceFilters({...serviceFilters, status: e.target.value});
+                       setServicesPage(1);
+                     }}
+                     className="w-full bg-white border-2 border-yellow-200 rounded-xl p-2 text-sm font-medium outline-none focus:border-yellow-400"
+                   >
+                     <option value="all">Todos</option>
+                     <option value="confirmed">Asignado</option>
+                     <option value="pending">Pendiente</option>
+                   </select>
+                 </div>
+               </div>
+               <Button
+                 onClick={() => {
+                   setServiceFilters({clientName: '', serviceType: '', piojologist: '', status: 'all'});
+                   setServicesPage(1);
+                 }}
+                 className="mt-3 bg-white hover:bg-yellow-100 text-yellow-600 rounded-xl px-4 py-2 text-xs font-bold border-2 border-yellow-200"
+               >
+                 🔄 Limpiar Filtros
+               </Button>
+             </div>
+
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
-                {appointments.filter(apt => apt.status !== 'completed').length === 0 ? (
-                  <div className="col-span-full py-12 text-center bg-yellow-50 rounded-[2rem] border-2 border-dashed border-yellow-300">
-                    <p className="text-xl font-bold text-yellow-600">¡No hay servicios activos! 🌟</p>
-                  </div>
-                ) : (
-                  appointments.filter(apt => apt.status !== 'completed').map(apt => (
+                {(() => {
+                  const filteredAppointments = appointments
+                    .filter(apt => apt.status !== 'completed')
+                    .filter(apt => {
+                      // Filter by client name
+                      if (serviceFilters.clientName && !apt.clientName.toLowerCase().includes(serviceFilters.clientName.toLowerCase())) {
+                        return false;
+                      }
+                      // Filter by service type
+                      if (serviceFilters.serviceType && apt.serviceType !== serviceFilters.serviceType) {
+                        return false;
+                      }
+                      // Filter by piojologist
+                      if (serviceFilters.piojologist && apt.piojologistId !== parseInt(serviceFilters.piojologist)) {
+                        return false;
+                      }
+                      // Filter by status
+                      if (serviceFilters.status !== 'all' && apt.status !== serviceFilters.status) {
+                        return false;
+                      }
+                      return true;
+                    });
+
+                  if (filteredAppointments.length === 0) {
+                    return (
+                      <div className="col-span-full py-12 text-center bg-yellow-50 rounded-[2rem] border-2 border-dashed border-yellow-300">
+                        <p className="text-xl font-bold text-yellow-600">
+                          {serviceFilters.clientName || serviceFilters.serviceType || serviceFilters.piojologist || serviceFilters.status !== 'all'
+                            ? '🔍 No se encontraron servicios con esos filtros'
+                            : '¡No hay servicios activos! 🌟'
+                          }
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return filteredAppointments
+                    .slice((servicesPage - 1) * servicesPerPage, servicesPage * servicesPerPage)
+                    .map(apt => (
                     <div key={apt.id} className="bg-white border-2 border-gray-100 p-5 rounded-3xl shadow-md hover:border-yellow-300 transition-colors">
                       <div className="flex justify-between items-start mb-3">
                         <span className="font-bold text-lg truncate">{apt.clientName}</span>
@@ -736,10 +811,54 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                         </p>
                       </div>
                     </div>
-                  ))
-                )}
+                  ));
+                })()}
              </div>
+
+             {/* Pagination Controls */}
+             {(() => {
+               const filteredCount = appointments
+                 .filter(apt => apt.status !== 'completed')
+                 .filter(apt => {
+                   if (serviceFilters.clientName && !apt.clientName.toLowerCase().includes(serviceFilters.clientName.toLowerCase())) {
+                     return false;
+                   }
+                   if (serviceFilters.serviceType && apt.serviceType !== serviceFilters.serviceType) {
+                     return false;
+                   }
+                   if (serviceFilters.piojologist && apt.piojologistId !== parseInt(serviceFilters.piojologist)) {
+                     return false;
+                   }
+                   if (serviceFilters.status !== 'all' && apt.status !== serviceFilters.status) {
+                     return false;
+                   }
+                   return true;
+                 }).length;
+               
+               return filteredCount > servicesPerPage && (
+               <div className="flex justify-center items-center gap-4 mt-8">
+                 <Button
+                   onClick={() => setServicesPage(prev => Math.max(1, prev - 1))}
+                   disabled={servicesPage === 1}
+                   className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-xl px-4 py-2 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                 >
+                   ← Anterior
+                 </Button>
+                 <span className="text-sm font-bold text-gray-600">
+                   Página {servicesPage} de {Math.ceil(filteredCount / servicesPerPage)}
+                 </span>
+                 <Button
+                   onClick={() => setServicesPage(prev => prev + 1)}
+                   disabled={servicesPage >= Math.ceil(filteredCount / servicesPerPage)}
+                   className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-xl px-4 py-2 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                 >
+                   Siguiente →
+                 </Button>
+               </div>
+             );
+             })()}
           </div>
+          </>
         </TabsContent>
 
         <TabsContent value="users" className="space-y-6">
@@ -791,7 +910,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                       </td>
                       <td className="p-4 font-medium text-gray-500">{user.email}</td>
                       <td className="p-4 text-right">
-                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex justify-end gap-2">
                           <Button 
                             size="icon" 
                             variant="ghost" 
@@ -803,7 +922,23 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                           <Button 
                             size="icon" 
                             variant="ghost" 
-                            onClick={() => handleDeleteUser(user.id)}
+                            onClick={async () => {
+                              const result = await handleDeleteUser(user.id);
+                              if (result.success) {
+                                toast({
+                                  title: "¡Usuario Eliminado! 🗑️",
+                                  description: result.message,
+                                  className: "bg-orange-100 text-orange-800 rounded-2xl border-2 border-orange-200"
+                                });
+                              } else {
+                                toast({
+                                  title: "Error al eliminar",
+                                  description: result.message || "No se pudo eliminar el usuario",
+                                  variant: "destructive",
+                                  className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+                                });
+                              }
+                            }}
                             className="h-10 w-10 rounded-xl bg-red-100 text-red-500 hover:bg-red-200"
                           >
                             <Trash2 className="w-5 h-5" />
@@ -1057,19 +1192,19 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                     value={userFormData.role}
                     onChange={e => setUserFormData({...userFormData, role: e.target.value})}
                  >
-                   <option value="piojologist">🦸 Piojólogo</option>
-                   <option value="admin">👑 Admin</option>
+                   <option value="piojologist">🦸 Piojóloga</option>
+                   <option value="admin">👑 Administrador</option>
                  </select>
               </div>
                <div>
-                <Label className="field-label">Password</Label>
+                <Label className="field-label">Contraseña {editingUser && <span className="text-xs text-gray-500">(mantener actual)</span>}</Label>
                 <input 
-                  required
-                  type="text"
+                  required={!editingUser}
+                  type="password"
                   className="form-input focus:border-blue-400 focus:bg-white transition-all"
                   value={userFormData.password}
                   onChange={e => setUserFormData({...userFormData, password: e.target.value})}
-                  placeholder="***"
+                  placeholder={editingUser ? "Dejar vacío si no cambia" : "***"}
                 />
               </div>
             </div>
