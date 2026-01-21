@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Settings, UserPlus, Calendar, User, CheckCircle, PieChart, Crown, Users, Trash2, Edit, Save, X, ShoppingBag, DollarSign, PackagePlus, Map, Loader, RefreshCw } from 'lucide-react';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
+import { Bar, Pie, Line } from 'react-chartjs-2';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -13,12 +15,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import ScheduleCalendar from '@/components/ScheduleCalendar';
+import ScheduleManagement from '@/components/ScheduleManagement';
 import PiojologistMap from '@/components/PiojologistMap';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { geocodeAddress } from '@/lib/geocoding';
+import { bookingService } from '@/lib/api';
 
-const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, updateAppointments, piojologists, products, updateProducts, serviceCatalog, formatCurrency, syncICalEvents, productRequests, onApproveRequest, onRejectRequest }) => {
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement);
+// Aplicar estilos globales de tipografía del sistema a Chart.js
+ChartJS.defaults.font.family = 'Fredoka';
+ChartJS.defaults.font.size = 12;
+ChartJS.defaults.font.weight = 700;
+ChartJS.defaults.color = '#374151';
+
+const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, baseAppointments = [], bookings = [], updateAppointments, updateBookings, piojologists, products, updateProducts, serviceCatalog, formatCurrency, syncICalEvents, productRequests, onApproveRequest, onRejectRequest, onNotify }) => {
   const { toast } = useToast();
   
   // User Management State
@@ -67,6 +77,20 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     serviceType: '',
     piojologist: '',
     status: 'all'
+  });
+
+  // Persist active tab across refresh
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('adminTab') || 'dashboard');
+  const handleTabChange = (value) => {
+    setActiveTab(value);
+    localStorage.setItem('adminTab', value);
+  };
+
+  // Resolver nombres de piojólogas faltantes en bookings/appointments combinados
+  const displayAppointments = appointments.map(apt => {
+    if (apt.piojologistName || !apt.piojologistId) return apt;
+    const match = piojologists.find(p => Number(p.id) === Number(apt.piojologistId));
+    return match ? { ...apt, piojologistName: match.name } : apt;
   });
 
   // Product Management State
@@ -251,7 +275,8 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
       referidoPor: serviceFormData.referidoPor || ''
     };
 
-    updateAppointments([...appointments, newService]);
+    const internalAppointments = baseAppointments.length ? baseAppointments : appointments.filter(a => !a.isPublicBooking);
+    updateAppointments([...internalAppointments, newService]);
     setIsServiceDialogOpen(false);
     resetServiceForm();
     toast({ 
@@ -317,39 +342,105 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
   };
 
   // Appointment Logic
-  const handleAssignPiojologist = (appointmentId, piojologistId) => {
+  const handleAssignPiojologist = async (appointmentId, piojologistId, appointmentArg = null) => {
     const piojologist = piojologists.find(p => p.id === parseInt(piojologistId));
-    const servicePrice = serviceCatalog[appointments.find(a => a.id === appointmentId).serviceType] || 0;
+    const appointment = appointmentArg || appointments.find(a => a.id === appointmentId || a.backendId === appointmentId || a.bookingId === appointmentId);
+    const servicePrice = serviceCatalog[appointment?.serviceType] || 0;
+    const backendId = appointment?.backendId || appointment?.bookingId || appointmentId;
     
-    const updatedAppointments = appointments.map(apt => 
-      apt.id === appointmentId 
-        ? { 
-            ...apt, 
-            piojologistId: parseInt(piojologistId),
-            piojologistName: piojologist?.name || null,
-            status: 'confirmed',
-            estimatedPrice: servicePrice
-          } 
-        : apt
-    );
-    updateAppointments(updatedAppointments);
-    toast({
-      title: "¡Asignación Mágica! ✨",
-      description: `${piojologist?.name} va al rescate.`,
-      className: "bg-purple-100 text-purple-800 rounded-2xl border-2 border-purple-200"
-    });
+    // Actualizar en el backend (solo si viene de bookings públicos o tiene backendId)
+    try {
+      if (appointment?.isPublicBooking || appointment?.backendId || appointmentId?.toString().startsWith('booking-')) {
+        const result = await bookingService.update(backendId, {
+          piojologistId: parseInt(piojologistId),
+          status: 'assigned'
+        });
+
+        if (!result.success) {
+          toast({
+            title: "Error",
+            description: result.message || "No se pudo asignar la piojóloga",
+            variant: "destructive",
+            className: "bg-red-100 text-red-800 rounded-2xl border-2 border-red-200"
+          });
+          return;
+        }
+
+        // Actualizar bookings
+        if (updateBookings) {
+          const updatedBookings = bookings.map(apt => 
+            (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId) 
+              ? { 
+                  ...apt, 
+                  piojologistId: parseInt(piojologistId),
+                  piojologistName: piojologist?.name || null,
+                  status: 'assigned',
+                  estimatedPrice: servicePrice
+                } 
+              : apt
+          );
+          updateBookings(updatedBookings);
+        }
+      } else {
+        const baseList = (baseAppointments && baseAppointments.length) ? baseAppointments : appointments.filter(a => !a.isPublicBooking);
+        const updatedInternal = baseList.map(apt => 
+          (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId) 
+            ? { 
+                ...apt, 
+                piojologistId: parseInt(piojologistId),
+                piojologistName: piojologist?.name || null,
+                status: 'assigned',
+                estimatedPrice: servicePrice
+              } 
+            : apt
+        );
+        updateAppointments(updatedInternal);
+      }
+      
+      // Create notification for the piojologist
+      if (onNotify) {
+        onNotify({
+          type: 'assignment',
+          appointmentId: appointmentId,
+          piojologistId: parseInt(piojologistId),
+          message: `Nuevo agendamiento asignado: ${appointment?.clientName} - ${appointment?.serviceType}`,
+          appointment: updatedAppointments.find(a => a.id === appointmentId)
+        });
+      }
+      
+      toast({
+        title: "¡Asignación Mágica! ✨",
+        description: `${piojologist?.name} va al rescate. Esperando aceptación...`,
+        className: "bg-purple-100 text-purple-800 rounded-2xl border-2 border-purple-200"
+      });
+    } catch (error) {
+      console.error('Error al asignar piojóloga:', error);
+      toast({
+        title: "Error",
+        description: "Hubo un problema al asignar la piojóloga",
+        variant: "destructive",
+        className: "bg-red-100 text-red-800 rounded-2xl border-2 border-red-200"
+      });
+    }
   };
 
-  const unassignedAppointments = appointments.filter(apt => 
+  const unassignedAppointments = displayAppointments.filter(apt => 
     apt.status === 'pending' || (apt.status === 'confirmed' && !apt.piojologistId)
   );
 
+  const handleAssignFromCalendar = (appointment, piojologistId) => {
+    handleAssignPiojologist(appointment?.backendId || appointment?.bookingId || appointment?.id, piojologistId, appointment);
+  };
+
   return (
     <div className="space-y-8">
-      <Tabs defaultValue="dashboard" className="w-full">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="w-full bg-white/50 p-2 rounded-[2rem] border-2 border-orange-100 mb-8 flex-wrap h-auto gap-2">
           <TabsTrigger value="dashboard" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-orange-400 data-[state=active]:text-white transition-all">
             📊 Panel
+          </TabsTrigger>
+          <TabsTrigger value="schedule" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-yellow-400 data-[state=active]:text-white transition-all">
+            📅 Agendamientos
           </TabsTrigger>
           <TabsTrigger value="users" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-blue-400 data-[state=active]:text-white transition-all">
             👥 Usuarios
@@ -369,7 +460,6 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-6">
-          <>
             {/* Stats Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
@@ -390,478 +480,277 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
             ))}
           </div>
 
-          <ScheduleCalendar
-            appointments={appointments}
-            piojologists={piojologists}
-            enablePiojologistFilter
-            title="Agenda General"
-          />
-
-          {/* Services Management Panel */}
-          <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-yellow-100 relative overflow-hidden">
-             <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-200 rounded-bl-full opacity-50 -mr-4 -mt-4"></div>
-             
-             <div className="flex justify-between items-center mb-6 relative z-10">
-               <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3">
-                 <span className="text-3xl">📋</span> Servicios Activos
-               </h3>
-               <Dialog open={isServiceDialogOpen} onOpenChange={setIsServiceDialogOpen}>
-                 <DialogTrigger asChild>
-                   <Button className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-2xl px-6 py-6 font-bold text-lg shadow-md border-b-4 border-yellow-600 active:border-b-0 active:translate-y-1">
-                     <Calendar className="w-6 h-6 mr-2" />
-                     Crear Servicio
-                   </Button>
-                 </DialogTrigger>
-                 <DialogContent className="rounded-[2.5rem] border-8 border-yellow-100 p-0 overflow-hidden sm:max-w-md bg-white max-h-[90vh] flex flex-col">
-                   <div className="bg-yellow-400 p-6 text-white text-center flex-shrink-0">
-                     <DialogHeader>
-                       <DialogTitle className="text-3xl font-black">Nuevo Servicio ✨</DialogTitle>
-                     </DialogHeader>
-                   </div>
-                   <form onSubmit={handleServiceSubmit} className="p-8 space-y-4 flex-1 overflow-y-auto">
-                     <div>
-                       <Label className="font-bold text-gray-500 ml-2 mb-1 block">Nombre del Cliente</Label>
-                       <input 
-                         required
-                         value={serviceFormData.clientName}
-                         onChange={e => setServiceFormData({...serviceFormData, clientName: e.target.value})}
-                         className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-yellow-400"
-                         placeholder="Ej. Familia Pérez"
-                       />
-                     </div>
-                     <div>
-                       <Label className="font-bold text-gray-500 ml-2 mb-1 block">Nivel de Infestación</Label>
-                       <select 
-                         required
-                         value={serviceFormData.serviceType}
-                         onChange={e => setServiceFormData({...serviceFormData, serviceType: e.target.value})}
-                         className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-yellow-400 cursor-pointer"
-                       >
-                         <option value="">Seleccionar...</option>
-                         {Object.keys(serviceCatalog).map(service => (
-                           <option key={service} value={service}>
-                             {service} - {formatCurrency(serviceCatalog[service])}
-                           </option>
-                         ))}
-                       </select>
-                     </div>
-                     <div className="form-grid">
-                       <div>
-                         <Label className="field-label">Fecha</Label>
-                         <input 
-                           required
-                           type="date"
-                           value={serviceFormData.date}
-                           onChange={e => setServiceFormData({...serviceFormData, date: e.target.value})}
-                           className="form-input focus:border-yellow-400"
-                         />
-                       </div>
-                       <div>
-                         <Label className="field-label">Hora</Label>
-                         <input 
-                           required
-                           type="time"
-                           value={serviceFormData.time}
-                           onChange={e => setServiceFormData({...serviceFormData, time: e.target.value})}
-                           className="form-input focus:border-yellow-400"
-                         />
-                       </div>
-                     </div>
-                     <div>
-                       <Label className="field-label">Asignar a Piojóloga</Label>
-                       <select 
-                         required
-                         value={serviceFormData.piojologistId}
-                         onChange={e => setServiceFormData({...serviceFormData, piojologistId: e.target.value})}
-                         className="form-select focus:border-yellow-400"
-                       >
-                         <option value="">Seleccionar piojóloga...</option>
-                         {piojologists.map(p => (
-                           <option key={p.id} value={p.id}>{p.name} - {p.specialty}</option>
-                         ))}
-                       </select>
-                     </div>
-
-                     {/* Datos Críticos: Tu pierdes, Nosotros te pagamos, Total, Edad */}
-                     {/* Contacto del Cliente */}
-                     <div className="bg-blue-50 p-4 rounded-2xl border-2 border-blue-200 space-y-3">
-                       <p className="text-xs font-bold text-blue-600 uppercase">📱 Contacto del Cliente</p>
-                       <div>
-                         <Label className="field-label text-xs">WhatsApp</Label>
-                         <input 
-                           type="tel"
-                           value={serviceFormData.whatsapp}
-                           onChange={e => setServiceFormData({...serviceFormData, whatsapp: e.target.value})}
-                           className="form-input focus:border-blue-400 text-sm"
-                           placeholder="Ej. +34 123 456 789"
-                         />
-                       </div>
-                       <div>
-                         <Label className="field-label text-xs">Dirección</Label>
-                         <input 
-                           type="text"
-                           value={serviceFormData.direccion}
-                           onChange={e => setServiceFormData({...serviceFormData, direccion: e.target.value})}
-                           className="form-input focus:border-blue-400 text-sm"
-                           placeholder="Calle, número, piso"
-                         />
-                       </div>
-                       <div className="form-grid">
-                         <div>
-                           <Label className="field-label text-xs">Barrio</Label>
-                           <input 
-                             type="text"
-                             value={serviceFormData.barrio}
-                             onChange={e => setServiceFormData({...serviceFormData, barrio: e.target.value})}
-                             className="form-input focus:border-blue-400 text-sm"
-                             placeholder="Ej. Centro"
-                           />
-                         </div>
-                         <div>
-                           <Label className="field-label text-xs">Nº de Personas a Atender</Label>
-                           <input 
-                             type="number"
-                             value={serviceFormData.numPersonas}
-                             onChange={e => setServiceFormData({...serviceFormData, numPersonas: e.target.value})}
-                             className="form-input focus:border-blue-400 text-sm"
-                             placeholder="1"
-                             min="1"
-                           />
-                         </div>
-                       </div>
-                     </div>
-
-                     {/* Datos de Salud */}
-                     <div className="bg-red-50 p-4 rounded-2xl border-2 border-red-200 space-y-3">
-                       <p className="text-xs font-bold text-red-600 uppercase">⚠️ Datos de Salud</p>
-                       <div className="flex items-center gap-3">
-                         <Checkbox 
-                           id="hasAlergias"
-                           checked={serviceFormData.hasAlergias}
-                           onCheckedChange={checked => setServiceFormData({...serviceFormData, hasAlergias: checked})}
-                           className="w-5 h-5 rounded"
-                         />
-                         <Label htmlFor="hasAlergias" className="font-bold text-gray-700 cursor-pointer">
-                           ¿Tiene alergias o afectaciones de salud?
-                         </Label>
-                       </div>
-                       {serviceFormData.hasAlergias && (
-                         <textarea
-                           value={serviceFormData.detalleAlergias}
-                           onChange={e => setServiceFormData({...serviceFormData, detalleAlergias: e.target.value})}
-                           className="form-input focus:border-red-400 text-sm resize-none"
-                           placeholder="Describe las alergias o afectaciones..."
-                           rows="3"
-                         />
-                       )}
-                     </div>
-
-                     {/* Referencias y Datos Críticos */}
-                     <div className="bg-purple-50 p-4 rounded-2xl border-2 border-purple-200 space-y-3">
-                       <p className="text-xs font-bold text-purple-600 uppercase">📌 Referencias Adicionales</p>
-                       <div>
-                         <Label className="field-label text-xs">Referido Por</Label>
-                         <input 
-                           type="text"
-                           value={serviceFormData.referidoPor}
-                           onChange={e => setServiceFormData({...serviceFormData, referidoPor: e.target.value})}
-                           className="form-input focus:border-purple-400 text-sm"
-                           placeholder="Nombre o fuente de referencia (opcional)"
-                         />
-                       </div>
-                     </div>
-
-                     {/* Datos Críticos: Tu pierdes, Nosotros te pagamos, Total, Edad */}
-                     <div className="bg-yellow-50 p-4 rounded-2xl border-2 border-yellow-200 space-y-3">
-                       <p className="text-xs font-bold text-yellow-600 uppercase">📊 Datos Críticos para el Vendedor</p>
-                       <div className="form-grid">
-                         <div>
-                           <Label className="field-label text-xs">Tu Pierdes ($)</Label>
-                           <input 
-                             type="number"
-                             value={serviceFormData.yourLoss}
-                             onChange={e => setServiceFormData({...serviceFormData, yourLoss: e.target.value})}
-                             className="form-input focus:border-yellow-400 text-sm"
-                             placeholder="0"
-                           />
-                         </div>
-                         <div>
-                           <Label className="field-label text-xs">Nosotros te Pagamos ($)</Label>
-                           <input 
-                             type="number"
-                             value={serviceFormData.ourPayment}
-                             onChange={e => setServiceFormData({...serviceFormData, ourPayment: e.target.value})}
-                             className="form-input focus:border-yellow-400 text-sm"
-                             placeholder="0"
-                           />
-                         </div>
-                       </div>
-                       <div className="form-grid">
-                         <div>
-                           <Label className="field-label text-xs">Total ($)</Label>
-                           <input 
-                             type="number"
-                             value={serviceFormData.total}
-                             onChange={e => setServiceFormData({...serviceFormData, total: e.target.value})}
-                             className="form-input focus:border-yellow-400 text-sm"
-                             placeholder="0"
-                           />
-                         </div>
-                         <div>
-                           <Label className="field-label text-xs">Edad (años)</Label>
-                           <input 
-                             type="number"
-                             value={serviceFormData.age}
-                             onChange={e => setServiceFormData({...serviceFormData, age: e.target.value})}
-                             className="form-input focus:border-yellow-400 text-sm"
-                             placeholder="18"
-                             min="0"
-                             max="150"
-                           />
-                         </div>
-                       </div>
-                     </div>
-
-                     {/* Términos y Condiciones */}
-                     <div className="bg-green-50 p-4 rounded-2xl border-2 border-green-200 space-y-3">
-                       <div className="flex items-start gap-3">
-                         <Checkbox 
-                           id="terminosAceptados"
-                           checked={serviceFormData.terminosAceptados}
-                           onCheckedChange={checked => setServiceFormData({...serviceFormData, terminosAceptados: checked})}
-                           className="w-5 h-5 rounded mt-1"
-                         />
-                         <Label htmlFor="terminosAceptados" className="font-bold text-gray-700 cursor-pointer text-sm">
-                           ✅ El cliente acepta que el valor de nuestros servicios incluye atención a domicilio
-                         </Label>
-                       </div>
-                     </div>
-
-                     <Button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-2xl py-6 font-bold mt-4 shadow-md border-b-4 border-yellow-700">
-                       Crear y Asignar Servicio
-                     </Button>
-                   </form>
-                 </DialogContent>
-               </Dialog>
-             </div>
-
-             {/* Search Filters */}
-             <div className="mb-6 bg-yellow-50 rounded-2xl p-4 border-2 border-yellow-200">
-               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                 <div>
-                   <Label className="text-xs font-bold text-gray-600 mb-1 block">🔍 Cliente</Label>
-                   <input
-                     type="text"
-                     placeholder="Buscar por nombre..."
-                     value={serviceFilters.clientName}
-                     onChange={(e) => {
-                       setServiceFilters({...serviceFilters, clientName: e.target.value});
-                       setServicesPage(1);
-                     }}
-                     className="w-full bg-white border-2 border-yellow-200 rounded-xl p-2 text-sm font-medium outline-none focus:border-yellow-400"
-                   />
-                 </div>
-                 <div>
-                   <Label className="text-xs font-bold text-gray-600 mb-1 block">📊 Tipo de Servicio</Label>
-                   <select
-                     value={serviceFilters.serviceType}
-                     onChange={(e) => {
-                       setServiceFilters({...serviceFilters, serviceType: e.target.value});
-                       setServicesPage(1);
-                     }}
-                     className="w-full bg-white border-2 border-yellow-200 rounded-xl p-2 text-sm font-medium outline-none focus:border-yellow-400"
-                   >
-                     <option value="">Todos</option>
-                     {Object.keys(serviceCatalog).map(service => (
-                       <option key={service} value={service}>{service}</option>
-                     ))}
-                   </select>
-                 </div>
-                 <div>
-                   <Label className="text-xs font-bold text-gray-600 mb-1 block">🦸 Piojóloga</Label>
-                   <select
-                     value={serviceFilters.piojologist}
-                     onChange={(e) => {
-                       setServiceFilters({...serviceFilters, piojologist: e.target.value});
-                       setServicesPage(1);
-                     }}
-                     className="w-full bg-white border-2 border-yellow-200 rounded-xl p-2 text-sm font-medium outline-none focus:border-yellow-400"
-                   >
-                     <option value="">Todas</option>
-                     {piojologists.map(p => (
-                       <option key={p.id} value={p.id}>{p.name}</option>
-                     ))}
-                   </select>
-                 </div>
-                 <div>
-                   <Label className="text-xs font-bold text-gray-600 mb-1 block">🎯 Estado</Label>
-                   <select
-                     value={serviceFilters.status}
-                     onChange={(e) => {
-                       setServiceFilters({...serviceFilters, status: e.target.value});
-                       setServicesPage(1);
-                     }}
-                     className="w-full bg-white border-2 border-yellow-200 rounded-xl p-2 text-sm font-medium outline-none focus:border-yellow-400"
-                   >
-                     <option value="all">Todos</option>
-                     <option value="confirmed">Asignado</option>
-                     <option value="pending">Pendiente</option>
-                   </select>
-                 </div>
-               </div>
-               <Button
-                 onClick={() => {
-                   setServiceFilters({clientName: '', serviceType: '', piojologist: '', status: 'all'});
-                   setServicesPage(1);
-                 }}
-                 className="mt-3 bg-white hover:bg-yellow-100 text-yellow-600 rounded-xl px-4 py-2 text-xs font-bold border-2 border-yellow-200"
-               >
-                 🔄 Limpiar Filtros
-               </Button>
-             </div>
-
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
+          {/* Analytics & Charts Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Distribution by Status - Pie Chart */}
+            <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-purple-100">
+              <h3 className="text-2xl font-black text-gray-800 mb-6 flex items-center gap-3">
+                <span className="text-3xl">📊</span> Distribución de Estados
+              </h3>
+              <div className="h-80 flex items-center justify-center">
                 {(() => {
-                  const filteredAppointments = appointments
-                    .filter(apt => apt.status !== 'completed')
-                    .filter(apt => {
-                      // Filter by client name
-                      if (serviceFilters.clientName && !apt.clientName.toLowerCase().includes(serviceFilters.clientName.toLowerCase())) {
-                        return false;
-                      }
-                      // Filter by service type
-                      if (serviceFilters.serviceType && apt.serviceType !== serviceFilters.serviceType) {
-                        return false;
-                      }
-                      // Filter by piojologist
-                      if (serviceFilters.piojologist && apt.piojologistId !== parseInt(serviceFilters.piojologist)) {
-                        return false;
-                      }
-                      // Filter by status
-                      if (serviceFilters.status !== 'all' && apt.status !== serviceFilters.status) {
-                        return false;
-                      }
-                      return true;
-                    });
-
-                  if (filteredAppointments.length === 0) {
+                  const counts = [
+                    appointments.filter(a => a.status === 'pending').length,
+                    appointments.filter(a => a.status === 'assigned').length,
+                    appointments.filter(a => a.status === 'accepted').length,
+                    appointments.filter(a => a.status === 'completed').length,
+                    appointments.filter(a => a.status === 'rejected').length
+                  ];
+                  const total = counts.reduce((acc, v) => acc + v, 0);
+                  if (total === 0) {
                     return (
-                      <div className="col-span-full py-12 text-center bg-yellow-50 rounded-[2rem] border-2 border-dashed border-yellow-300">
-                        <p className="text-xl font-bold text-yellow-600">
-                          {serviceFilters.clientName || serviceFilters.serviceType || serviceFilters.piojologist || serviceFilters.status !== 'all'
-                            ? '🔍 No se encontraron servicios con esos filtros'
-                            : '¡No hay servicios activos! 🌟'
-                          }
-                        </p>
+                      <div className="text-center">
+                        <div className="text-gray-500 font-black text-xl">Sin datos para mostrar</div>
+                        <div className="text-gray-400 font-bold text-sm">No hay citas registradas aún</div>
                       </div>
                     );
                   }
-
-                  return filteredAppointments
-                    .slice((servicesPage - 1) * servicesPerPage, servicesPage * servicesPerPage)
-                    .map(apt => (
-                    <div key={apt.id} className="bg-white border-2 border-gray-100 p-5 rounded-3xl shadow-md hover:border-yellow-300 transition-colors">
-                      <div className="flex justify-between items-start mb-3">
-                        <span className="font-bold text-lg truncate">{apt.clientName}</span>
-                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${
-                          apt.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                        }`}>
-                          {apt.status === 'confirmed' ? 'Asignado' : 'Pendiente'}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-1 font-bold">{apt.serviceType}</p>
-                      <p className="text-lg text-purple-600 mb-2 font-black">{formatCurrency(serviceCatalog[apt.serviceType] || 0)}</p>
-                      <p className="text-sm text-gray-500 mb-3 font-medium flex items-center gap-2">
-                        <Calendar className="w-4 h-4" /> {apt.date} - {apt.time}
-                      </p>
-
-                      {/* Datos Críticos */}
-                      {(apt.yourLoss || apt.ourPayment || apt.total || apt.age) && (
-                        <div className="bg-yellow-50 p-3 rounded-xl mb-3 border border-yellow-200 space-y-2">
-                          <p className="text-xs font-bold text-yellow-600 uppercase">📊 Datos del Vendedor</p>
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            {apt.yourLoss && (
-                              <div className="bg-red-100 p-2 rounded-lg">
-                                <p className="text-red-600 font-bold">Tu Pierdes</p>
-                                <p className="text-red-700 font-black">{formatCurrency(parseFloat(apt.yourLoss) || 0)}</p>
-                              </div>
-                            )}
-                            {apt.ourPayment && (
-                              <div className="bg-green-100 p-2 rounded-lg">
-                                <p className="text-green-600 font-bold">Te Pagamos</p>
-                                <p className="text-green-700 font-black">{formatCurrency(parseFloat(apt.ourPayment) || 0)}</p>
-                              </div>
-                            )}
-                            {apt.total && (
-                              <div className="bg-blue-100 p-2 rounded-lg">
-                                <p className="text-blue-600 font-bold">Total</p>
-                                <p className="text-blue-700 font-black">{formatCurrency(parseFloat(apt.total) || 0)}</p>
-                              </div>
-                            )}
-                            {apt.age && (
-                              <div className="bg-purple-100 p-2 rounded-lg">
-                                <p className="text-purple-600 font-bold">Edad</p>
-                                <p className="text-purple-700 font-black">{apt.age} años</p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="bg-green-50 p-2 rounded-xl">
-                        <p className="text-xs font-bold text-green-700">
-                          👨‍⚕️ {apt.piojologistName || 'Sin asignar'}
-                        </p>
-                      </div>
-                    </div>
-                  ));
+                  return (
+                    <Pie
+                      data={{
+                        labels: ['Pendientes', 'Asignados', 'Aceptados', 'Completados', 'Rechazados'],
+                        datasets: [{
+                          data: counts,
+                          backgroundColor: ['#FBBF24', '#22D3EE', '#4ADE80', '#60A5FA', '#F87171'],
+                          borderColor: ['#F59E0B', '#06B6D4', '#22C55E', '#3B82F6', '#EF4444'],
+                          borderWidth: 2,
+                          borderRadius: 8
+                        }]
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: {
+                            position: 'bottom',
+                            labels: {
+                              font: { family: 'Fredoka', size: 12, weight: 700 },
+                              color: '#374151',
+                              padding: 15,
+                              usePointStyle: true
+                            }
+                          },
+                          tooltip: {
+                            backgroundColor: 'rgba(0,0,0,0.8)',
+                            padding: 12,
+                            titleFont: { family: 'Fredoka', size: 14, weight: 700 },
+                            bodyFont: { family: 'Fredoka', size: 12, weight: 600 },
+                            borderColor: '#60A5FA',
+                            borderWidth: 1,
+                            borderRadius: 8
+                          }
+                        }
+                      }}
+                    />
+                  );
                 })()}
-             </div>
+              </div>
+            </div>
 
-             {/* Pagination Controls */}
-             {(() => {
-               const filteredCount = appointments
-                 .filter(apt => apt.status !== 'completed')
-                 .filter(apt => {
-                   if (serviceFilters.clientName && !apt.clientName.toLowerCase().includes(serviceFilters.clientName.toLowerCase())) {
-                     return false;
-                   }
-                   if (serviceFilters.serviceType && apt.serviceType !== serviceFilters.serviceType) {
-                     return false;
-                   }
-                   if (serviceFilters.piojologist && apt.piojologistId !== parseInt(serviceFilters.piojologist)) {
-                     return false;
-                   }
-                   if (serviceFilters.status !== 'all' && apt.status !== serviceFilters.status) {
-                     return false;
-                   }
-                   return true;
-                 }).length;
-               
-               return filteredCount > servicesPerPage && (
-               <div className="flex justify-center items-center gap-4 mt-8">
-                 <Button
-                   onClick={() => setServicesPage(prev => Math.max(1, prev - 1))}
-                   disabled={servicesPage === 1}
-                   className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-xl px-4 py-2 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-                 >
-                   ← Anterior
-                 </Button>
-                 <span className="text-sm font-bold text-gray-600">
-                   Página {servicesPage} de {Math.ceil(filteredCount / servicesPerPage)}
-                 </span>
-                 <Button
-                   onClick={() => setServicesPage(prev => prev + 1)}
-                   disabled={servicesPage >= Math.ceil(filteredCount / servicesPerPage)}
-                   className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-xl px-4 py-2 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-                 >
-                   Siguiente →
-                 </Button>
-               </div>
-             );
-             })()}
+            {/* Revenue by Piojologist - Bar Chart */}
+            <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-green-100">
+              <h3 className="text-2xl font-black text-gray-800 mb-6 flex items-center gap-3">
+                <span className="text-3xl">💰</span> Ingresos por Piojóloga
+              </h3>
+              <div className="h-80">
+                <Bar
+                  data={{
+                    labels: piojologists.map(p => p.name),
+                    datasets: [{
+                      label: 'Ingresos ($)',
+                      data: piojologists.map(pio => 
+                        appointments.filter(a => a.piojologistId === pio.id && a.status === 'completed')
+                          .reduce((acc, curr) => acc + (serviceCatalog[curr.serviceType] || 0), 0)
+                      ),
+                      backgroundColor: ['#10B981', '#34D399', '#6EE7B7', '#A7F3D0'],
+                      borderColor: '#059669',
+                      borderWidth: 2,
+                      borderRadius: 8,
+                      hoverBackgroundColor: '#047857'
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                      legend: {
+                        labels: {
+                          font: { family: 'Fredoka', size: 12, weight: 700 },
+                          color: '#374151'
+                        }
+                      },
+                      tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        padding: 12,
+                        titleFont: { size: 14, weight: 'bold' },
+                        bodyFont: { size: 12 },
+                        borderColor: '#10B981',
+                        borderWidth: 1,
+                        borderRadius: 8,
+                        callbacks: {
+                          label: function(context) {
+                            return formatCurrency(context.parsed.x);
+                          }
+                        }
+                      }
+                    },
+                    scales: {
+                      x: {
+                        beginAtZero: true,
+                        grid: { color: '#E5E7EB' },
+                        ticks: { font: { size: 11, weight: 'bold' }, color: '#6B7280' }
+                      },
+                      y: {
+                        grid: { display: false },
+                        ticks: { font: { size: 11, weight: 'bold' }, color: '#374151' }
+                      }
+                    }
+                  }}
+                />
+
+              </div>
+            </div>
+
+            {/* Service Popularity - Horizontal Bar Chart */}
+            <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-pink-100">
+              <h3 className="text-2xl font-black text-gray-800 mb-6 flex items-center gap-3">
+                <span className="text-3xl">⭐</span> Servicios Más Solicitados
+              </h3>
+              <div className="h-80">
+                <Bar
+                  data={{
+                    labels: Object.keys(serviceCatalog),
+                    datasets: [{
+                      label: 'Cantidad de Servicios',
+                      data: Object.keys(serviceCatalog).map(service => 
+                        appointments.filter(a => a.serviceType === service).length
+                      ),
+                      backgroundColor: ['#EC4899', '#F472B6', '#F9A8D4', '#FBCFE8'],
+                      borderColor: '#BE185D',
+                      borderWidth: 2,
+                      borderRadius: 8,
+                      hoverBackgroundColor: '#DB2777'
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                      legend: {
+                        labels: {
+                          font: { family: 'Fredoka', size: 12, weight: 700 },
+                          color: '#374151'
+                        }
+                      },
+                      tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        padding: 12,
+                        titleFont: { family: 'Fredoka', size: 14, weight: 700 },
+                        bodyFont: { family: 'Fredoka', size: 12, weight: 600 },
+                        borderColor: '#EC4899',
+                        borderWidth: 1,
+                        borderRadius: 8
+                      }
+                    },
+                    scales: {
+                      x: {
+                        beginAtZero: true,
+                        grid: { color: '#E5E7EB' },
+                        ticks: { font: { family: 'Fredoka', size: 11, weight: 700 }, color: '#6B7280' }
+                      },
+                      y: {
+                        grid: { display: false },
+                        ticks: { font: { family: 'Fredoka', size: 11, weight: 700 }, color: '#374151' }
+                      }
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Weekly Performance - Line Chart */}
+            <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-orange-100">
+              <h3 className="text-2xl font-black text-gray-800 mb-6 flex items-center gap-3">
+                <span className="text-3xl">📈</span> Desempeño Semanal
+              </h3>
+              <div className="h-80">
+                <Line
+                  data={{
+                    labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sab', 'Dom'],
+                    datasets: [{
+                      label: 'Citas por Día',
+                      data: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sab', 'Dom'].map((day, idx) => {
+                        const dayCount = appointments.filter(a => {
+                          const apt = new Date(a.date);
+                          const today = new Date();
+                          const daysBack = 6 - idx;
+                          const checkDate = new Date(today);
+                          checkDate.setDate(checkDate.getDate() - daysBack);
+                          return apt.toDateString() === checkDate.toDateString();
+                        }).length;
+                        return dayCount;
+                      }),
+                      backgroundColor: 'rgba(251, 191, 36, 0.1)',
+                      borderColor: '#F59E0B',
+                      borderWidth: 3,
+                      fill: true,
+                      tension: 0.4,
+                      pointBackgroundColor: '#F59E0B',
+                      pointBorderColor: '#D97706',
+                      pointBorderWidth: 2,
+                      pointRadius: 5,
+                      pointHoverRadius: 7
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        labels: {
+                          font: { family: 'Fredoka', size: 12, weight: 700 },
+                          color: '#374151'
+                        }
+                      },
+                      tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        padding: 12,
+                        titleFont: { family: 'Fredoka', size: 14, weight: 700 },
+                        bodyFont: { family: 'Fredoka', size: 12, weight: 600 },
+                        borderColor: '#F59E0B',
+                        borderWidth: 1,
+                        borderRadius: 8
+                      }
+                    },
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        grid: { color: '#E5E7EB' },
+                        ticks: { font: { family: 'Fredoka', size: 11, weight: 700 }, color: '#6B7280', stepSize: 1 }
+                      },
+                      x: {
+                        grid: { color: '#E5E7EB' },
+                        ticks: { font: { family: 'Fredoka', size: 11, weight: 700 }, color: '#374151' }
+                      }
+                    }
+                  }}
+                />
+              </div>
+            </div>
           </div>
-          </>
+        </TabsContent>
+
+        <TabsContent value="schedule" className="space-y-6">
+          <ScheduleManagement
+            appointments={displayAppointments}
+            piojologists={piojologists}
+            serviceCatalog={serviceCatalog}
+            formatCurrency={formatCurrency}
+            updateAppointments={updateAppointments}
+            onAssignFromCalendar={handleAssignFromCalendar}
+          />
         </TabsContent>
 
         <TabsContent value="users" className="space-y-6">

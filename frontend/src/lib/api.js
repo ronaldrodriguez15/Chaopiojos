@@ -175,4 +175,48 @@ export const userService = {
   }
 };
 
+// Servicios de bookings
+export const bookingService = {
+  async getAll() {
+    try {
+      const response = await api.get('/bookings');
+      return { success: true, bookings: response.data };
+    } catch (error) {
+      console.error('Error obteniendo bookings:', error.response?.data);
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Error al obtener bookings' 
+      };
+    }
+  },
+
+  async update(bookingId, bookingData) {
+    try {
+      const response = await api.put(`/bookings/${bookingId}`, bookingData);
+      return { success: true, booking: response.data.booking };
+    } catch (error) {
+      console.error('Error actualizando booking:', error.response?.data);
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Error al actualizar booking',
+        errors: error.response?.data?.errors
+      };
+    }
+  },
+
+  async create(bookingData) {
+    try {
+      const response = await api.post('/bookings', bookingData);
+      return { success: true, booking: response.data.booking };
+    } catch (error) {
+      console.error('Error creando booking:', error.response?.data);
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Error al crear booking',
+        errors: error.response?.data?.errors
+      };
+    }
+  }
+};
+
 export default api;

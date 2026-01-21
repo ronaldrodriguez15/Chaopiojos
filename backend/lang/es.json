@@ -1,0 +1,6 @@
+{
+    "The :attribute has already been taken.": "El campo :attribute ya ha sido registrado.",
+    "The email has already been taken.": "El correo electrónico ya ha sido registrado.",
+    "Validation failed": "Falló la validación",
+    "Error de validación": "Error de validación"
+}

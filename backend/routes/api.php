@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ICalProxyController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\BookingController;
 
 /*
 |--------------------------------------------------------------------------
@@ -20,6 +21,7 @@ use App\Http\Controllers\UserController;
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/ical-proxy', [ICalProxyController::class, 'fetchICalFeed']);
+Route::post('/bookings', [BookingController::class, 'store']); // Ruta pública para crear reservas
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
@@ -32,4 +34,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Users CRUD
     Route::apiResource('users', UserController::class);
+
+    // Bookings - Solo lectura para admin
+    Route::get('/bookings', [BookingController::class, 'index']);
+    Route::put('/bookings/{id}', [BookingController::class, 'update']);
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import { Toaster } from '@/components/ui/toaster';
 import PiojologistView from '@/components/PiojologistView';
@@ -7,7 +7,6 @@ import Login from '@/components/Login';
 import { LogOut, Sparkles, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
-import { fetchICalEvents, convertICalEventsToAppointments } from '@/lib/icalService';
 import { authService, userService } from '@/lib/api';
 
 function App() {
@@ -46,9 +45,12 @@ function App() {
   }, []);
 
   const [appointments, setAppointments] = useState(() => {
-    const saved = localStorage.getItem('appointments');
-    return saved ? JSON.parse(saved) : [];
+    // Limpiar localStorage de appointments viejos de iCal
+    localStorage.removeItem('appointments');
+    return [];
   });
+
+  const [bookings, setBookings] = useState([]);
 
   const [products, setProducts] = useState(() => {
     const saved = localStorage.getItem('products');
@@ -85,6 +87,7 @@ function App() {
   useEffect(() => {
     if (currentUser && authService.isAuthenticated()) {
       loadUsers();
+      loadBookings();
     }
   }, [currentUser]);
 
@@ -97,6 +100,70 @@ function App() {
     setIsLoadingUsers(false);
   };
 
+  const loadBookings = async () => {
+    try {
+      const token = authService.getToken();
+      const response = await fetch('http://localhost:8000/api/bookings', {
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+          const data = await response.json();
+          // Transformar bookings al formato de appointments para compatibilidad
+          const transformedBookings = data.map(booking => {
+            // Extraer solo la fecha del formato ISO (YYYY-MM-DD)
+            const fechaISO = booking.fecha.split('T')[0];
+
+            // Normalizar estado desde backend (es/en) -> frontend (en)
+            const statusMap = {
+              pendiente: 'pending',
+              aceptado: 'accepted',
+              rechazado: 'rejected',
+              completado: 'completed',
+              asignado: 'assigned',
+              confirmado: 'assigned',
+              cancelado: 'rejected',
+              assigned: 'assigned',
+              accepted: 'accepted',
+              rejected: 'rejected',
+              completed: 'completed'
+            };
+            const estadoLower = (booking.estado || '').toLowerCase();
+            const normalizedStatus = statusMap[estadoLower] || 'pending';
+
+            const transformed = {
+              id: `booking-${booking.id}`,
+              backendId: booking.id,
+              clientName: booking.clientName,
+              serviceType: booking.serviceType,
+              date: fechaISO,
+              time: booking.hora,
+              whatsapp: booking.whatsapp,
+              email: booking.email,
+              direccion: booking.direccion,
+              barrio: booking.barrio,
+              numPersonas: booking.numPersonas,
+              hasAlergias: booking.hasAlergias,
+              detalleAlergias: booking.detalleAlergias,
+              referidoPor: booking.referidoPor,
+              status: normalizedStatus,
+              piojologistId: booking.piojologist_id || null,
+              isPublicBooking: true
+            };
+
+            return transformed;
+          });
+
+          setBookings(transformedBookings);
+        }
+    } catch (error) {
+      console.error('❌ Error al cargar bookings:', error);
+    }
+  };
+
   // Sync appointments and products with localStorage
   useEffect(() => {
     localStorage.setItem('appointments', JSON.stringify(appointments));
@@ -105,6 +172,11 @@ function App() {
   useEffect(() => {
     localStorage.setItem('products', JSON.stringify(products));
   }, [products]);
+
+  // Combinar appointments (iCal) con bookings (reservas públicas)
+  const allAppointments = useMemo(() => {
+    return [...appointments, ...bookings];
+  }, [appointments, bookings]);
 
   // Detectar nuevos agendamientos y generar notificaciones
   useEffect(() => {
@@ -115,10 +187,10 @@ function App() {
     
     if (currentUser.role === 'admin') {
       // Administrador: todos los agendamientos nuevos
-      relevantAppointments = appointments;
+      relevantAppointments = allAppointments;
     } else if (currentUser.role === 'piojologist') {
       // Piojóloga: solo los asignados a ella
-      relevantAppointments = appointments.filter(apt => apt.piojologistId === currentUser.id);
+      relevantAppointments = allAppointments.filter(apt => apt.piojologistId === currentUser.id);
     }
 
     // Detectar si hay nuevos agendamientos
@@ -143,7 +215,7 @@ function App() {
     }
 
     setLastAppointmentCount(relevantAppointments.length);
-  }, [appointments, currentUser, lastAppointmentCount]);
+  }, [allAppointments, currentUser, lastAppointmentCount]);
 
   // Marcar notificación como leída
   const markAsRead = (notificationId) => {
@@ -172,6 +244,16 @@ function App() {
       // Notificaciones de agendamientos (todos las ven según su rol)
       if (notif.type === 'appointment') return true;
       
+      // Notificaciones de asignación (solo piojólogas)
+      if (notif.type === 'assignment') {
+        return currentUser.role === 'piojologist' && notif.piojologistId === currentUser.id;
+      }
+      
+      // Notificaciones de aceptación/rechazo (solo admins)
+      if (notif.type === 'accepted' || notif.type === 'rejected') {
+        return currentUser.role === 'admin';
+      }
+      
       // Notificaciones de solicitud de productos (solo admins)
       if (notif.type === 'product-request') {
         return currentUser.role === 'admin' && notif.forRole === 'admin';
@@ -184,6 +266,22 @@ function App() {
       
       return true;
     });
+  };
+
+  // Handler para crear notificaciones desde componentes hijos
+  const handleNotify = (notificationData) => {
+    const newNotification = {
+      id: `notif-${notificationData.appointmentId || Date.now()}-${Date.now()}`,
+      type: notificationData.type,
+      appointmentId: notificationData.appointmentId,
+      message: notificationData.message,
+      timestamp: new Date(),
+      read: false,
+      appointment: notificationData.appointment,
+      piojologistId: notificationData.piojologistId,
+      piojologistName: notificationData.piojologistName
+    };
+    setNotifications(prev => [newNotification, ...prev]);
   };
 
   // Cerrar dropdown de notificaciones al hacer clic fuera
@@ -202,52 +300,13 @@ function App() {
     setAppointments(newAppointments);
   };
 
+  const updateBookingsState = (newBookings) => {
+    setBookings(newBookings);
+  };
+
   const updateProducts = (newProducts) => {
     setProducts(newProducts);
   };
-
-  // URL del feed iCal externo
-  const ICAL_URL = 'https://chaopiojos.com/?booked_ical&sh=f337b19223cc15bded974b91f266043c';
-
-  // Cargar eventos del iCal automáticamente (cada 5 minutos)
-  useEffect(() => {
-    const loadICalEvents = async () => {
-      try {
-        const icalEvents = await fetchICalEvents(ICAL_URL);
-        
-        const convertedAppointments = convertICalEventsToAppointments(icalEvents);
-        
-        if (convertedAppointments.length > 0) {
-          // Combinar eventos iCal con citas locales, eliminando duplicados
-          setAppointments(prevAppointments => {
-            const localAppointments = prevAppointments.filter(a => !a.isExternal);
-            const combined = [...localAppointments, ...convertedAppointments];
-            
-            // Eliminar duplicados basados en ID
-            const uniqueMap = new Map();
-            combined.forEach(app => {
-              if (!uniqueMap.has(app.id)) {
-                uniqueMap.set(app.id, app);
-              }
-            });
-            
-            const result = Array.from(uniqueMap.values());
-            return result;
-          });
-        }
-      } catch (error) {
-        // Error silencioso
-      }
-    };
-
-    // Cargar al montar el componente
-    loadICalEvents();
-
-    // Recargar cada 5 minutos
-    const interval = setInterval(loadICalEvents, 5 * 60 * 1000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   // Sincronizar productRequests con localStorage
   useEffect(() => {
@@ -543,13 +602,16 @@ function App() {
                 {currentUser.role === 'piojologist' && (
                   <PiojologistView 
                     currentUser={currentUser}
-                    appointments={appointments}
+                    appointments={allAppointments}
                     updateAppointments={updateAppointments}
+                    bookings={bookings}
+                    updateBookings={updateBookingsState}
                     products={products}
                     handleCompleteService={handleCompleteService}
                     formatCurrency={formatCurrency}
                     productRequests={productRequests}
                     onCreateProductRequest={handleCreateProductRequest}
+                    onNotify={handleNotify}
                   />
                 )}
 
@@ -559,16 +621,21 @@ function App() {
                     handleCreateUser={handleCreateUser}
                     handleUpdateUser={handleUpdateUser}
                     handleDeleteUser={handleDeleteUser}
-                    appointments={appointments}
+                    appointments={allAppointments}
+                    baseAppointments={appointments}
+                    bookings={bookings}
                     updateAppointments={updateAppointments}
+                    updateBookings={updateBookingsState}
                     piojologists={piojologists}
                     products={products}
                     updateProducts={updateProducts}
                     serviceCatalog={serviceCatalog}
                     formatCurrency={formatCurrency}
+                    syncICalEvents={() => {}}
                     productRequests={productRequests}
                     onApproveRequest={handleApproveProductRequest}
                     onRejectRequest={handleRejectProductRequest}
+                    onNotify={handleNotify}
                   />
                 )}
               </div>

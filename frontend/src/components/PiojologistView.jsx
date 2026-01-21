@@ -15,31 +15,138 @@ import {
 } from '@/components/ui/dialog';
 import ScheduleCalendar from '@/components/ScheduleCalendar';
 import ProductRequestView from '@/components/ProductRequestView';
+import { bookingService } from '@/lib/api';
 
-const PiojologistView = ({ currentUser, appointments, updateAppointments, products, handleCompleteService, formatCurrency, productRequests, onCreateProductRequest }) => {
+const PiojologistView = ({ currentUser, appointments, updateAppointments, bookings = [], updateBookings, products, handleCompleteService, formatCurrency, productRequests, onCreateProductRequest, onNotify }) => {
   const { toast } = useToast();
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [finishingAppointmentId, setFinishingAppointmentId] = useState(null);
 
-  const handleAccept = (appointmentId) => {
-    const updatedAppointments = appointments.map(apt => 
-      apt.id === appointmentId ? { ...apt, status: 'confirmed' } : apt
-    );
-    updateAppointments(updatedAppointments);
+  const handleAccept = async (appointmentId) => {
+    const appointment = appointments.find(apt => apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId);
+    const backendId = appointment?.backendId || appointment?.bookingId || appointmentId;
     
-    toast({
-      title: "¡Misión Aceptada! ⭐",
-      description: "¡A cazar piojitos!",
-      className: "bg-green-100 border-2 border-green-200 text-green-700 rounded-2xl font-bold"
-    });
+    try {
+      // Actualizar en el backend
+      if (appointment?.isPublicBooking || appointment?.backendId || appointmentId?.toString().startsWith('booking-')) {
+        const result = await bookingService.update(backendId, {
+          status: 'accepted'
+        });
+
+        if (!result.success) {
+          toast({
+            title: "Error",
+            description: result.message || "No se pudo aceptar el agendamiento",
+            variant: "destructive",
+            className: "bg-red-100 text-red-800 rounded-2xl border-2 border-red-200"
+          });
+          return;
+        }
+      }
+
+      // Actualizar estado local
+      if (appointment?.isPublicBooking) {
+        const updatedBookings = bookings.map(apt => 
+          (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId) ? { ...apt, status: 'accepted' } : apt
+        );
+        updateBookings && updateBookings(updatedBookings);
+      } else {
+        const updatedAppointments = appointments
+          .filter(a => !a.isPublicBooking)
+          .map(apt => (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId) ? { ...apt, status: 'accepted' } : apt);
+        updateAppointments(updatedAppointments);
+      }
+      
+      // Notify admins about acceptance
+      if (onNotify) {
+        onNotify({
+          type: 'accepted',
+          appointmentId: appointmentId,
+          piojologistId: currentUser.id,
+          piojologistName: currentUser.name,
+          message: `${currentUser.name} aceptó el agendamiento de ${appointment?.clientName}`,
+          appointment: appointment
+        });
+      }
+      
+      toast({
+        title: "¡Misión Aceptada! ⭐",
+        description: "¡A cazar piojitos!",
+        className: "bg-green-100 border-2 border-green-200 text-green-700 rounded-2xl font-bold"
+      });
+    } catch (error) {
+      console.error('Error al aceptar agendamiento:', error);
+      toast({
+        title: "Error",
+        description: "Hubo un problema al aceptar el agendamiento",
+        variant: "destructive",
+        className: "bg-red-100 text-red-800 rounded-2xl border-2 border-red-200"
+      });
+    }
   };
 
-  const handleReject = (appointmentId) => {
-    const updatedAppointments = appointments.map(apt => 
-      apt.id === appointmentId ? { ...apt, status: 'cancelled' } : apt
-    );
-    updateAppointments(updatedAppointments);
-    toast({ title: "Misión rechazada 🙅", className: "bg-red-100 rounded-2xl" });
+  const handleReject = async (appointmentId) => {
+    const appointment = appointments.find(apt => apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId);
+    const backendId = appointment?.backendId || appointment?.bookingId || appointmentId;
+    
+    try {
+      // Actualizar en el backend
+      if (appointment?.isPublicBooking || appointment?.backendId || appointmentId?.toString().startsWith('booking-')) {
+        const result = await bookingService.update(backendId, {
+          status: 'rejected',
+          piojologistId: null
+        });
+
+        if (!result.success) {
+          toast({
+            title: "Error",
+            description: result.message || "No se pudo rechazar el agendamiento",
+            variant: "destructive",
+            className: "bg-red-100 text-red-800 rounded-2xl border-2 border-red-200"
+          });
+          return;
+        }
+      }
+
+      // Actualizar estado local
+      if (appointment?.isPublicBooking) {
+        const updatedBookings = bookings.map(apt => 
+          (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId) ? { ...apt, status: 'rejected', piojologistId: null, piojologistName: null } : apt
+        );
+        updateBookings && updateBookings(updatedBookings);
+      } else {
+        const updatedAppointments = appointments
+          .filter(a => !a.isPublicBooking)
+          .map(apt => (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId) ? { ...apt, status: 'rejected', piojologistId: null, piojologistName: null } : apt);
+        updateAppointments(updatedAppointments);
+      }
+      
+      // Notify admins about rejection so they can reassign
+      if (onNotify) {
+        onNotify({
+          type: 'rejected',
+          appointmentId: appointmentId,
+          piojologistId: currentUser.id,
+          piojologistName: currentUser.name,
+          message: `${currentUser.name} rechazó el agendamiento de ${appointment?.clientName}. Necesita reasignación.`,
+          appointment: appointment
+        });
+      }
+      
+      toast({ 
+        title: "Misión rechazada 🙅", 
+        description: "El agendamiento regresó a pendientes para reasignación.",
+        className: "bg-red-100 rounded-2xl border-2 border-red-200 text-red-700 font-bold" 
+      });
+    } catch (error) {
+      console.error('Error al rechazar agendamiento:', error);
+      toast({
+        title: "Error",
+        description: "Hubo un problema al rechazar el agendamiento",
+        variant: "destructive",
+        className: "bg-red-100 text-red-800 rounded-2xl border-2 border-red-200"
+      });
+    }
   };
 
   const handleProductToggle = (productId) => {
@@ -62,8 +169,9 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, produc
     });
   };
 
-  const assignedToMe = appointments.filter(apt => apt.piojologistId === currentUser.id && apt.status === 'confirmed');
-  const myCalendarAppointments = appointments.filter(apt => apt.piojologistId === currentUser.id && apt.status !== 'cancelled');
+  const pendingAssignments = appointments.filter(apt => apt.piojologistId === currentUser.id && apt.status === 'assigned');
+  const assignedToMe = appointments.filter(apt => apt.piojologistId === currentUser.id && (apt.status === 'accepted' || apt.status === 'confirmed'));
+  const myCalendarAppointments = appointments.filter(apt => apt.piojologistId === currentUser.id && apt.status !== 'cancelled' && apt.status !== 'rejected');
   const completedHistory = appointments.filter(apt => apt.piojologistId === currentUser.id && apt.status === 'completed');
 
   return (
@@ -101,6 +209,73 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, produc
            </div>
          </div>
       </motion.div>
+
+      {/* Sección de Asignaciones Pendientes */}
+      {pendingAssignments.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gradient-to-br from-emerald-200 via-teal-100 to-cyan-100 rounded-[3rem] p-8 shadow-2xl border-4 border-emerald-300 mb-8"
+        >
+          <h2 className="text-3xl font-black text-emerald-900 mb-6 flex items-center gap-3">
+            🔔 Asignaciones Pendientes ({pendingAssignments.length})
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {pendingAssignments.map(apt => (
+              <div key={apt.id} className="bg-white rounded-[2rem] p-6 shadow-lg border-4 border-emerald-200 relative overflow-hidden">
+                <div className="absolute top-0 right-0 bg-emerald-400 text-white px-4 py-1 rounded-bl-2xl font-black text-xs uppercase tracking-wider">
+                  Esperando Aceptación
+                </div>
+                
+                <div className="flex items-center gap-3 mb-4 mt-2">
+                  <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-2xl text-emerald-700">
+                    ⏳
+                  </div>
+                  <div className="flex-grow">
+                    <h3 className="font-black text-gray-800 text-lg leading-tight">{apt.clientName}</h3>
+                    <p className="text-xs text-emerald-700 font-bold uppercase">{apt.serviceType}</p>
+                  </div>
+                </div>
+
+                <div className="bg-emerald-50 p-4 rounded-2xl space-y-2 mb-4">
+                  <div className="flex justify-between items-center text-sm font-bold text-gray-600">
+                    <span>💰 Valor:</span>
+                    <span className="text-purple-600">{formatCurrency(apt.estimatedPrice || 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm font-bold text-gray-600">
+                    <span>📅 Fecha:</span>
+                    <span className="text-emerald-700">{new Date(apt.date).toLocaleDateString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm font-bold text-gray-600">
+                    <span>⏰ Hora:</span>
+                    <span className="text-emerald-700">{apt.time}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm font-bold text-gray-600">
+                    <span>📍 Dirección:</span>
+                    <span className="text-gray-800 text-xs">{apt.direccion || apt.address || apt.addressLine || 'Sin dirección registrada'}</span>
+                  </div>
+                </div>
+
+                {/* Botones Aceptar/Rechazar */}
+                <div className="flex gap-3 mt-4">
+                  <button
+                    onClick={() => handleAccept(apt.id)}
+                    className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-black py-3 px-4 rounded-2xl transition-all shadow-lg hover:shadow-xl active:scale-95"
+                  >
+                    ✓ Aceptar
+                  </button>
+                  <button
+                    onClick={() => handleReject(apt.id)}
+                    className="flex-1 bg-red-500 hover:bg-red-600 text-white font-black py-3 px-4 rounded-2xl transition-all shadow-lg hover:shadow-xl active:scale-95"
+                  >
+                    ✗ Rechazar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       <Tabs defaultValue="agenda" className="w-full">
         <TabsList className="w-full bg-white/50 p-2 rounded-[2rem] border-2 border-green-100 mb-8 flex-wrap h-auto gap-2">
@@ -195,20 +370,38 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, produc
                      </div>
                    )}
 
-                   <div className="mt-auto">
-                     <Dialog>
-                       <DialogTrigger asChild>
-                         <Button 
-                           onClick={() => {
-                             setFinishingAppointmentId(apt.id);
-                             setSelectedProducts([]);
-                           }}
-                           className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-2xl py-6 font-bold shadow-md border-b-4 border-blue-700 active:border-b-0 active:translate-y-1"
+                   <div className="mt-auto space-y-2">
+                     {apt.status === 'pending' && (
+                       <div className="flex gap-2">
+                         <Button
+                           onClick={() => handleAccept(apt.id)}
+                           className="flex-1 bg-green-500 hover:bg-green-600 text-white rounded-2xl py-4 font-bold shadow-md border-b-4 border-green-700 active:border-b-0 active:translate-y-1"
                          >
-                           <Check className="mr-2" /> Completar Servicio
+                           <Check className="mr-2" /> Aceptar
                          </Button>
-                       </DialogTrigger>
-                       <DialogContent className="rounded-[2.5rem] border-8 border-blue-100 p-0 overflow-hidden sm:max-w-md bg-white">
+                         <Button
+                           onClick={() => handleReject(apt.id)}
+                           className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-2xl py-4 font-bold shadow-md border-b-4 border-red-700 active:border-b-0 active:translate-y-1"
+                         >
+                           <X className="mr-2" /> Rechazar
+                         </Button>
+                       </div>
+                     )}
+
+                     {apt.status === 'accepted' && (
+                       <Dialog>
+                         <DialogTrigger asChild>
+                           <Button 
+                             onClick={() => {
+                               setFinishingAppointmentId(apt.id);
+                               setSelectedProducts([]);
+                             }}
+                             className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-2xl py-6 font-bold shadow-md border-b-4 border-blue-700 active:border-b-0 active:translate-y-1"
+                           >
+                             <Check className="mr-2" /> Completar Servicio
+                           </Button>
+                         </DialogTrigger>
+                         <DialogContent className="rounded-[2.5rem] border-8 border-blue-100 p-0 overflow-hidden sm:max-w-md bg-white">
                         <div className="bg-blue-400 p-6 text-white text-center">
                           <DialogHeader>
                             <DialogTitle className="text-2xl font-black">Reporte de Misión 📋</DialogTitle>
@@ -251,6 +444,15 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, produc
                         </div>
                        </DialogContent>
                      </Dialog>
+                     )}
+
+                     {(apt.status === 'rejected' || apt.status === 'completed') && (
+                       <div className={`w-full p-4 rounded-2xl text-center font-bold ${
+                         apt.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                       }`}>
+                         {apt.status === 'rejected' ? '❌ Servicio Rechazado' : '✅ Servicio Completado'}
+                       </div>
+                     )}
                    </div>
                 </div>
               ))

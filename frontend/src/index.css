@@ -72,3 +72,54 @@ body {
     @apply w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none cursor-pointer appearance-none; /* base para selects */
   }
 }
+
+/* Toast Container - Forzar que esté siempre encima de todo */
+#toast-container {
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  pointer-events: none !important;
+  isolation: isolate !important;
+  transform: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  opacity: 1 !important;
+  will-change: auto !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+}
+
+/* Toast Notifications - Asegurar que siempre estén encima de todo */
+[data-radix-toast-viewport] {
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  isolation: isolate !important;
+  transform: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  opacity: 1 !important;
+  pointer-events: none !important;
+  mix-blend-mode: normal !important;
+}
+
+[data-radix-toast-viewport] > * {
+  pointer-events: auto !important;
+  transform: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  opacity: 1 !important;
+  mix-blend-mode: normal !important;
+}
+
+/* Asegurar que los toasts tengan contraste completo y sombra fuerte */
+[role="status"][data-state="open"],
+[role="status"][data-state="closed"] {
+  background-color: white !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5) !important;
+  position: relative !important;
+  z-index: 2147483647 !important;
+  transform: none !important;
+  filter: none !important;
+  isolation: isolate !important;
+}
