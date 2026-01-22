@@ -4,12 +4,37 @@ import { Package, ShoppingCart, CheckCircle, XCircle, Clock, Plus, Minus } from 
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 
-const ProductRequestView = ({ products, currentUser, onCreateRequest, productRequests }) => {
+const ProductRequestView = ({ products, currentUser, onCreateRequest, productRequests, formatCurrency }) => {
   const { toast } = useToast();
   
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [isKitCompleto, setIsKitCompleto] = useState(false);
   const [notes, setNotes] = useState('');
+
+  const kitPrice = 300000;
+  const hasKitBefore = productRequests.some(req => req.piojologistId === currentUser.id && req.isKitCompleto);
+  const kitBenefitUnlocked = !hasKitBefore;
+  const kitBenefitApplied = isKitCompleto && kitBenefitUnlocked;
+
+  const toMoney = (amount = 0) => {
+    if (typeof formatCurrency === 'function') return formatCurrency(amount);
+    return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(amount);
+  };
+
+  const selectedItemsWithPrice = selectedProducts.map(sel => {
+    const product = products.find(p => p.id === sel.productId);
+    const price = product?.price ?? 0;
+    return {
+      ...sel,
+      price,
+      subtotal: price * sel.quantity
+    };
+  });
+
+  const selectedTotal = selectedItemsWithPrice.reduce((sum, item) => sum + item.subtotal, 0);
+  const studioContribution = isKitCompleto ? (kitBenefitApplied ? kitPrice / 2 : 0) : 0;
+  const piojologistContribution = isKitCompleto ? kitPrice - studioContribution : selectedTotal;
+  const requestTotal = isKitCompleto ? kitPrice : selectedTotal;
 
   // Filtrar solicitudes del usuario actual
   const myRequests = productRequests.filter(req => req.piojologistId === currentUser.id);
@@ -63,9 +88,14 @@ const ProductRequestView = ({ products, currentUser, onCreateRequest, productReq
     }
 
     const requestData = {
-      items: isKitCompleto ? [] : selectedProducts,
+      items: isKitCompleto ? [] : selectedItemsWithPrice,
       isKitCompleto,
-      notes
+      notes,
+      totalPrice: requestTotal,
+      kitPrice,
+      studioContribution,
+      piojologistContribution,
+      isFirstKitBenefit: kitBenefitApplied
     };
 
     const result = onCreateRequest(requestData);
@@ -143,7 +173,10 @@ const ProductRequestView = ({ products, currentUser, onCreateRequest, productReq
             />
             <div className="flex-1">
               <span className="font-bold text-lg text-purple-700">🎁 Kit Completo</span>
-              <p className="text-sm text-purple-600">Incluye todos los productos disponibles</p>
+              <p className="text-sm text-purple-600">Valor: {toMoney(kitPrice)} · Incluye todos los productos</p>
+              <p className="text-xs font-bold text-green-700">
+                {kitBenefitUnlocked ? '✨ Primer kit: el estudio cubre 50% (150.000) y tú 50% (150.000)' : 'Próximos kits: cubres el valor completo'}
+              </p>
             </div>
           </label>
         </div>
@@ -164,6 +197,7 @@ const ProductRequestView = ({ products, currentUser, onCreateRequest, productReq
                   <div className="flex-1">
                     <h3 className="font-bold text-gray-800">{product.name}</h3>
                     <p className="text-sm text-gray-600">Stock: {product.stock}</p>
+                    <p className="text-xs font-bold text-purple-600">{toMoney(product.price)}</p>
                   </div>
                 </div>
 
@@ -209,12 +243,17 @@ const ProductRequestView = ({ products, currentUser, onCreateRequest, productReq
           <div className="bg-purple-50 p-4 rounded-2xl mb-4">
             <h3 className="font-bold text-purple-700 mb-2">Productos Seleccionados:</h3>
             <ul className="space-y-1">
-              {selectedProducts.map(p => (
-                <li key={p.productId} className="text-sm text-purple-600">
-                  • {p.productName} x{p.quantity}
+              {selectedItemsWithPrice.map(p => (
+                <li key={p.productId} className="text-sm text-purple-600 flex justify-between">
+                  <span>• {p.productName} x{p.quantity}</span>
+                  <span className="font-bold">{toMoney(p.subtotal)}</span>
                 </li>
               ))}
             </ul>
+            <div className="mt-3 flex justify-between text-sm font-bold text-purple-800">
+              <span>Total productos</span>
+              <span>{toMoney(selectedTotal)}</span>
+            </div>
           </div>
         )}
 
@@ -284,14 +323,31 @@ const ProductRequestView = ({ products, currentUser, onCreateRequest, productReq
                   </h3>
                   {!request.isKitCompleto && (
                     <ul className="space-y-1">
-                      {request.items.map((item, idx) => (
-                        <li key={idx} className="text-sm text-gray-700">
-                          • {item.productName} x{item.quantity}
+                      {(request.items || []).map((item, idx) => (
+                        <li key={idx} className="text-sm text-gray-700 flex justify-between">
+                          <span>• {item.productName} x{item.quantity}</span>
+                          {item.price ? <span className="font-bold">{toMoney(item.price * (item.quantity || 1))}</span> : null}
                         </li>
                       ))}
                     </ul>
                   )}
                 </div>
+
+                {request.isKitCompleto ? (
+                  <div className="bg-white p-3 rounded-xl border-2 border-purple-100">
+                    <p className="text-sm text-gray-700 font-bold">Valor kit: {toMoney(request.kitPrice || kitPrice)}</p>
+                    <p className="text-xs text-green-700 font-bold">Aporta estudio: {toMoney(request.studioContribution || 0)}</p>
+                    <p className="text-xs text-purple-700 font-bold">Aporta piojóloga: {toMoney(request.piojologistContribution || (request.kitPrice || kitPrice))}</p>
+                    {request.isFirstKitBenefit && (
+                      <p className="text-xs text-emerald-600 font-black mt-1">Beneficio de primer kit aplicado (50%)</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-white p-3 rounded-xl border-2 border-gray-100 flex justify-between text-sm font-bold text-gray-700">
+                    <span>Total estimado</span>
+                    <span>{toMoney(request.totalPrice || (request.items || []).reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0))}</span>
+                  </div>
+                )}
 
                 {request.notes && (
                   <div className="mb-3">

@@ -17,6 +17,28 @@ const AddressAutocomplete = ({ value, onChange, onSelect }) => {
   const [dropdownHeight, setDropdownHeight] = useState(300);
   const [openDirection, setOpenDirection] = useState('down');
 
+  // Geocodificar una dirección puntual
+  const geocodeAddress = async (query) => {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
+        query + ', Colombia'
+      )}&format=json&limit=1`,
+      {
+        headers: { 'Accept': 'application/json' }
+      }
+    );
+    const data = await response.json();
+    if (!data || data.length === 0) return null;
+    const first = data[0];
+    return {
+      id: first.osm_id,
+      name: first.display_name.split(',')[0],
+      fullName: first.display_name,
+      lat: parseFloat(first.lat),
+      lng: parseFloat(first.lon)
+    };
+  };
+
   // Buscar sugerencias de direcciones
   const fetchSuggestions = async (query) => {
     if (!query || query.trim().length < 3) {
@@ -37,17 +59,52 @@ const AddressAutocomplete = ({ value, onChange, onSelect }) => {
       );
 
       const data = await response.json();
-      
-      // Procesar las sugerencias
-      const processedSuggestions = data.map(item => ({
-        id: item.osm_id,
-        name: item.display_name.split(',')[0], // Primer parte (más clara)
-        fullName: item.display_name,
-        lat: parseFloat(item.lat),
-        lng: parseFloat(item.lon)
-      }));
 
-      setSuggestions(processedSuggestions);
+      // Procesar las sugerencias con un detalle breve priorizando barrio/sector/conjunto y ciudad
+      const processedSuggestions = data.map(item => {
+        const parts = item.display_name.split(',').map((p) => p.trim()).filter(Boolean);
+        const banned = /(UPZ|Localidad|RAP|Departamento|Department|Province|Provincia|Region|Región|Distrito Capital|Capital District|Colombia)/i;
+        const keyword = /(conjunto|urbaniz|barrio|unidad|residencial|edificio|condominio|casa|apartamento|apto|torre|bloque|sector|vereda)/i;
+
+        const houseLike = parts[1] && /[0-9]/.test(parts[1]) && parts[1].length <= 16;
+        const primaryName = houseLike ? `${parts[0]} ${parts[1]}` : parts[0];
+
+        const cleaned = parts.slice(1).filter((p) => p && !banned.test(p) && !/^\d{4,}$/.test(p));
+        const keywordParts = cleaned.filter((p) => keyword.test(p));
+
+        const ordered = [];
+        if (houseLike) {
+          ordered.push(parts[1]);
+        }
+        for (const p of [...keywordParts, ...cleaned]) {
+          if (!ordered.includes(p)) ordered.push(p);
+        }
+
+        const lastUseful = cleaned[cleaned.length - 1];
+        if (lastUseful && !ordered.includes(lastUseful)) ordered.push(lastUseful);
+
+        const compactDetail = ordered.slice(0, 3).join(', ') || cleaned[0] || parts.slice(1).join(', ');
+
+        return {
+          id: item.osm_id,
+          name: primaryName,
+          fullName: item.display_name,
+          compactDetail,
+          lat: parseFloat(item.lat),
+          lng: parseFloat(item.lon)
+        };
+      });
+
+      const manualSuggestion = query.trim().length >= 3 ? [{
+        id: 'manual',
+        name: query.trim(),
+        fullName: query.trim(),
+        compactDetail: 'Usar dirección escrita',
+        lat: null,
+        lng: null
+      }] : [];
+
+      setSuggestions([...manualSuggestion, ...processedSuggestions]);
       setIsOpen(true);
       setSelectedIndex(-1);
     } catch (error) {
@@ -75,9 +132,20 @@ const AddressAutocomplete = ({ value, onChange, onSelect }) => {
   };
 
   // Seleccionar sugerencia con click
-  const handleSelectSuggestion = (suggestion) => {
-    onChange(suggestion.fullName);
-    onSelect(suggestion);
+  const handleSelectSuggestion = async (suggestion) => {
+    // Si el usuario elige la opción manual, geocodificamos rápido para intentar ubicar
+    if (suggestion.id === 'manual') {
+      setIsLoading(true);
+      const geocoded = await geocodeAddress(suggestion.name);
+      setIsLoading(false);
+      const resolved = geocoded || suggestion;
+      onChange(resolved.fullName || suggestion.name);
+      if (onSelect) onSelect(resolved);
+    } else {
+      onChange(suggestion.fullName);
+      if (onSelect) onSelect(suggestion);
+    }
+
     setSuggestions([]);
     setIsOpen(false);
     setSelectedIndex(-1);
@@ -179,6 +247,22 @@ const AddressAutocomplete = ({ value, onChange, onSelect }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const getDropdownPlacement = () => {
+    if (!inputPosition) return { top: 0, maxHeight: '60vh' };
+    const margin = 8;
+    const viewportH = window.innerHeight;
+    const belowSpace = viewportH - inputPosition.topBelow - margin;
+    const aboveSpace = inputPosition.topAbove - margin;
+    const openDown = openDirection === 'down';
+
+    const maxHeight = `${Math.max(200, openDown ? belowSpace : aboveSpace - margin)}px`;
+    const top = openDown
+      ? inputPosition.topBelow
+      : Math.max(margin, inputPosition.topAbove - (dropdownHeight || 0) - margin);
+
+    return { top, maxHeight };
+  };
+
   return (
     <div className="relative" ref={containerRef}>
       <div className="relative group">
@@ -214,7 +298,7 @@ const AddressAutocomplete = ({ value, onChange, onSelect }) => {
               transition={{ duration: 0.2 }}
               style={{
                 position: 'absolute',
-                top: `${openDirection === 'down' ? inputPosition.topBelow : (inputPosition.topAbove - dropdownHeight - 8)}px`,
+                top: `${getDropdownPlacement().top}px`,
                 left: `${inputPosition.left}px`,
                 width: `${inputPosition.width}px`,
                 marginTop: '8px'
@@ -223,7 +307,8 @@ const AddressAutocomplete = ({ value, onChange, onSelect }) => {
               ref={dropdownRef}
             >
               <div
-                className="max-h-[60vh] overflow-y-auto overscroll-contain"
+                className="overflow-y-auto overscroll-contain"
+                style={{ maxHeight: getDropdownPlacement().maxHeight }}
                 onWheel={(e) => {
                   // Evita que el scroll del listado mueva el modal detrás
                   e.stopPropagation();
@@ -249,7 +334,7 @@ const AddressAutocomplete = ({ value, onChange, onSelect }) => {
                           {suggestion.name}
                         </p>
                         <p className="text-xs text-gray-500 truncate">
-                          {suggestion.fullName.split(',').slice(1).join(',')}
+                          {suggestion.compactDetail || suggestion.fullName.split(',').slice(1).join(',')}
                         </p>
                       </div>
                     </div>
@@ -272,7 +357,7 @@ const AddressAutocomplete = ({ value, onChange, onSelect }) => {
               exit={{ opacity: 0, y: -10 }}
               style={{
                 position: 'absolute',
-                top: `${openDirection === 'down' ? inputPosition.topBelow : (inputPosition.topAbove - 180)}px`,
+                top: `${getDropdownPlacement().top}px`,
                 left: `${inputPosition.left}px`,
                 width: `${inputPosition.width}px`,
                 marginTop: '8px'

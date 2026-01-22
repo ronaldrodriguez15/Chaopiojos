@@ -44,6 +44,7 @@ class BookingController extends Controller
             'hasAlergias' => 'required|boolean',
             'detalleAlergias' => 'nullable|string',
             'referidoPor' => 'nullable|string|max:255',
+            'paymentMethod' => ['nullable', Rule::in(['pay_now', 'pay_later'])],
         ]);
 
         if ($validator->fails()) {
@@ -66,6 +67,7 @@ class BookingController extends Controller
             'hasAlergias' => $request->hasAlergias,
             'detalleAlergias' => $request->detalleAlergias,
             'referidoPor' => $request->referidoPor,
+            'payment_method' => $request->paymentMethod ?? 'pay_later',
             'estado' => 'pendiente'
         ]);
 
@@ -98,12 +100,18 @@ class BookingController extends Controller
         $booking = Booking::findOrFail($id);
 
         $validator = Validator::make($request->all(), [
-            'estado' => ['nullable', 'string', Rule::in(['pendiente', 'confirmado', 'completado', 'cancelado', 'assigned', 'accepted', 'rejected'])],
+            'estado' => ['nullable', 'string', Rule::in(['pendiente', 'confirmado', 'completado', 'cancelado', 'assigned', 'accepted', 'rejected', 'completed'])],
             'piojologist_id' => ['nullable', 'exists:users,id'],
             'piojologistId' => ['nullable', 'exists:users,id'],
             'piojologistName' => ['nullable', 'string'],
             'status' => ['nullable', 'string'],
-            'estimatedPrice' => ['nullable', 'numeric']
+            'estimatedPrice' => ['nullable', 'numeric'],
+            'plan_type' => ['nullable', 'string', 'max:255'],
+            'price_confirmed' => ['nullable', 'numeric'],
+            'service_notes' => ['nullable', 'string'],
+            'paymentMethod' => ['nullable', Rule::in(['pay_now', 'pay_later'])],
+            'rejection_history' => ['nullable'],
+            'rejectionHistory' => ['nullable']
         ]);
 
         if ($validator->fails()) {
@@ -119,6 +127,48 @@ class BookingController extends Controller
         }
         if ($request->has('status')) {
             $booking->estado = $request->status;
+        }
+
+        if ($request->has('plan_type')) {
+            $booking->plan_type = $request->plan_type;
+        }
+        if ($request->has('price_confirmed')) {
+            $booking->price_confirmed = $request->price_confirmed;
+        }
+        if ($request->has('service_notes')) {
+            $booking->service_notes = $request->service_notes;
+        }
+
+        if ($request->has('paymentMethod')) {
+            $booking->payment_method = $request->paymentMethod;
+        }
+
+        // Persistir historial de rechazos
+        $normalizeHistory = function ($value) {
+            if (is_array($value)) return array_values(array_filter($value));
+            if (is_string($value) && trim($value) !== '') {
+                try {
+                    $parsed = json_decode($value, true);
+                    if (is_array($parsed)) return array_values(array_filter($parsed));
+                } catch (\Throwable $e) {
+                    // ignore json errors
+                }
+                return array_values(array_filter(array_map('trim', explode(',', $value))));
+            }
+            return [];
+        };
+
+        $incomingHistory = null;
+        if ($request->has('rejection_history')) {
+            $incomingHistory = $normalizeHistory($request->input('rejection_history'));
+        } elseif ($request->has('rejectionHistory')) {
+            $incomingHistory = $normalizeHistory($request->input('rejectionHistory'));
+        }
+
+        if ($incomingHistory !== null) {
+            $existing = $normalizeHistory($booking->rejection_history ?? []);
+            $merged = array_values(array_unique(array_merge($existing, $incomingHistory)));
+            $booking->rejection_history = $merged;
         }
 
         // Actualizar piojologist_id (acepta tanto snake_case como camelCase)

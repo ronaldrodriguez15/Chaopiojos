@@ -11,6 +11,7 @@ import {
   DialogTitle,
   DialogDescription
 } from '@/components/ui/dialog';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
 
 const WEEK_DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -60,6 +61,21 @@ const serviceCatalog = [
   { value: 'Muy Alto', label: 'Nivel Muy Alto' }
 ];
 
+const boldPaymentOptions = {
+  Normal: {
+    price: '$80.000',
+    link: 'https://checkout.bold.co/payment/LNK_89Z6PUUSRS'
+  },
+  Elevado: {
+    price: '$110.000',
+    link: 'https://checkout.bold.co/payment/LNK_Y2J2USYK3U'
+  },
+  'Muy Alto': {
+    price: '$130.000',
+    link: 'https://checkout.bold.co/payment/LNK_GXTCYS2BEN'
+  }
+};
+
 const PublicBooking = () => {
   const [bookings, setBookings] = useState(() => {
     const saved = localStorage.getItem('publicBookings');
@@ -78,6 +94,8 @@ const PublicBooking = () => {
   const [showForm, setShowForm] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState(null);
+  const [payNowAcknowledged, setPayNowAcknowledged] = useState(false);
+  const [showRecommendations, setShowRecommendations] = useState(false);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -92,10 +110,23 @@ const PublicBooking = () => {
     hasAlergias: false,
     detalleAlergias: '',
     referidoPor: '',
-    terminosAceptados: false
+    terminosAceptados: false,
+    paymentMethod: 'pay_later'
   });
 
   const shareLink = `${window.location.origin}/agenda`;
+  const currentPaymentOption = boldPaymentOptions[form.serviceType];
+
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  const selectPaymentMethod = (method) => {
+    handleChange('paymentMethod', method);
+    setPayNowAcknowledged(method === 'pay_later');
+  };
 
   const monthLabel = useMemo(() => {
     return new Intl.DateTimeFormat('es-ES', {
@@ -154,6 +185,8 @@ const PublicBooking = () => {
     setSelectedSlot('');
     setSelectedDate(null);
     setIsModalOpen(false);
+    setPayNowAcknowledged(false);
+    setShowRecommendations(false);
     setForm({
       name: '',
       email: '',
@@ -168,7 +201,8 @@ const PublicBooking = () => {
       hasAlergias: false,
       detalleAlergias: '',
       referidoPor: '',
-      terminosAceptados: false
+      terminosAceptados: false,
+      paymentMethod: 'pay_later'
     });
   };
 
@@ -197,6 +231,19 @@ const PublicBooking = () => {
         title: '📅 Selecciona día y hora',
         description: 'Escoge un día disponible y una hora libre',
         duration: 3000
+      });
+      return;
+    }
+
+    const selectedDateStart = new Date(selectedDate);
+    selectedDateStart.setHours(0, 0, 0, 0);
+
+    if (selectedDateStart < today) {
+      toast({
+        title: '⏰ Fecha no disponible',
+        description: 'Solo puedes agendar desde hoy en adelante.',
+        duration: 3000,
+        variant: 'destructive'
       });
       return;
     }
@@ -266,7 +313,8 @@ const PublicBooking = () => {
         numPersonas: parseInt(form.numPersonas),
         hasAlergias: form.hasAlergias,
         detalleAlergias: form.detalleAlergias || null,
-        referidoPor: form.referidoPor || null
+        referidoPor: form.referidoPor || null,
+        paymentMethod: form.paymentMethod
       };
 
       const response = await fetch('http://localhost:8000/api/bookings', {
@@ -299,6 +347,8 @@ const PublicBooking = () => {
       setIsModalOpen(false); // Cerrar el modal
       setShowConfirmation(true); // Mostrar confirmación en la página principal
       setShowForm(false);
+      setPayNowAcknowledged(false);
+      setShowRecommendations(false);
       
       // Scroll hacia arriba para ver el mensaje de confirmación
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -353,8 +403,8 @@ const PublicBooking = () => {
             className="inline-block"
           >
             <div className="bg-white rounded-3xl px-8 py-4 md:px-12 md:py-6 shadow-2xl border-4 border-orange-200 relative inline-block">
-              <div className="absolute -top-6 md:-top-8 left-1/2 transform -translate-x-1/2 bg-yellow-400 p-2 md:p-3 rounded-full border-4 border-white shadow-lg">
-                <span className="text-2xl md:text-3xl">�</span>
+              <div className="absolute -top-6 md:-top-8 left-1/2 transform -translate-x-1/2 bg-white p-2 md:p-3 rounded-full border-4 border-orange-200 shadow-lg">
+                <img src="/logo.png" alt="Chao Piojos" className="w-12 h-12 md:w-14 md:h-14 object-contain" />
               </div>
               <h1 className="text-3xl md:text-4xl lg:text-5xl font-black tracking-wide drop-shadow-sm mt-2">
                 <span className="text-orange-500">Chao</span>{' '}
@@ -459,7 +509,8 @@ const PublicBooking = () => {
                 {calendarDays.map((dayInfo) => {
                   const { date, key, isToday, isCurrentMonth, slots } = dayInfo;
                   const dateLabel = date.getDate();
-                  const hasSlots = slots.length > 0 && isCurrentMonth;
+                  const isPast = date < today;
+                  const hasSlots = slots.length > 0 && isCurrentMonth && !isPast;
                   const isSelected = selectedDate ? key === buildDateKey(selectedDate) : false;
                   
                   const cellClasses = [
@@ -475,6 +526,16 @@ const PublicBooking = () => {
                       key={key}
                       className={cellClasses}
                       onClick={() => {
+                        if (isPast) {
+                          toast({
+                            title: '⏰ Fecha no disponible',
+                            description: 'Solo puedes agendar desde hoy en adelante.',
+                            duration: 3000,
+                            variant: 'destructive'
+                          });
+                          return;
+                        }
+
                         if (hasSlots) {
                           setSelectedDate(date);
                           setSelectedSlot('');
@@ -570,6 +631,51 @@ const PublicBooking = () => {
                     </p>
                   </div>
 
+                  {/* Recomendaciones */}
+                  <div className="max-w-3xl mx-auto w-full">
+                    <button
+                      type="button"
+                      onClick={() => setShowRecommendations(prev => !prev)}
+                      className="w-full flex items-center justify-between bg-emerald-100 border-2 border-emerald-200 rounded-2xl px-4 md:px-5 py-3 font-black text-emerald-700 text-sm md:text-base shadow-sm hover:border-emerald-300 active:translate-y-0.5 transition"
+                    >
+                      <span>💡 Recomendaciones para tu visita</span>
+                      <span className="text-xs font-bold">{showRecommendations ? 'Ocultar' : 'Mostrar'}</span>
+                    </button>
+
+                    {showRecommendations && (
+                      <div className="mt-3 bg-white border-2 border-emerald-200 rounded-2xl p-4 md:p-5 space-y-3 shadow-sm">
+                        <p className="text-sm md:text-base font-black text-gray-800">
+                          Si tienes dudas o cambios escríbenos al WhatsApp <span className="text-emerald-600">3227932394</span>.
+                        </p>
+                        <div className="space-y-2 text-sm md:text-base text-gray-700 font-bold">
+                          <p className="text-emerald-700 font-black">Cómo prepararte para recibir al piojólogo certificado</p>
+                          <ul className="list-disc list-inside space-y-1">
+                            <li>Cabello seco, limpio y sin productos; lávalo el día anterior y llega con el cabello totalmente seco.</li>
+                            <li>Cabello desenredado para facilitar la extracción.</li>
+                            <li>No aplicar tratamientos antipiojos antes del servicio.</li>
+                            <li>Ten un espacio cómodo y una toalla limpia para los hombros.</li>
+                            <li>Informa si hay condiciones dermatológicas o alergias.</li>
+                            <li>El procedimiento puede tomar entre 30 y 60 minutos.</li>
+                            <li>Menores de edad deben estar acompañados por un adulto responsable.</li>
+                          </ul>
+                        </div>
+                        <div className="space-y-2 text-sm md:text-base text-gray-700 font-bold">
+                          <p className="text-emerald-700 font-black">Cuidados después de la limpieza</p>
+                          <ul className="list-disc list-inside space-y-1">
+                            <li>Lava el cabello después de la limpieza.</li>
+                            <li>Cambia ropa de cama y pijamas de los últimos 3 días (usa agua caliente si es posible).</li>
+                            <li>Lava y desinfecta peines, cepillos, ligas, gorras y diademas.</li>
+                            <li>Evita compartir objetos de cabeza (peines, almohadas, audífonos, bufandas, gorras).</li>
+                            <li>Aspira sillones, almohadas, colchones y asientos del vehículo como medida adicional.</li>
+                            <li>Haz revisiones semanales en casa.</li>
+                            <li>Viste al niño con ropa limpia tras la limpieza.</li>
+                          </ul>
+                        </div>
+                        <p className="text-sm md:text-base font-black text-emerald-700">Gracias por confiar en Chao Piojos 🧡</p>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Botón para agendar otra cita */}
                   <Button
                     onClick={handleCloseConfirmation}
@@ -596,12 +702,17 @@ const PublicBooking = () => {
         <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl md:rounded-[2rem] border-4 md:border-8 border-orange-100 p-0">
           <div className="p-4 md:p-6 bg-gradient-to-r from-orange-400 to-yellow-400 text-white text-center sticky top-0 z-10">
             <DialogHeader>
-              <DialogTitle className="text-xl md:text-2xl lg:text-3xl font-black capitalize">
-                {selectedDate ? formatLongDate(selectedDate) : 'Reservar'}
-              </DialogTitle>
-              <DialogDescription className="text-white/90 font-bold text-xs md:text-sm tracking-wide uppercase">
-                {!showForm ? 'Selecciona una hora' : 'Completa tus datos'}
-              </DialogDescription>
+              <div className="flex items-center justify-center gap-3">
+                <img src="/logo.png" alt="Chao Piojos" className="w-10 h-10 md:w-12 md:h-12 object-contain" />
+                <div>
+                  <DialogTitle className="text-xl md:text-2xl lg:text-3xl font-black capitalize">
+                    {selectedDate ? formatLongDate(selectedDate) : 'Reservar'}
+                  </DialogTitle>
+                  <DialogDescription className="text-white/90 font-bold text-xs md:text-sm tracking-wide uppercase">
+                    {!showForm ? 'Selecciona una hora' : 'Completa tus datos'}
+                  </DialogDescription>
+                </div>
+              </div>
             </DialogHeader>
           </div>
 
@@ -743,13 +854,17 @@ const PublicBooking = () => {
                   </div>
                   <div>
                     <label className="text-xs md:text-sm font-bold text-gray-700 ml-2 mb-1 block">Dirección *</label>
-                    <input
-                      required
-                      type="text"
-                      className="w-full rounded-xl md:rounded-2xl border-2 border-blue-200 bg-white px-3 md:px-4 py-2.5 md:py-3 font-bold text-gray-800 focus:outline-none focus:border-blue-400 text-sm md:text-base"
+                    <AddressAutocomplete
                       value={form.direccion}
-                      onChange={(e) => handleChange('direccion', e.target.value)}
-                      placeholder="Calle, número, piso"
+                      onChange={(value) => handleChange('direccion', value)}
+                      onSelect={(suggestion) => {
+                        handleChange('direccion', suggestion.fullName);
+                        toast({
+                          title: '📍 Dirección seleccionada',
+                          description: suggestion.name,
+                          className: 'bg-blue-50 border-2 border-blue-200 text-blue-700 rounded-2xl'
+                        });
+                      }}
                     />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -818,6 +933,76 @@ const PublicBooking = () => {
                   </div>
                 </div>
 
+                {/* Pago */}
+                <div className="bg-amber-50 p-4 rounded-2xl border-2 border-amber-200 space-y-3">
+                  <p className="text-xs md:text-sm font-bold text-amber-600 uppercase">💳 Método de Pago</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => selectPaymentMethod('pay_now')}
+                      className={`w-full text-left rounded-xl md:rounded-2xl border-2 p-3 md:p-4 font-black transition-all flex items-center gap-3 ${
+                        form.paymentMethod === 'pay_now'
+                          ? 'bg-orange-100 border-orange-300 shadow-md'
+                          : 'bg-white border-amber-200 hover:border-orange-300'
+                      }`}
+                    >
+                      <span className="text-2xl">⚡</span>
+                      <div>
+                        <p className="text-sm md:text-base text-gray-800">Pagar ahora</p>
+                        <p className="text-xs text-gray-600 font-bold">Puedes pagar en línea con Bold</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => selectPaymentMethod('pay_later')}
+                      className={`w-full text-left rounded-xl md:rounded-2xl border-2 p-3 md:p-4 font-black transition-all flex items-center gap-3 ${
+                        form.paymentMethod === 'pay_later'
+                          ? 'bg-green-100 border-green-300 shadow-md'
+                          : 'bg-white border-amber-200 hover:border-green-300'
+                      }`}
+                    >
+                      <span className="text-2xl">⏳</span>
+                      <div>
+                        <p className="text-sm md:text-base text-gray-800">Pagar después</p>
+                        <p className="text-xs text-gray-600 font-bold">Cancelaremos al finalizar el servicio</p>
+                      </div>
+                    </button>
+                  </div>
+
+                  {form.paymentMethod === 'pay_now' && (
+                    <div className="bg-white border-2 border-amber-200 rounded-xl md:rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div className="space-y-1 flex-1">
+                        <p className="text-[11px] uppercase tracking-wide text-amber-600 font-black">Paga seguro con Bold</p>
+                        <p className="text-base md:text-lg font-black text-gray-800">
+                          {form.serviceType} <span className="text-amber-600">• {currentPaymentOption?.price}</span>
+                        </p>
+                        {!payNowAcknowledged ? (
+                          <>
+                            <p className="text-xs text-gray-600 font-bold">Se abrirá una pestaña nueva para completar el pago.</p>
+                            <p className="text-xs text-orange-600 font-black">Debes abrir Bold para habilitar la confirmación.</p>
+                          </>
+                        ) : (
+                          <div className="bg-green-50 border-2 border-green-200 rounded-lg p-2 text-green-700 text-xs font-black inline-flex items-center gap-2 mt-1">
+                            ✅ Redireccionado a Bold exitosamente
+                          </div>
+                        )}
+                      </div>
+                      {!payNowAcknowledged && (
+                        <a
+                          href={currentPaymentOption?.link || '#'}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={() => setPayNowAcknowledged(true)}
+                          className="inline-flex items-center justify-center bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-white font-black px-4 md:px-6 py-3 rounded-xl shadow-md border-b-4 border-orange-600 active:border-b-0 active:translate-y-0.5 transition"
+                        >
+                          Ir a Bold
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {/* Términos */}
                 <div className="bg-green-50 p-4 rounded-2xl border-2 border-green-200">
                   <div className="flex items-start gap-3">
@@ -836,7 +1021,8 @@ const PublicBooking = () => {
 
                 <Button
                   type="submit"
-                  className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black text-base md:text-lg py-4 md:py-5 rounded-xl md:rounded-2xl shadow-lg hover:shadow-xl border-b-4 border-orange-700 active:border-b-0 active:translate-y-0.5"
+                  disabled={form.paymentMethod === 'pay_now' && !payNowAcknowledged}
+                  className="w-full bg-orange-500 hover:bg-orange-600 disabled:hover:bg-orange-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-base md:text-lg py-4 md:py-5 rounded-xl md:rounded-2xl shadow-lg hover:shadow-xl border-b-4 border-orange-700 active:border-b-0 active:translate-y-0.5"
                 >
                   <Check className="w-5 h-5 md:w-6 md:h-6 mr-2" /> Confirmar Reserva
                 </Button>

@@ -12,8 +12,16 @@ const ClientView = ({ currentUser, appointments, updateAppointments, serviceCata
     date: '',
     time: '',
     serviceType: '',
-    notes: ''
+    notes: '',
+    paymentMethod: 'later'
   });
+
+  const getBoldLink = (serviceType = '') => {
+    const lower = serviceType.toLowerCase();
+    if (lower.includes('muy alto')) return 'https://checkout.bold.co/payment/LNK_GXTCYS2BEN';
+    if (lower.includes('elev')) return 'https://checkout.bold.co/payment/LNK_Y2J2USYK3U';
+    return 'https://checkout.bold.co/payment/LNK_89Z6PUUSRS';
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -58,7 +66,8 @@ const ClientView = ({ currentUser, appointments, updateAppointments, serviceCata
       date: '',
       time: '',
       serviceType: '',
-      notes: ''
+      notes: '',
+      paymentMethod: 'later'
     });
   };
 
@@ -147,6 +156,56 @@ const ClientView = ({ currentUser, appointments, updateAppointments, serviceCata
                   <option value="">Elige tu súper poder...</option>
                   {Object.keys(serviceCatalog).map((s, i) => <option key={i} value={s}>{s} (${serviceCatalog[s]})</option>)}
                 </select>
+              </div>
+
+              <div className="bg-white border-2 border-blue-100 rounded-2xl p-4 space-y-3">
+                <Label className="text-blue-800 font-black text-lg flex items-center gap-2">
+                  💳 Método de pago
+                </Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, paymentMethod: 'now' }))}
+                    className={`w-full px-4 py-3 rounded-xl font-black border-2 transition-all shadow-sm ${
+                      formData.paymentMethod === 'now'
+                        ? 'bg-green-100 border-green-300 text-green-700'
+                        : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-green-200'
+                    }`}
+                  >
+                    Pagar ahora
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, paymentMethod: 'later' }))}
+                    className={`w-full px-4 py-3 rounded-xl font-black border-2 transition-all shadow-sm ${
+                      formData.paymentMethod === 'later'
+                        ? 'bg-orange-100 border-orange-300 text-orange-700'
+                        : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-orange-200'
+                    }`}
+                  >
+                    Pagar después
+                  </button>
+                </div>
+
+                {formData.paymentMethod === 'now' && (
+                  <div className="bg-blue-50 border-2 border-blue-100 rounded-xl p-3 space-y-2">
+                    <p className="text-sm font-bold text-blue-700">Completa el pago seguro con Bold y asegura tu turno.</p>
+                    <Button
+                      type="button"
+                      disabled={!formData.serviceType}
+                      onClick={() => {
+                        const link = getBoldLink(formData.serviceType);
+                        window.open(link, '_blank');
+                      }}
+                      className="w-full bg-blue-500 hover:bg-blue-600 text-white font-black rounded-xl py-4 shadow-md disabled:opacity-60"
+                    >
+                      Ir a Bold 🚀
+                    </Button>
+                    {!formData.serviceType && (
+                      <p className="text-xs text-blue-600 font-semibold">Elige primero el plan para habilitar el pago.</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

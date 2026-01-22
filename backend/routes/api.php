@@ -6,6 +6,8 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ICalProxyController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\BookingController;
+use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ProductRequestController;
 
 /*
 |--------------------------------------------------------------------------
@@ -38,4 +40,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // Bookings - Solo lectura para admin
     Route::get('/bookings', [BookingController::class, 'index']);
     Route::put('/bookings/{id}', [BookingController::class, 'update']);
+
+    // Productos
+    Route::apiResource('products', ProductController::class);
+
+    // Solicitudes de productos
+    Route::get('/product-requests', [ProductRequestController::class, 'index']);
+    Route::post('/product-requests', [ProductRequestController::class, 'store']);
+    Route::put('/product-requests/{productRequest}', [ProductRequestController::class, 'update']);
+    Route::delete('/product-requests/{productRequest}', [ProductRequestController::class, 'destroy']);
 });

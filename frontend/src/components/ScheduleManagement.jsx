@@ -32,7 +32,8 @@ const ScheduleManagement = ({
     clientName: '',
     serviceType: '',
     piojologist: '',
-    status: 'all'
+    status: 'all',
+    rejections: 'all' // all | has
   });
   const [serviceFormData, setServiceFormData] = useState({
     clientName: '',
@@ -310,8 +311,21 @@ const ScheduleManagement = ({
                 <option value="pending">Pendiente</option>
                 <option value="assigned">Asignado</option>
                 <option value="accepted">Aceptado</option>
-                <option value="rejected">Rechazado</option>
                 <option value="completed">Completado</option>
+              </select>
+            </div>
+            <div>
+              <Label className="text-xs font-bold text-gray-600 mb-1 block">⚠️ Rechazos</Label>
+              <select
+                value={serviceFilters.rejections}
+                onChange={(e) => {
+                  setServiceFilters({...serviceFilters, rejections: e.target.value});
+                  setServicesPage(1);
+                }}
+                className="w-full bg-white border-2 border-yellow-200 rounded-xl p-2 text-sm font-medium outline-none focus:border-yellow-400"
+              >
+                <option value="all">Todos</option>
+                <option value="has">Con rechazos</option>
               </select>
             </div>
           </div>
@@ -323,6 +337,13 @@ const ScheduleManagement = ({
             const filteredAppointments = appointments
               .filter(apt => apt.status !== 'completed')
               .filter(apt => {
+                const hasRejections = (() => {
+                  const rh = apt.rejectionHistory || apt.rejection_history || apt.rejections;
+                  if (Array.isArray(rh)) return rh.length > 0;
+                  if (typeof rh === 'string') return rh.trim().length > 0;
+                  return false;
+                })();
+
                 if (serviceFilters.clientName && !apt.clientName.toLowerCase().includes(serviceFilters.clientName.toLowerCase())) {
                   return false;
                 }
@@ -333,6 +354,9 @@ const ScheduleManagement = ({
                   return false;
                 }
                 if (serviceFilters.status !== 'all' && apt.status !== serviceFilters.status) {
+                  return false;
+                }
+                if (serviceFilters.rejections === 'has' && !hasRejections) {
                   return false;
                 }
                 return true;
@@ -363,7 +387,6 @@ const ScheduleManagement = ({
               pending: { bg: 'bg-yellow-100', border: 'border-yellow-300', badge: 'bg-yellow-200 text-yellow-800', label: 'Pendiente' },
               assigned: { bg: 'bg-cyan-100', border: 'border-cyan-300', badge: 'bg-cyan-200 text-cyan-800', label: 'Asignado' },
               accepted: { bg: 'bg-green-100', border: 'border-green-300', badge: 'bg-green-200 text-green-800', label: 'Aceptado' },
-              rejected: { bg: 'bg-red-100', border: 'border-red-300', badge: 'bg-red-200 text-red-800', label: 'Rechazado' },
               completed: { bg: 'bg-blue-100', border: 'border-blue-300', badge: 'bg-blue-200 text-blue-800', label: 'Completado' }
             };
 
@@ -377,7 +400,23 @@ const ScheduleManagement = ({
                     key={`${apt.id}-${apt.date}-${apt.time || 'no-time'}`}
                     className={`${config.bg} border-3 ${config.border} p-5 rounded-3xl shadow-md hover:shadow-lg hover:border-opacity-75 transition-all cursor-pointer`}
                     onClick={() => {
-                      setSelectedService(apt);
+                      const normalizeHistory = (value) => {
+                        if (Array.isArray(value)) return value;
+                        if (typeof value === 'string' && value.trim() !== '') {
+                          try {
+                            const parsed = JSON.parse(value);
+                            if (Array.isArray(parsed)) return parsed;
+                          } catch (e) {
+                            return value.split(',').map(v => v.trim()).filter(Boolean);
+                          }
+                        }
+                        return [];
+                      };
+
+                      setSelectedService({
+                        ...apt,
+                        rejectionHistory: normalizeHistory(apt.rejectionHistory || apt.rejection_history || apt.rejections)
+                      });
                       setAssignPiojologistId(apt.piojologistId ? String(apt.piojologistId) : '');
                       setIsServiceDetailOpen(true);
                     }}
@@ -474,6 +513,23 @@ const ScheduleManagement = ({
                   </div>
                 </div>
 
+                <div className="bg-white border-2 border-amber-200 rounded-xl p-3 text-sm font-bold text-amber-700 flex items-center justify-between">
+                  <div>
+                    💳 Método de pago<br />
+                    <span className="text-gray-800">
+                      {(() => {
+                        const payment = selectedService.paymentMethod || selectedService.payment_method;
+                        if (payment === 'pay_now') return 'Paga en línea (Bold)';
+                        if (payment === 'pay_later') return 'Paga después del servicio';
+                        return 'No registrado';
+                      })()}
+                    </span>
+                  </div>
+                  <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-lg font-black">
+                    {(selectedService.paymentMethod || selectedService.payment_method || 'pay_later') === 'pay_now' ? 'Online' : 'Contraentrega'}
+                  </span>
+                </div>
+
                 <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3 text-sm font-semibold text-gray-700">
                   👨‍⚕️ {selectedService.piojologistName || 'Sin asignar'}
                 </div>
@@ -505,18 +561,41 @@ const ScheduleManagement = ({
                   </div>
                 </div>
 
-                {selectedService.status === 'rejected' && (
-                  <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 text-sm font-semibold text-red-700">
-                    ⚠️ Servicio rechazado. Puedes reasignarlo a otra piojóloga.
-                    <div className="mt-2 text-xs text-red-600 font-bold">
-                      Historial de rechazos: {selectedService.rejectionHistory?.length ? selectedService.rejectionHistory.join(', ') : 'Sin registros disponibles'}
-                    </div>
-                  </div>
+                {Array.isArray(selectedService.rejectionHistory) && selectedService.rejectionHistory.length > 0 && (
+                  (() => {
+                    const counts = selectedService.rejectionHistory.reduce((acc, name) => {
+                      const key = name || 'Piojóloga';
+                      acc[key] = (acc[key] || 0) + 1;
+                      return acc;
+                    }, {});
+                    const entries = Object.entries(counts);
+
+                    return (
+                      <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 text-sm font-semibold text-red-700 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span>⚠️ Rechazos previos</span>
+                          <span className="text-xs text-red-600 font-bold bg-white/70 px-2 py-0.5 rounded-full border border-red-200">
+                            {selectedService.rejectionHistory.length}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {entries.map(([name, total]) => (
+                            <span
+                              key={name}
+                              className="bg-white text-red-700 border border-red-200 rounded-full px-3 py-1 text-xs font-bold shadow-sm"
+                            >
+                              {name}{total > 1 ? ` (x${total})` : ''}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()
                 )}
 
-                {(selectedService.status === 'pending' || selectedService.status === 'rejected') && (
+                {selectedService.status === 'pending' && (
                   <div className="bg-white border-2 border-gray-200 rounded-xl p-3 space-y-2">
-                    <p className="text-xs font-black text-gray-600 uppercase">{selectedService.status === 'rejected' ? 'Reasignar a piojóloga' : 'Asignar a piojóloga'}</p>
+                    <p className="text-xs font-black text-gray-600 uppercase">Asignar a piojóloga</p>
                     <div className="flex flex-col gap-2">
                       <select
                         value={assignPiojologistId}
@@ -533,7 +612,7 @@ const ScheduleManagement = ({
                         onClick={handleAssignService}
                         className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-xl px-4 py-2 font-bold border-b-4 border-yellow-600 active:border-b-0 active:translate-y-1"
                       >
-                        {selectedService.status === 'rejected' ? 'Reasignar' : 'Asignar'}
+                        Asignar
                       </Button>
                     </div>
                   </div>

@@ -22,14 +22,21 @@ class Booking extends Model
         'hasAlergias',
         'detalleAlergias',
         'referidoPor',
+        'payment_method',
         'estado',
-        'piojologist_id'
+        'piojologist_id',
+        'plan_type',
+        'price_confirmed',
+        'service_notes',
+        'rejection_history'
     ];
 
     protected $casts = [
         'fecha' => 'date',
         'hasAlergias' => 'boolean',
         'numPersonas' => 'integer',
-        'piojologist_id' => 'integer'
+        'piojologist_id' => 'integer',
+        'price_confirmed' => 'decimal:2',
+        'rejection_history' => 'array'
     ];
 }

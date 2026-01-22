@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { User, Lock, KeyRound, Sparkles } from 'lucide-react';
+import { User, Lock, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { authService } from '@/lib/api';
@@ -51,8 +51,10 @@ const Login = ({ onLogin }) => {
       <motion.div 
         animate={{ y: [0, 20, 0] }} 
         transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-        className="absolute bottom-20 right-[10%] text-4xl opacity-20"
-      >✨</motion.div>
+        className="absolute bottom-20 right-[10%] w-16 h-16 opacity-30"
+      >
+        <img src="/logo.png" alt="Chao Piojos" className="w-full h-full object-contain drop-shadow" />
+      </motion.div>
 
       <motion.div 
         initial={{ scale: 0.5, opacity: 0, rotate: -10 }}
@@ -61,8 +63,8 @@ const Login = ({ onLogin }) => {
         className="w-full max-w-md"
       >
         <div className="bg-white rounded-3xl p-6 shadow-2xl border-4 border-orange-200 relative">
-          <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-yellow-400 p-3 rounded-full border-4 border-white shadow-lg">
-            <span className="text-3xl">🦁</span>
+          <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-white p-2 rounded-full border-4 border-orange-200 shadow-lg">
+            <img src="/logo.png" alt="Chao Piojos" className="w-14 h-14 object-contain" />
           </div>
 
           <div className="mt-6 text-center mb-6">

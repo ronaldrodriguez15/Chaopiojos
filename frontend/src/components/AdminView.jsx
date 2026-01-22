@@ -87,11 +87,50 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
   };
 
   // Resolver nombres de piojólogas faltantes en bookings/appointments combinados
+  const normalizeRejectionHistory = (value) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '') {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {
+        return value.split(',').map(v => v.trim()).filter(Boolean);
+      }
+    }
+    return [];
+  };
+
   const displayAppointments = appointments.map(apt => {
-    if (apt.piojologistName || !apt.piojologistId) return apt;
-    const match = piojologists.find(p => Number(p.id) === Number(apt.piojologistId));
-    return match ? { ...apt, piojologistName: match.name } : apt;
+    const rejectionHistory = normalizeRejectionHistory(apt.rejectionHistory || apt.rejection_history || apt.rejections);
+    const base = {
+      ...apt,
+      rejectionHistory
+    };
+
+    if (base.piojologistName || !base.piojologistId) return base;
+    const match = piojologists.find(p => Number(p.id) === Number(base.piojologistId));
+    return match ? { ...base, piojologistName: match.name } : base;
   });
+
+  const getServicePrice = (apt = {}) => {
+    const raw = apt.price ?? apt.price_confirmed ?? apt.estimatedPrice ?? serviceCatalog[apt.serviceType] ?? 0;
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  const toMoney = (amount = 0) => {
+    if (typeof formatCurrency === 'function') return formatCurrency(amount);
+    return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(amount);
+  };
+
+  const resolveRequestTotals = (request = {}) => {
+    const baseKitPrice = Number(request.kitPrice ?? 300000);
+    const itemsTotal = (request.items || []).reduce((sum, item) => sum + (Number(item.price ?? 0) * Number(item.quantity ?? 1)), 0);
+    const total = request.isKitCompleto ? baseKitPrice : Number(request.totalPrice ?? itemsTotal);
+    const studioShare = request.isKitCompleto ? Number(request.studioContribution ?? (request.isFirstKitBenefit ? baseKitPrice / 2 : 0)) : 0;
+    const piojologistShare = request.isKitCompleto ? Number(request.piojologistContribution ?? (total - studioShare)) : total;
+    return { baseKitPrice, itemsTotal, total, studioShare, piojologistShare };
+  };
 
   // Product Management State
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
@@ -350,6 +389,8 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     
     // Actualizar en el backend (solo si viene de bookings públicos o tiene backendId)
     try {
+      let assignedSnapshot = appointment;
+
       if (appointment?.isPublicBooking || appointment?.backendId || appointmentId?.toString().startsWith('booking-')) {
         const result = await bookingService.update(backendId, {
           piojologistId: parseInt(piojologistId),
@@ -379,6 +420,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                 } 
               : apt
           );
+          assignedSnapshot = updatedBookings.find(apt => apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId) || assignedSnapshot;
           updateBookings(updatedBookings);
         }
       } else {
@@ -394,6 +436,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
               } 
             : apt
         );
+        assignedSnapshot = updatedInternal.find(apt => apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId) || assignedSnapshot;
         updateAppointments(updatedInternal);
       }
       
@@ -403,8 +446,8 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
           type: 'assignment',
           appointmentId: appointmentId,
           piojologistId: parseInt(piojologistId),
-          message: `Nuevo agendamiento asignado: ${appointment?.clientName} - ${appointment?.serviceType}`,
-          appointment: updatedAppointments.find(a => a.id === appointmentId)
+          message: `Nuevo agendamiento asignado: ${assignedSnapshot?.clientName || appointment?.clientName} - ${assignedSnapshot?.serviceType || appointment?.serviceType}`,
+          appointment: assignedSnapshot
         });
       }
       
@@ -466,7 +509,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
               { label: 'Total Citas', val: appointments.length, color: 'bg-blue-100 text-blue-600', icon: PieChart },
               { label: 'Pendientes', val: appointments.filter(a => a.status === 'pending').length, color: 'bg-yellow-100 text-yellow-600', icon: Calendar },
               { label: 'Héroes', val: piojologists.length, color: 'bg-green-100 text-green-600', icon: Users },
-              { label: 'Ingresos Totales', val: formatCurrency(appointments.filter(a => a.status === 'completed').reduce((acc, curr) => acc + (curr.price || 0), 0)), color: 'bg-purple-100 text-purple-600', icon: DollarSign },
+              { label: 'Ingresos Totales', val: formatCurrency(appointments.filter(a => a.status === 'completed').reduce((acc, curr) => acc + getServicePrice(curr), 0)), color: 'bg-purple-100 text-purple-600', icon: DollarSign },
             ].map((stat, idx) => (
               <motion.div 
                 key={idx}
@@ -493,8 +536,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                     appointments.filter(a => a.status === 'pending').length,
                     appointments.filter(a => a.status === 'assigned').length,
                     appointments.filter(a => a.status === 'accepted').length,
-                    appointments.filter(a => a.status === 'completed').length,
-                    appointments.filter(a => a.status === 'rejected').length
+                    appointments.filter(a => a.status === 'completed').length
                   ];
                   const total = counts.reduce((acc, v) => acc + v, 0);
                   if (total === 0) {
@@ -508,11 +550,11 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                   return (
                     <Pie
                       data={{
-                        labels: ['Pendientes', 'Asignados', 'Aceptados', 'Completados', 'Rechazados'],
+                        labels: ['Pendientes', 'Asignados', 'Aceptados', 'Completados'],
                         datasets: [{
                           data: counts,
-                          backgroundColor: ['#FBBF24', '#22D3EE', '#4ADE80', '#60A5FA', '#F87171'],
-                          borderColor: ['#F59E0B', '#06B6D4', '#22C55E', '#3B82F6', '#EF4444'],
+                          backgroundColor: ['#FBBF24', '#22D3EE', '#4ADE80', '#60A5FA'],
+                          borderColor: ['#F59E0B', '#06B6D4', '#22C55E', '#3B82F6'],
                           borderWidth: 2,
                           borderRadius: 8
                         }]
@@ -560,7 +602,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                       label: 'Ingresos ($)',
                       data: piojologists.map(pio => 
                         appointments.filter(a => a.piojologistId === pio.id && a.status === 'completed')
-                          .reduce((acc, curr) => acc + (serviceCatalog[curr.serviceType] || 0), 0)
+                          .reduce((acc, curr) => acc + getServicePrice(curr), 0)
                       ),
                       backgroundColor: ['#10B981', '#34D399', '#6EE7B7', '#A7F3D0'],
                       borderColor: '#059669',
@@ -986,7 +1028,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                    {piojologists.map(pioj => {
                      // Calculate summary data for each piojologist directly from appointments log if needed, or use stored user.earnings
                      const completedServices = appointments.filter(a => a.piojologistId === pioj.id && a.status === 'completed');
-                     const totalServiceValue = completedServices.reduce((acc, curr) => acc + (curr.price || 0), 0);
+                      const totalServiceValue = completedServices.reduce((acc, curr) => acc + getServicePrice(curr), 0);
                      const grossEarnings = totalServiceValue * 0.5;
                      const totalDeductions = completedServices.reduce((acc, curr) => acc + (curr.deductions || 0), 0);
                      const netPayable = grossEarnings - totalDeductions;
@@ -1074,130 +1116,152 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
               </div>
             ) : (
               <div className="space-y-4">
-                {productRequests.map(request => (
-                  <motion.div
-                    key={request.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`p-6 rounded-2xl border-4 ${
-                      request.status === 'pending' 
-                        ? 'bg-yellow-50 border-yellow-200' 
-                        : request.status === 'approved'
-                        ? 'bg-green-50 border-green-200'
-                        : 'bg-red-50 border-red-200'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h4 className="text-lg font-bold text-gray-800">
-                          {request.piojologistName}
-                        </h4>
-                        <p className="text-sm text-gray-600">
-                          {new Date(request.requestDate).toLocaleString('es-ES', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                      </div>
-                      <span className={`px-4 py-2 rounded-xl text-sm font-bold ${
-                        request.status === 'pending'
-                          ? 'bg-yellow-200 text-yellow-800'
+                {productRequests.map(request => {
+                  const pricing = resolveRequestTotals(request);
+                  return (
+                    <motion.div
+                      key={request.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`p-6 rounded-2xl border-4 ${
+                        request.status === 'pending' 
+                          ? 'bg-yellow-50 border-yellow-200' 
                           : request.status === 'approved'
-                          ? 'bg-green-200 text-green-800'
-                          : 'bg-red-200 text-red-800'
-                      }`}>
-                        {request.status === 'pending' && '⏳ Pendiente'}
-                        {request.status === 'approved' && '✅ Aprobada'}
-                        {request.status === 'rejected' && '❌ Rechazada'}
-                      </span>
-                    </div>
-
-                    <div className="mb-4">
-                      <h5 className="font-bold text-gray-700 mb-2">
-                        {request.isKitCompleto ? '🎁 Kit Completo' : 'Productos Solicitados:'}
-                      </h5>
-                      {!request.isKitCompleto && (
-                        <ul className="space-y-1 bg-white p-3 rounded-xl">
-                          {request.items.map((item, idx) => (
-                            <li key={idx} className="text-sm text-gray-700 flex items-center gap-2">
-                              <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
-                              {item.productName} <span className="font-bold">x{item.quantity}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-
-                    {request.notes && (
-                      <div className="mb-4 bg-white p-3 rounded-xl">
-                        <p className="text-sm text-gray-600">
-                          <span className="font-bold">Notas:</span> {request.notes}
-                        </p>
-                      </div>
-                    )}
-
-                    {request.status === 'pending' ? (
-                      <div className="flex gap-3">
-                        <Button
-                          onClick={() => {
-                            const notes = prompt('Comentario de aprobación (opcional):');
-                            if (notes !== null) {
-                              onApproveRequest(request.id, notes);
-                              toast({
-                                title: "✅ Solicitud Aprobada",
-                                description: `La solicitud de ${request.piojologistName} fue aprobada`,
-                                className: "bg-green-100 text-green-800 rounded-2xl border-2 border-green-200"
-                              });
-                            }
-                          }}
-                          className="flex-1 bg-green-500 hover:bg-green-600 text-white rounded-xl py-3 font-bold"
-                        >
-                          ✅ Aprobar
-                        </Button>
-                        <Button
-                          onClick={() => {
-                            const reason = prompt('Razón del rechazo:');
-                            if (reason) {
-                              onRejectRequest(request.id, reason);
-                              toast({
-                                title: "❌ Solicitud Rechazada",
-                                description: `La solicitud de ${request.piojologistName} fue rechazada`,
-                                variant: "destructive",
-                                className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
-                              });
-                            }
-                          }}
-                          className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-xl py-3 font-bold"
-                        >
-                          ❌ Rechazar
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="bg-white p-4 rounded-xl border-2 border-gray-200">
-                        <p className="text-sm font-bold text-gray-700 mb-1">
-                          {request.status === 'approved' ? '✅ Aprobado' : '❌ Rechazado'} por {request.resolvedByName}
-                        </p>
-                        <p className="text-xs text-gray-600 mb-2">
-                          {new Date(request.resolvedDate).toLocaleString('es-ES', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                        {request.adminNotes && (
-                          <p className="text-sm text-gray-700">
-                            <span className="font-bold">Comentario:</span> {request.adminNotes}
+                          ? 'bg-green-50 border-green-200'
+                          : 'bg-red-50 border-red-200'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h4 className="text-lg font-bold text-gray-800">
+                            {request.piojologistName}
+                          </h4>
+                          <p className="text-sm text-gray-600">
+                            {new Date(request.requestDate).toLocaleString('es-ES', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
                           </p>
+                        </div>
+                        <span className={`px-4 py-2 rounded-xl text-sm font-bold ${
+                          request.status === 'pending'
+                            ? 'bg-yellow-200 text-yellow-800'
+                            : request.status === 'approved'
+                            ? 'bg-green-200 text-green-800'
+                            : 'bg-red-200 text-red-800'
+                        }`}>
+                          {request.status === 'pending' && '⏳ Pendiente'}
+                          {request.status === 'approved' && '✅ Aprobada'}
+                          {request.status === 'rejected' && '❌ Rechazada'}
+                        </span>
+                      </div>
+
+                      <div className="mb-4">
+                        <h5 className="font-bold text-gray-700 mb-2">
+                          {request.isKitCompleto ? '🎁 Kit Completo' : 'Productos Solicitados:'}
+                        </h5>
+                        {!request.isKitCompleto && (
+                          <ul className="space-y-1 bg-white p-3 rounded-xl">
+                            {(request.items || []).map((item, idx) => (
+                              <li key={idx} className="text-sm text-gray-700 flex items-center gap-2 justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
+                                  {item.productName} <span className="font-bold">x{item.quantity}</span>
+                                </div>
+                                {item.price ? <span className="font-bold text-purple-700">{toMoney((item.price || 0) * (item.quantity || 1))}</span> : null}
+                              </li>
+                            ))}
+                          </ul>
                         )}
                       </div>
-                    )}
-                  </motion.div>
-                ))}
+
+                      {request.isKitCompleto ? (
+                        <div className="bg-white p-3 rounded-xl border-2 border-purple-100">
+                          <p className="text-sm font-bold text-gray-700">Valor kit: {toMoney(pricing.baseKitPrice)}</p>
+                          <p className="text-xs font-bold text-green-700">Aporta estudio: {toMoney(pricing.studioShare)}</p>
+                          <p className="text-xs font-bold text-purple-700">Aporta piojóloga: {toMoney(pricing.piojologistShare)}</p>
+                          {request.isFirstKitBenefit && (
+                            <p className="text-xs text-emerald-600 font-black mt-1">Beneficio de primer kit aplicado (50%)</p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="bg-white p-3 rounded-xl border-2 border-gray-100 flex justify-between text-sm font-bold text-gray-700">
+                          <span>Total estimado</span>
+                          <span>{toMoney(pricing.total)}</span>
+                        </div>
+                      )}
+
+                      {request.notes && (
+                        <div className="mb-4 mt-4 bg-white p-3 rounded-xl">
+                          <p className="text-sm text-gray-600">
+                            <span className="font-bold">Notas:</span> {request.notes}
+                          </p>
+                        </div>
+                      )}
+
+                      {request.status === 'pending' ? (
+                        <div className="flex gap-3 mt-4">
+                          <Button
+                            onClick={() => {
+                              const notes = prompt('Comentario de aprobación (opcional):');
+                              if (notes !== null) {
+                                onApproveRequest(request.id, notes);
+                                toast({
+                                  title: "✅ Solicitud Aprobada",
+                                  description: `La solicitud de ${request.piojologistName} fue aprobada`,
+                                  className: "bg-green-100 text-green-800 rounded-2xl border-2 border-green-200"
+                                });
+                              }
+                            }}
+                            className="flex-1 bg-green-500 hover:bg-green-600 text-white rounded-xl py-3 font-bold"
+                          >
+                            ✅ Aprobar
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              const reason = prompt('Razón del rechazo:');
+                              if (reason) {
+                                onRejectRequest(request.id, reason);
+                                toast({
+                                  title: "❌ Solicitud Rechazada",
+                                  description: `La solicitud de ${request.piojologistName} fue rechazada`,
+                                  variant: "destructive",
+                                  className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+                                });
+                              }
+                            }}
+                            className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-xl py-3 font-bold"
+                          >
+                            ❌ Rechazar
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="bg-white p-4 rounded-xl border-2 border-gray-200 mt-4">
+                          <p className="text-sm font-bold text-gray-700 mb-1">
+                            {request.status === 'approved' ? '✅ Aprobado' : '❌ Rechazado'} por {request.resolvedByName}
+                          </p>
+                          <p className="text-xs text-gray-600 mb-2">
+                            {new Date(request.resolvedDate).toLocaleString('es-ES', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </p>
+                          {request.adminNotes && (
+                            <p className="text-sm text-gray-700">
+                              <span className="font-bold">Comentario:</span> {request.adminNotes}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </motion.div>
+                  );
+                })}
               </div>
             )}
           </div>

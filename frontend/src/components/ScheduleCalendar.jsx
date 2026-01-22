@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, CalendarDays, Clock, UserCircle2, ShieldCheck, Grid3x3, List } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CalendarDays, Clock, UserCircle2, ShieldCheck, Grid3x3, List, Eye } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -12,26 +12,23 @@ const WEEK_DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
 const statusColors = {
   pending: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+  assigned: 'bg-cyan-100 text-cyan-700 border-cyan-200',
   accepted: 'bg-green-100 text-green-700 border-green-200',
-  rejected: 'bg-red-100 text-red-600 border-red-200',
-  completed: 'bg-blue-100 text-blue-700 border-blue-200',
-  assigned: 'bg-cyan-100 text-cyan-700 border-cyan-200'
+  completed: 'bg-blue-100 text-blue-700 border-blue-200'
 };
 
 const statusLabels = {
   pending: 'Pendiente',
+  assigned: 'Asignado',
   accepted: 'Aceptado',
-  rejected: 'Rechazado',
-  completed: 'Completado',
-  assigned: 'Asignado'
+  completed: 'Completado'
 };
 
 const statusBadgeStyles = {
   pending: 'bg-yellow-200 text-yellow-700 border-yellow-300',
+  assigned: 'bg-cyan-200 text-cyan-700 border-cyan-300',
   accepted: 'bg-green-200 text-green-700 border-green-300',
-  rejected: 'bg-red-200 text-red-700 border-red-300',
-  completed: 'bg-blue-200 text-blue-700 border-blue-300',
-  assigned: 'bg-cyan-200 text-cyan-700 border-cyan-300'
+  completed: 'bg-blue-200 text-blue-700 border-blue-300'
 };
 
 const pad = (value) => (value < 10 ? `0${value}` : `${value}`);
@@ -366,8 +363,8 @@ const ScheduleCalendar = ({
             >
               <option value="all">Todos los estados</option>
               <option value="pending">Pendiente</option>
+              <option value="assigned">Asignado</option>
               <option value="accepted">Aceptado</option>
-              <option value="rejected">Rechazado</option>
               <option value="completed">Completado</option>
             </select>
           )}
@@ -387,16 +384,16 @@ const ScheduleCalendar = ({
 
       {/* VISTA MES */}
       {viewMode === 'month' && (
-        <>
-          <div className="grid grid-cols-7 gap-2 text-center font-bold text-gray-500">
+        <div className="space-y-2">
+          <div className="grid grid-cols-7 gap-1 sm:gap-2 text-center font-bold text-gray-500">
             {WEEK_DAYS.map((day) => (
-              <div key={day} className="uppercase tracking-wide text-xs text-gray-400">
+              <div key={day} className="uppercase tracking-wide text-[10px] sm:text-xs text-gray-400">
                 {day}
               </div>
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-2">
+          <div className="grid grid-cols-7 gap-1 sm:gap-2">
             {calendarDays.map((dayInfo) => {
               const { date, isToday, isCurrentMonth, appointments: dayAppointments } = dayInfo;
               const dateLabel = date.getDate();
@@ -404,7 +401,7 @@ const ScheduleCalendar = ({
               const isSelected = selectedDayKey === key;
               const hasAppointments = dayAppointments.length > 0;
               const cellClasses = [
-                'rounded-3xl border-2 min-h-[120px] flex flex-col p-3 gap-2 transition-all',
+                'rounded-3xl border-2 min-h-[86px] sm:min-h-[120px] flex flex-col p-1.5 sm:p-3 gap-2 transition-all',
                 isCurrentMonth ? 'bg-white border-orange-100' : 'bg-gray-50 border-gray-100 opacity-60',
                 isToday ? 'shadow-lg border-blue-300 ring-2 ring-blue-200 ring-offset-2' : '',
                 hasAppointments ? 'cursor-pointer hover:-translate-y-1 hover:shadow-lg hover:border-orange-300' : 'cursor-default',
@@ -417,30 +414,30 @@ const ScheduleCalendar = ({
                   className={cellClasses}
                   onClick={() => handleDayClick(dayInfo)}
                 >
-                  <div className="flex items-center justify-between text-sm font-black text-gray-500">
-                    <span className="bg-orange-100 text-orange-600 px-2 py-1 rounded-xl">
+                  <div className="flex items-center justify-between text-xs sm:text-sm font-black text-gray-500">
+                    <span className="bg-orange-100 text-orange-600 px-2 py-0.5 sm:py-1 rounded-xl">
                       {dateLabel}
                     </span>
                     {dayAppointments.length > 0 && (
-                      <span className="text-xs font-bold text-purple-500">
+                      <span className="hidden sm:inline-block text-[10px] sm:text-xs font-bold text-purple-500">
                         {dayAppointments.length} serv.
                       </span>
                     )}
                   </div>
 
                   {dayAppointments.length > 0 && (
-                    <div className="space-y-2 overflow-y-auto pr-1">
+                    <div className="space-y-2 overflow-y-auto pr-0.5 sm:pr-1 max-h-[110px] sm:max-h-[140px]">
                       {dayAppointments.map((appointment) => {
                         const statusKey = appointment.isExternal ? 'external' : appointment.status;
                         const color = statusColors[statusKey] || 'bg-blue-100 text-blue-700 border-blue-200';
                         const time = appointment.time || 'Sin hora';
                         const piojologist = piojologists.find((p) => Number(p.id) === Number(appointment.piojologistId));
                         const isPublicBooking = appointment.isPublicBooking === true;
-                        
+
                         return (
                           <div
                             key={`${appointment.id}-${appointment.time || 'no-time'}`}
-                            className={`rounded-2xl border-2 px-3 py-2 text-left text-xs font-bold space-y-1 ${color} ${
+                            className={`rounded-2xl border-2 px-2.5 sm:px-3 py-1.5 sm:py-2 text-left text-[10px] sm:text-xs font-bold space-y-1 ${color} ${
                               appointment.isExternal ? 'border-dashed' : ''
                             } cursor-pointer hover:shadow-md transition`}
                             onClick={(e) => {
@@ -448,32 +445,38 @@ const ScheduleCalendar = ({
                               handleDayClick(dayInfo);
                             }}
                           >
-                            <div className="flex justify-between items-center">
-                              <div className="flex items-center gap-1 truncate max-w-[110px]">
-                                {appointment.isExternal && <span>🔗</span>}
-                                {isPublicBooking && <span>🌐</span>}
-                                <span className="truncate">{appointment.clientName}</span>
-                              </div>
-                              <span className="text-[10px] uppercase">{time}</span>
+                            <div className="sm:hidden flex items-center justify-center py-1">
+                              <Eye className="w-4 h-4 text-blue-700" />
                             </div>
-                            {piojologist && (
-                              <p className="text-[10px] text-gray-500 font-semibold opacity-80">
-                                👩‍⚕️ {piojologist.name}
-                              </p>
-                            )}
-                            {isPublicBooking && !piojologist && (
-                              <p className="text-[10px] text-pink-600 font-semibold opacity-80">
-                                📱 Sin asignar
-                              </p>
-                            )}
-                            {appointment.isExternal && (
-                              <p className="text-[10px] text-blue-600 font-semibold opacity-80">
-                                🌐 {appointment.piojologistName}
-                              </p>
-                            )}
-                            <div className="flex justify-between items-center text-[9px] uppercase tracking-wide">
-                              <span>{appointment.serviceType}</span>
-                              <span>{statusLabels[statusKey] || appointment.status}</span>
+
+                            <div className="hidden sm:block space-y-1">
+                              <div className="flex justify-between items-center gap-2">
+                                <div className="flex items-center gap-1 truncate max-w-[90px] sm:max-w-[110px]">
+                                  {appointment.isExternal && <span>🔗</span>}
+                                  {isPublicBooking && <span>🌐</span>}
+                                  <span className="truncate">{appointment.clientName}</span>
+                                </div>
+                                <span className="text-[9px] sm:text-[10px] uppercase">{time}</span>
+                              </div>
+                              {piojologist && (
+                                <p className="text-[9px] sm:text-[10px] text-gray-500 font-semibold opacity-80">
+                                  👩‍⚕️ {piojologist.name}
+                                </p>
+                              )}
+                              {isPublicBooking && !piojologist && (
+                                <p className="text-[9px] sm:text-[10px] text-pink-600 font-semibold opacity-80">
+                                  📱 Sin asignar
+                                </p>
+                              )}
+                              {appointment.isExternal && (
+                                <p className="text-[9px] sm:text-[10px] text-blue-600 font-semibold opacity-80">
+                                  🌐 {appointment.piojologistName}
+                                </p>
+                              )}
+                              <div className="flex justify-between items-center text-[8px] sm:text-[9px] uppercase tracking-wide">
+                                <span className="truncate max-w-[70px] sm:max-w-full">{appointment.serviceType}</span>
+                                <span>{statusLabels[statusKey] || appointment.status}</span>
+                              </div>
                             </div>
                           </div>
                         );
@@ -484,7 +487,7 @@ const ScheduleCalendar = ({
               );
             })}
           </div>
-        </>
+        </div>
       )}
 
       {/* VISTA SEMANA */}
