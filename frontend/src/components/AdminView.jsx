@@ -1412,11 +1412,22 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
             {userFormData.role !== 'piojologist' && (
               <div>
                 <Label className="field-label">📍 Dirección (Opcional)</Label>
-                <input 
-                  className="form-input focus:border-blue-400 focus:bg-white transition-all"
+                <AddressAutocomplete
                   value={userFormData.address || ''}
-                  onChange={e => setUserFormData({...userFormData, address: e.target.value})}
-                  placeholder="Ej. Cra 7 #45-90, Bogotá"
+                  onChange={(address) => setUserFormData({...userFormData, address})}
+                  onSelect={(suggestion) => {
+                    setUserFormData({
+                      ...userFormData,
+                      address: suggestion.fullName || suggestion.displayName,
+                      lat: suggestion.lat,
+                      lng: suggestion.lng
+                    });
+                    toast({
+                      title: "📍 Ubicación seleccionada",
+                      description: `${suggestion.name || suggestion.displayName}`,
+                      className: "bg-cyan-100 text-cyan-800 rounded-2xl border-2 border-cyan-200"
+                    });
+                  }}
                 />
               </div>
             )}
