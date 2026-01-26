@@ -148,15 +148,6 @@ const ScheduleManagement = ({
 
   return (
     <div className="space-y-6">
-      {/* Calendario */}
-      <ScheduleCalendar
-        appointments={appointments}
-        piojologists={piojologists}
-        enablePiojologistFilter
-        title="Agenda General"
-        onAssign={onAssignFromCalendar}
-      />
-
       {/* Gestión de Servicios */}
       <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-yellow-100 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-200 rounded-bl-full opacity-50 -mr-4 -mt-4"></div>
@@ -483,6 +474,25 @@ const ScheduleManagement = ({
             </div>
           );
         })()}
+      </div>
+
+      {/* Calendario (al final) */}
+      <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-yellow-100 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-200 rounded-bl-full opacity-50 -mr-4 -mt-4"></div>
+        <div className="flex justify-between items-center mb-6 relative z-10">
+          <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3">
+            <span className="text-3xl">📅</span> Agenda General
+          </h3>
+        </div>
+        <div className="relative z-10">
+          <ScheduleCalendar
+            appointments={appointments}
+            piojologists={piojologists}
+            enablePiojologistFilter
+            title="Agenda General"
+            onAssign={onAssignFromCalendar}
+          />
+        </div>
       </div>
 
       {/* Service Detail Modal */}

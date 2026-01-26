@@ -44,6 +44,26 @@ body {
   background: #F97316; 
 }
 
+/* Custom scrollbar para dropdown de ciudades */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #DBEAFE;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #60A5FA;
+  border-radius: 10px;
+  border: 2px solid #DBEAFE;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #3B82F6;
+}
+
 /* Custom animations */
 @keyframes wiggle {
   0%, 100% { transform: rotate(-3deg); }

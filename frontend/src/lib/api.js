@@ -30,12 +30,17 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Token inválido o expirado
+    const status = error.response?.status;
+    const requestUrl = error.config?.url || '';
+    const hasToken = !!localStorage.getItem('auth_token');
+
+    // Evita redirigir en intentos de login fallidos; solo actúa cuando hay sesión previa
+    if (status === 401 && hasToken && !requestUrl.includes('/login')) {
       localStorage.removeItem('auth_token');
       localStorage.removeItem('current_user');
       window.location.href = '/';
     }
+
     return Promise.reject(error);
   }
 );
