@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Bell, Calendar, User, Check, X, Clock, Zap, Star, DollarSign, ShoppingBag, ArrowRight, Clock3, CalendarClock, Users, BarChart3, LineChart } from 'lucide-react';
+import { Bell, Calendar, User, Check, X, Clock, Zap, Star, DollarSign, ShoppingBag, ArrowRight, Clock3, CalendarClock, Users, BarChart3, LineChart, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -19,6 +19,20 @@ import ScheduleCalendar from '@/components/ScheduleCalendar';
 import ProductRequestView from '@/components/ProductRequestView';
 import { bookingService } from '@/lib/api';
 
+const ASSIGNED_AT_STORAGE_KEY = 'piojoAssignedAtMap';
+
+const loadAssignedAtFromStorage = () => {
+  try {
+    const saved = localStorage.getItem(ASSIGNED_AT_STORAGE_KEY);
+    if (!saved) return new Map();
+    const parsed = JSON.parse(saved);
+    return new Map(parsed.map(([id, ts]) => [id, new Date(ts)]));
+  } catch (e) {
+    console.error('No se pudo cargar tiempos de asignación locales', e);
+    return new Map();
+  }
+};
+
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
 const PiojologistView = ({ currentUser, appointments, updateAppointments, bookings = [], updateBookings, products, handleCompleteService, serviceCatalog = {}, formatCurrency, productRequests, onCreateProductRequest, onNotify }) => {
@@ -30,6 +44,25 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   const [finishingNotes, setFinishingNotes] = useState('');
   const [servicesView, setServicesView] = useState(() => localStorage.getItem('piojoServicesView') || 'assigned'); // assigned | rejected
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('piojoTab') || 'panel');
+  const [isNavOpen, setIsNavOpen] = useState(false);
+  const [nowTs, setNowTs] = useState(Date.now());
+  const releaseRequestsRef = useRef(new Set());
+  const assignedAtFallbackRef = useRef(loadAssignedAtFromStorage());
+
+  const persistAssignedFallback = () => {
+    try {
+      const entries = Array.from(assignedAtFallbackRef.current.entries()).map(([id, date]) => [id, date.toISOString()]);
+      localStorage.setItem(ASSIGNED_AT_STORAGE_KEY, JSON.stringify(entries));
+    } catch (e) {
+      console.error('No se pudo guardar tiempos de asignación locales', e);
+    }
+  };
+
+  // Mantener referencia a la hora actual para los contadores
+  useEffect(() => {
+    const id = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('piojoServicesView', servicesView);
@@ -40,10 +73,93 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     localStorage.setItem('piojoTab', value);
   };
 
+  const handleAutoUnassign = async (apt) => {
+    if (!apt || apt.status !== 'assigned') return;
+    const backendId = apt.backendId || apt.bookingId || apt.id;
+
+    try {
+      if (apt?.isPublicBooking || apt?.backendId || apt?.id?.toString().startsWith('booking-')) {
+        await bookingService.update(backendId, {
+          status: 'pending',
+          piojologistId: null,
+          piojologistName: null
+        });
+      }
+
+      if (apt?.isPublicBooking) {
+        const updatedBookings = bookings.map((b) =>
+          (b.id === apt.id || b.backendId === apt.backendId || b.bookingId === apt.bookingId)
+            ? { ...b, status: 'pending', piojologistId: null, piojologistName: null }
+            : b
+        );
+        updateBookings && updateBookings(updatedBookings);
+      } else {
+        const updatedAppointments = appointments
+          .filter((a) => !a.isPublicBooking)
+          .map((a) =>
+            (a.id === apt.id || a.backendId === apt.backendId || a.bookingId === apt.bookingId)
+              ? { ...a, status: 'pending', piojologistId: null, piojologistName: null }
+              : a
+          );
+        updateAppointments(updatedAppointments);
+      }
+
+      toast({
+        title: '⏳ Tiempo agotado',
+        description: 'El servicio se liberó para reasignación.',
+        className: 'bg-yellow-100 border-2 border-yellow-200 text-yellow-800 rounded-2xl font-bold'
+      });
+    } catch (error) {
+      console.error('Error al liberar asignación por tiempo:', error);
+    } finally {
+      releaseRequestsRef.current.delete(apt.id);
+      clearAssignmentFallback(apt.id);
+    }
+  };
+
+  useEffect(() => {
+    setIsNavOpen(false);
+  }, [activeTab]);
+
   const getServicePrice = (apt = {}) => {
     const raw = apt.price ?? apt.price_confirmed ?? apt.estimatedPrice ?? serviceCatalog[apt.serviceType] ?? 0;
     const num = Number(raw);
     return Number.isFinite(num) ? num : 0;
+  };
+
+  const getAssignmentTime = (apt = {}) => {
+    const raw = apt.assignedAt || apt.assigned_at || apt.createdAt || apt.created_at;
+    if (raw) return new Date(raw);
+    if (!assignedAtFallbackRef.current.has(apt.id)) {
+      assignedAtFallbackRef.current.set(apt.id, new Date());
+      persistAssignedFallback();
+    }
+    return assignedAtFallbackRef.current.get(apt.id);
+  };
+
+  const clearAssignmentFallback = (aptId) => {
+    if (assignedAtFallbackRef.current.has(aptId)) {
+      assignedAtFallbackRef.current.delete(aptId);
+      persistAssignedFallback();
+    }
+  };
+
+  const getResponseDeadline = (apt = {}) => {
+    const assignmentTime = getAssignmentTime(apt);
+    const deadline = new Date(assignmentTime.getTime() + 2 * 60 * 60 * 1000); // 2 horas desde asignación
+    return deadline;
+  };
+
+  const formatCountdown = (deadline) => {
+    const diff = deadline.getTime() - nowTs;
+    if (diff <= 0) return '00:00:00';
+    let seconds = Math.floor(diff / 1000);
+    const hours = Math.floor(seconds / 3600);
+    seconds -= hours * 3600;
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds - minutes * 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(hours)}:${pad(minutes)}:${pad(secs)}`;
   };
 
   const handleAccept = async (appointmentId) => {
@@ -98,6 +214,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
         description: "¡A cazar piojitos!",
         className: "bg-green-100 border-2 border-green-200 text-green-700 rounded-2xl font-bold"
       });
+      clearAssignmentFallback(appointmentId);
     } catch (error) {
       console.error('Error al aceptar agendamiento:', error);
       toast({
@@ -174,6 +291,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
         description: "El agendamiento regresó a pendientes para reasignación.",
         className: "bg-red-100 rounded-2xl border-2 border-red-200 text-red-700 font-bold" 
       });
+      clearAssignmentFallback(appointmentId);
     } catch (error) {
       console.error('Error al rechazar agendamiento:', error);
       toast({
@@ -235,7 +353,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     return [];
   };
 
-  const pendingAssignments = appointments.filter(apt => apt.piojologistId === currentUser.id && apt.status === 'assigned');
+  const pendingAssignments = appointments.filter(apt => apt.piojologistId === currentUser.id && (apt.status === 'assigned' || apt.status === 'pending'));
   const assignedToMe = appointments.filter(apt => apt.piojologistId === currentUser.id && (apt.status === 'accepted' || apt.status === 'confirmed'));
   const myCalendarAppointments = appointments.filter(apt => apt.piojologistId === currentUser.id && apt.status !== 'cancelled');
   const completedHistory = appointments.filter(apt => apt.piojologistId === currentUser.id && apt.status === 'completed');
@@ -248,6 +366,18 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   const approvedRequests = myProductRequests.filter(req => req.status === 'approved').length;
   const rejectedRequests = myProductRequests.filter(req => req.status === 'rejected').length;
   const upcomingServices = assignedToMe.slice(0, 3);
+
+  // Vigilar asignaciones pendientes y liberar si faltan menos de 2 horas para el servicio
+  useEffect(() => {
+    pendingAssignments.forEach((apt) => {
+      const deadline = getResponseDeadline(apt);
+      const diff = deadline.getTime() - nowTs;
+      if (diff <= 0 && !releaseRequestsRef.current.has(apt.id)) {
+        releaseRequestsRef.current.add(apt.id);
+        handleAutoUnassign(apt);
+      }
+    });
+  }, [pendingAssignments, nowTs]);
 
   // Datos para charts
   const serviceCounts = {
@@ -362,20 +492,29 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
             🔔 Asignaciones Pendientes ({pendingAssignments.length})
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {pendingAssignments.map(apt => (
-              <div key={apt.id} className="bg-white rounded-[2rem] p-6 shadow-lg border-4 border-emerald-200 relative overflow-hidden">
-                <div className="absolute top-0 right-0 bg-emerald-400 text-white px-4 py-1 rounded-bl-2xl font-black text-xs uppercase tracking-wider">
-                  Esperando Aceptación
-                </div>
-                
-                <div className="flex items-center gap-3 mb-4 mt-2">
+            {pendingAssignments.map(apt => {
+              const deadline = getResponseDeadline(apt);
+              const countdown = formatCountdown(deadline);
+              const timeLeftMs = deadline.getTime() - nowTs;
+              const isUrgent = timeLeftMs > 0 && timeLeftMs <= 20 * 60 * 1000;
+              return (
+              <div
+                key={apt.id}
+                className={`bg-white rounded-[2rem] p-6 shadow-lg border-4 border-emerald-200 relative overflow-hidden ${isUrgent ? 'ring-4 ring-red-200 animate-pulse' : ''}`}
+              >
+                <div className="flex items-center gap-3 mb-3">
                   <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-2xl text-emerald-700">
                     ⏳
                   </div>
-                  <div className="flex-grow">
-                    <h3 className="font-black text-gray-800 text-lg leading-tight">{apt.clientName}</h3>
+                  <div className="flex-grow min-w-0">
+                    <h3 className="font-black text-gray-800 text-lg leading-tight truncate">{apt.clientName}</h3>
                     <p className="text-xs text-emerald-700 font-bold uppercase">{apt.serviceType}</p>
                   </div>
+                </div>
+
+                <div className="mb-4 w-full text-center bg-emerald-500 text-white px-4 py-3 rounded-2xl font-black uppercase tracking-wider leading-tight shadow-md">
+                  <span className="block text-xs">Esperando aceptación</span>
+                  <span className="block text-2xl md:text-3xl font-black mt-1">⏳ {countdown}</span>
                 </div>
 
                 <div className="bg-emerald-50 p-4 rounded-2xl space-y-2 mb-4">
@@ -413,13 +552,29 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </motion.div>
       )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="w-full bg-white/50 p-2 rounded-[2rem] border-2 border-green-100 mb-8 flex-wrap h-auto gap-2">
+        <div className="flex items-center justify-between md:justify-start gap-3 mb-4 md:mb-6">
+          <h2 className="text-xl font-black text-gray-800 md:hidden">Módulos</h2>
+          <Button
+            type="button"
+            variant="outline"
+            className="md:hidden rounded-2xl border-2 border-green-200 text-green-600 bg-white/90"
+            onClick={() => setIsNavOpen(prev => !prev)}
+            aria-expanded={isNavOpen}
+            aria-label="Abrir menú de módulos"
+          >
+            <Menu className="w-5 h-5 mr-2" />
+            {isNavOpen ? 'Cerrar' : 'Abrir'}
+          </Button>
+        </div>
+
+        <TabsList className={`w-full bg-white/50 p-2 rounded-[2rem] border-2 border-green-100 mb-8 flex-wrap h-auto gap-2 ${isNavOpen ? 'flex' : 'hidden'} md:flex`}>
           <TabsTrigger value="panel" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-amber-400 data-[state=active]:text-white transition-all">
             📊 Mi Panel
           </TabsTrigger>
@@ -539,14 +694,6 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
         </TabsContent>
 
         <TabsContent value="agenda">
-          <div className="mb-8">
-            <ScheduleCalendar
-              appointments={myCalendarAppointments}
-              piojologists={[currentUser]}
-              title="Mi Agenda"
-            />
-          </div>
-
           <div className="flex flex-wrap gap-2 mb-4">
             <button
               onClick={() => setServicesView('assigned')}
@@ -641,7 +788,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                          <span className="bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">{apt.rejectionHistory.filter(name => name === currentUser.name).length}</span>
                        </div>
                      )}
-                     {apt.status === 'pending' && servicesView !== 'rejected' && (
+                     {(apt.status === 'pending' || apt.status === 'assigned') && servicesView !== 'rejected' && (
                        <div className="flex gap-2">
                          <Button
                            onClick={() => handleAccept(apt.id)}
@@ -776,6 +923,19 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                 </div>
               ))
             )}
+          </div>
+
+          <div className="mt-8">
+            <div className="bg-white rounded-[2.5rem] p-6 shadow-xl border-4 border-green-100">
+              <h3 className="text-xl font-black text-gray-800 mb-4 flex items-center gap-2">
+                <Calendar className="w-6 h-6 text-green-500" /> Mi Agenda
+              </h3>
+              <ScheduleCalendar
+                appointments={myCalendarAppointments}
+                piojologists={[currentUser]}
+                title="Mi Agenda"
+              />
+            </div>
           </div>
         </TabsContent>
 

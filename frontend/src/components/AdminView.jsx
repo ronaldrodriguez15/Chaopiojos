@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Settings, UserPlus, Calendar, User, CheckCircle, PieChart, Crown, Users, Trash2, Edit, Save, X, ShoppingBag, DollarSign, PackagePlus, Map, Loader, RefreshCw } from 'lucide-react';
+import { Settings, UserPlus, Calendar, User, CheckCircle, PieChart, Crown, Users, Trash2, Edit, Save, X, ShoppingBag, DollarSign, PackagePlus, Map, Loader, RefreshCw, Menu } from 'lucide-react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import { Bar, Pie, Line } from 'react-chartjs-2';
 import { Button } from '@/components/ui/button';
@@ -85,6 +85,13 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     setActiveTab(value);
     localStorage.setItem('adminTab', value);
   };
+
+  // Mobile nav toggle for tabs
+  const [isNavOpen, setIsNavOpen] = useState(false);
+  useEffect(() => {
+    // Close mobile nav when tab changes
+    setIsNavOpen(false);
+  }, [activeTab]);
 
   // Resolver nombres de piojólogas faltantes en bookings/appointments combinados
   const normalizeRejectionHistory = (value) => {
@@ -478,7 +485,22 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
   return (
     <div className="space-y-8">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="w-full bg-white/50 p-2 rounded-[2rem] border-2 border-orange-100 mb-8 flex-wrap h-auto gap-2">
+        <div className="flex items-center justify-between md:justify-start gap-3 mb-4 md:mb-6">
+          <h2 className="text-xl font-black text-gray-800 md:hidden">Módulos</h2>
+          <Button
+            type="button"
+            variant="outline"
+            className="md:hidden rounded-2xl border-2 border-orange-200 text-orange-600 bg-white/90"
+            onClick={() => setIsNavOpen(prev => !prev)}
+            aria-expanded={isNavOpen}
+            aria-label="Abrir menú de módulos"
+          >
+            <Menu className="w-5 h-5 mr-2" />
+            {isNavOpen ? 'Cerrar' : 'Abrir'}
+          </Button>
+        </div>
+
+        <TabsList className={`w-full bg-white/50 p-2 rounded-[2rem] border-2 border-orange-100 mb-8 flex-wrap h-auto gap-2 ${isNavOpen ? 'flex' : 'hidden'} md:flex`}>
           <TabsTrigger value="dashboard" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-orange-400 data-[state=active]:text-white transition-all">
             📊 Panel
           </TabsTrigger>
@@ -1003,8 +1025,8 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
         </TabsContent>
 
         <TabsContent value="earnings" className="space-y-6">
-          <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-green-100">
-             <div className="flex items-center gap-4 mb-8">
+          <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-green-100 space-y-8">
+             <div className="flex items-center gap-4">
                <div className="p-4 bg-green-100 text-green-600 rounded-full">
                  <DollarSign className="w-8 h-8" />
                </div>
@@ -1013,25 +1035,48 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                </h3>
              </div>
 
+             {(() => {
+               const completed = appointments.filter(a => a.status === 'completed');
+               const totalBruto = completed.reduce((acc, curr) => acc + getServicePrice(curr), 0);
+               const comisionStudio = totalBruto * 0.5;
+               const pagoPiojologas = totalBruto - comisionStudio;
+
+               const cards = [
+                 { label: 'Servicios completados', value: completed.length, tone: 'bg-blue-50 text-blue-700 border-blue-200' },
+                 { label: 'Total facturado', value: formatCurrency(totalBruto), tone: 'bg-green-50 text-green-700 border-green-200' },
+                 { label: 'Comisión Chao Piojos (50%)', value: formatCurrency(comisionStudio), tone: 'bg-orange-50 text-orange-700 border-orange-200' },
+                 { label: 'Pago a piojólogas', value: formatCurrency(pagoPiojologas), tone: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+               ];
+
+               return (
+                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                   {cards.map(card => (
+                     <div key={card.label} className={`rounded-2xl border-2 ${card.tone} p-4 font-black text-lg`}> 
+                       <p className="text-xs uppercase tracking-wide font-black opacity-70">{card.label}</p>
+                       <p className="text-2xl mt-2">{card.value}</p>
+                     </div>
+                   ))}
+                 </div>
+               );
+             })()}
+
              <div className="overflow-x-auto">
                <table className="w-full text-left">
                  <thead>
                    <tr className="border-b-2 border-gray-100">
                      <th className="p-4 font-black text-gray-400">Piojólogo</th>
                      <th className="p-4 font-black text-gray-400">Servicios Completados</th>
-                     <th className="p-4 font-black text-gray-400 text-right">Ganancias Totales (50%)</th>
-                     <th className="p-4 font-black text-gray-400 text-right">Costos Productos</th>
-                     <th className="p-4 font-black text-gray-400 text-right">Neto a Pagar</th>
+                     <th className="p-4 font-black text-gray-400 text-right">Total Facturado</th>
+                     <th className="p-4 font-black text-gray-400 text-right">Comisión Chao (50%)</th>
+                     <th className="p-4 font-black text-gray-400 text-right">Pago Piojóloga</th>
                    </tr>
                  </thead>
                  <tbody>
                    {piojologists.map(pioj => {
-                     // Calculate summary data for each piojologist directly from appointments log if needed, or use stored user.earnings
                      const completedServices = appointments.filter(a => a.piojologistId === pioj.id && a.status === 'completed');
-                      const totalServiceValue = completedServices.reduce((acc, curr) => acc + getServicePrice(curr), 0);
-                     const grossEarnings = totalServiceValue * 0.5;
-                     const totalDeductions = completedServices.reduce((acc, curr) => acc + (curr.deductions || 0), 0);
-                     const netPayable = grossEarnings - totalDeductions;
+                     const totalServiceValue = completedServices.reduce((acc, curr) => acc + getServicePrice(curr), 0);
+                     const commissionValue = totalServiceValue * 0.5;
+                     const payoutValue = totalServiceValue - commissionValue;
 
                      return (
                        <tr key={pioj.id} className="border-b border-gray-50 last:border-0 hover:bg-green-50/50 transition-colors">
@@ -1042,11 +1087,11 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                            {pioj.name}
                          </td>
                          <td className="p-4 font-medium">{completedServices.length}</td>
-                         <td className="p-4 text-right font-medium text-blue-600">{formatCurrency(grossEarnings)}</td>
-                         <td className="p-4 text-right font-medium text-red-500">-{formatCurrency(totalDeductions)}</td>
+                         <td className="p-4 text-right font-medium text-gray-800">{formatCurrency(totalServiceValue)}</td>
+                         <td className="p-4 text-right font-medium text-orange-600">{formatCurrency(commissionValue)}</td>
                          <td className="p-4 text-right">
                            <span className="bg-green-100 text-green-700 px-3 py-1 rounded-xl font-black">
-                             {formatCurrency(netPayable)}
+                             {formatCurrency(payoutValue)}
                            </span>
                          </td>
                        </tr>
@@ -1367,11 +1412,22 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
             {userFormData.role !== 'piojologist' && (
               <div>
                 <Label className="field-label">📍 Dirección (Opcional)</Label>
-                <input 
-                  className="form-input focus:border-blue-400 focus:bg-white transition-all"
+                <AddressAutocomplete
                   value={userFormData.address || ''}
-                  onChange={e => setUserFormData({...userFormData, address: e.target.value})}
-                  placeholder="Ej. Cra 7 #45-90, Bogotá"
+                  onChange={(address) => setUserFormData({...userFormData, address})}
+                  onSelect={(suggestion) => {
+                    setUserFormData({
+                      ...userFormData,
+                      address: suggestion.fullName || suggestion.displayName,
+                      lat: suggestion.lat,
+                      lng: suggestion.lng
+                    });
+                    toast({
+                      title: "📍 Ubicación seleccionada",
+                      description: `${suggestion.name || suggestion.displayName}`,
+                      className: "bg-cyan-100 text-cyan-800 rounded-2xl border-2 border-cyan-200"
+                    });
+                  }}
                 />
               </div>
             )}

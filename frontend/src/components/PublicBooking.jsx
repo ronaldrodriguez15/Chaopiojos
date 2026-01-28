@@ -95,7 +95,6 @@ const PublicBooking = () => {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState(null);
   const [payNowAcknowledged, setPayNowAcknowledged] = useState(false);
-  const [showRecommendations, setShowRecommendations] = useState(false);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -162,6 +161,13 @@ const PublicBooking = () => {
   );
   const selectedDaySlots = selectedDayInfo?.slots || [];
 
+  const dialogTitleText = selectedDate
+    ? `Reserva para ${formatLongDate(selectedDate)}`
+    : 'Selecciona fecha y hora';
+  const dialogDescriptionText = showForm
+    ? 'Completa tus datos para confirmar la visita'
+    : 'Elige un horario disponible para tu visita';
+
   const goToPreviousMonth = () => {
     setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
   };
@@ -186,7 +192,6 @@ const PublicBooking = () => {
     setSelectedDate(null);
     setIsModalOpen(false);
     setPayNowAcknowledged(false);
-    setShowRecommendations(false);
     setForm({
       name: '',
       email: '',
@@ -297,6 +302,23 @@ const PublicBooking = () => {
       return;
     }
 
+    // Validar anticipación mínima de 12 horas
+    const now = new Date();
+    const selectedDateTime = new Date(selectedDate);
+    const [slotHour, slotMinute] = selectedSlot.split(':').map((v) => parseInt(v, 10));
+    selectedDateTime.setHours(slotHour, slotMinute, 0, 0);
+    const twelveHoursMs = 12 * 60 * 60 * 1000;
+
+    if (selectedDateTime.getTime() - now.getTime() < twelveHoursMs) {
+      toast({
+        title: '⏳ Anticipación insuficiente',
+        description: 'Los servicios se solicitan con mínimo 12 horas de antelación.',
+        duration: 4000,
+        variant: 'destructive'
+      });
+      return;
+    }
+
     try {
       // Formatear la fecha en formato YYYY-MM-DD
       const fecha = buildDateKey(selectedDate);
@@ -348,7 +370,6 @@ const PublicBooking = () => {
       setShowConfirmation(true); // Mostrar confirmación en la página principal
       setShowForm(false);
       setPayNowAcknowledged(false);
-      setShowRecommendations(false);
       
       // Scroll hacia arriba para ver el mensaje de confirmación
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -365,7 +386,7 @@ const PublicBooking = () => {
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-b from-orange-50 via-amber-50 to-white font-fredoka text-gray-800 relative overflow-hidden">
+      <div className="min-h-screen bg-gradient-to-b from-orange-50 via-amber-50 to-white font-fredoka text-gray-800 text-[20px] md:text-xl leading-relaxed md:leading-normal relative overflow-hidden flex items-center justify-center px-3 md:px-6 py-6">
       {/* Decorative Background Blobs */}
       <div className="fixed top-20 -left-10 w-48 h-48 bg-yellow-300 rounded-full mix-blend-multiply filter blur-2xl opacity-40 animate-pulse pointer-events-none"></div>
       <div className="fixed bottom-20 -right-10 w-64 h-64 bg-orange-300 rounded-full mix-blend-multiply filter blur-2xl opacity-40 animate-pulse pointer-events-none"></div>
@@ -393,68 +414,12 @@ const PublicBooking = () => {
         className="absolute bottom-1/3 left-[15%] text-3xl md:text-4xl opacity-15 pointer-events-none z-0"
       >💫</motion.div>
 
-      {/* Header Chao Piojos - Same as Login */}
-      <div className="relative z-10 pt-6 md:pt-10 pb-4 md:pb-6">
-        <div className="text-center">
-          <motion.div
-            initial={{ scale: 0.5, opacity: 0, rotate: -10 }}
-            animate={{ scale: 1, opacity: 1, rotate: 0 }}
-            transition={{ type: "spring", bounce: 0.6 }}
-            className="inline-block"
-          >
-            <div className="bg-white rounded-3xl px-8 py-4 md:px-12 md:py-6 shadow-2xl border-4 border-orange-200 relative inline-block">
-              <div className="absolute -top-6 md:-top-8 left-1/2 transform -translate-x-1/2 bg-white p-2 md:p-3 rounded-full border-4 border-orange-200 shadow-lg">
-                <img src="/logo.png" alt="Chao Piojos" className="w-12 h-12 md:w-14 md:h-14 object-contain" />
-              </div>
-              <h1 className="text-3xl md:text-4xl lg:text-5xl font-black tracking-wide drop-shadow-sm mt-2">
-                <span className="text-orange-500">Chao</span>{' '}
-                <span className="text-blue-500">Piojos</span>
-              </h1>
-              <p className="text-gray-500 font-bold text-sm md:text-base mt-1">
-                ¡Agenda tu cita sin piojos!
-              </p>
-            </div>
-          </motion.div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-3 md:px-4 pb-6 md:pb-10 relative z-10">
-        <div className="bg-white rounded-[2rem] md:rounded-[2.5rem] p-4 md:p-8 shadow-2xl border-4 border-orange-200 relative overflow-hidden">
+      <div className="max-w-7xl w-full mx-auto px-0 md:px-4 py-4 md:py-8 relative z-10 flex justify-center">
+        <div className="bg-white rounded-[2rem] md:rounded-[2.5rem] p-4 md:p-8 shadow-2xl border-4 border-orange-200 relative overflow-hidden max-w-5xl mx-auto">
           <div className="absolute -left-10 -top-10 w-32 h-32 bg-amber-200 rounded-full mix-blend-multiply opacity-60 animate-pulse pointer-events-none"></div>
           <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-orange-300 rounded-full mix-blend-multiply opacity-50 animate-pulse pointer-events-none"></div>
 
-          <div className="relative space-y-4 md:space-y-6">
-            {/* Header */}
-            <div className="flex flex-col gap-4">
-              <div className="space-y-2">
-                <p className="text-xs md:text-sm uppercase tracking-[0.2em] text-orange-500 font-black flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 md:w-5 md:h-5" /> Agenda pública
-                </p>
-                <h1 className="text-2xl md:text-4xl lg:text-5xl font-black text-gray-900 leading-tight">
-                  Agenda tu visita
-                </h1>
-                <p className="text-sm md:text-base lg:text-lg text-gray-600 max-w-2xl">
-                  Mira los horarios libres y reserva tu cita. Te confirmamos por WhatsApp.
-                </p>
-              </div>
-
-              {/* Share link */}
-              <div className="bg-gradient-to-br from-orange-400 to-yellow-400 text-white p-4 md:p-5 rounded-2xl md:rounded-3xl shadow-lg border-4 border-white">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex-1">
-                    <p className="text-xs font-bold uppercase tracking-[0.15em] opacity-90">Comparte este enlace</p>
-                    <p className="text-xs md:text-sm text-white/90 mt-1 break-all font-bold">{shareLink}</p>
-                  </div>
-                  <Button 
-                    onClick={handleCopy} 
-                    className="bg-white text-orange-600 hover:bg-orange-50 font-black text-sm md:text-base py-2 md:py-3 px-4 md:px-6 rounded-xl shadow-md border-b-4 border-orange-200 active:border-b-0 active:translate-y-0.5"
-                  >
-                    <Copy className="w-4 h-4 mr-2" /> Copiar
-                  </Button>
-                </div>
-              </div>
-            </div>
-
+          <div className="relative">
             {/* Calendar o Vista de Confirmación */}
             {!showConfirmation ? (
             <div className="bg-white rounded-2xl md:rounded-[2rem] p-4 md:p-6 shadow-xl border-4 border-orange-100 space-y-4 md:space-y-5">
@@ -633,47 +598,39 @@ const PublicBooking = () => {
 
                   {/* Recomendaciones */}
                   <div className="max-w-3xl mx-auto w-full">
-                    <button
-                      type="button"
-                      onClick={() => setShowRecommendations(prev => !prev)}
-                      className="w-full flex items-center justify-between bg-emerald-100 border-2 border-emerald-200 rounded-2xl px-4 md:px-5 py-3 font-black text-emerald-700 text-sm md:text-base shadow-sm hover:border-emerald-300 active:translate-y-0.5 transition"
-                    >
-                      <span>💡 Recomendaciones para tu visita</span>
-                      <span className="text-xs font-bold">{showRecommendations ? 'Ocultar' : 'Mostrar'}</span>
-                    </button>
-
-                    {showRecommendations && (
-                      <div className="mt-3 bg-white border-2 border-emerald-200 rounded-2xl p-4 md:p-5 space-y-3 shadow-sm">
-                        <p className="text-sm md:text-base font-black text-gray-800">
-                          Si tienes dudas o cambios escríbenos al WhatsApp <span className="text-emerald-600">3227932394</span>.
-                        </p>
-                        <div className="space-y-2 text-sm md:text-base text-gray-700 font-bold">
-                          <p className="text-emerald-700 font-black">Cómo prepararte para recibir al piojólogo certificado</p>
-                          <ul className="list-disc list-inside space-y-1">
-                            <li>Cabello seco, limpio y sin productos; lávalo el día anterior y llega con el cabello totalmente seco.</li>
-                            <li>Cabello desenredado para facilitar la extracción.</li>
-                            <li>No aplicar tratamientos antipiojos antes del servicio.</li>
-                            <li>Ten un espacio cómodo y una toalla limpia para los hombros.</li>
-                            <li>Informa si hay condiciones dermatológicas o alergias.</li>
-                            <li>El procedimiento puede tomar entre 30 y 60 minutos.</li>
-                            <li>Menores de edad deben estar acompañados por un adulto responsable.</li>
-                          </ul>
-                        </div>
-                        <div className="space-y-2 text-sm md:text-base text-gray-700 font-bold">
-                          <p className="text-emerald-700 font-black">Cuidados después de la limpieza</p>
-                          <ul className="list-disc list-inside space-y-1">
-                            <li>Lava el cabello después de la limpieza.</li>
-                            <li>Cambia ropa de cama y pijamas de los últimos 3 días (usa agua caliente si es posible).</li>
-                            <li>Lava y desinfecta peines, cepillos, ligas, gorras y diademas.</li>
-                            <li>Evita compartir objetos de cabeza (peines, almohadas, audífonos, bufandas, gorras).</li>
-                            <li>Aspira sillones, almohadas, colchones y asientos del vehículo como medida adicional.</li>
-                            <li>Haz revisiones semanales en casa.</li>
-                            <li>Viste al niño con ropa limpia tras la limpieza.</li>
-                          </ul>
-                        </div>
-                        <p className="text-sm md:text-base font-black text-emerald-700">Gracias por confiar en Chao Piojos 🧡</p>
+                    <div className="bg-white border-2 border-emerald-200 rounded-2xl p-4 md:p-5 space-y-3 shadow-sm">
+                      <p className="text-base md:text-lg font-black text-emerald-700 flex items-center gap-2">
+                        <span aria-hidden="true">💡</span> Recomendaciones para tu visita
+                      </p>
+                      <p className="text-sm md:text-base font-black text-gray-800">
+                        Si tienes dudas o cambios escríbenos al WhatsApp <span className="text-emerald-600">3227932394</span>.
+                      </p>
+                      <div className="space-y-2 text-sm md:text-base text-gray-700 font-bold">
+                        <p className="text-emerald-700 font-black">Cómo prepararte para recibir al piojólogo certificado</p>
+                        <ul className="list-disc list-inside space-y-1">
+                          <li>Cabello seco, limpio y sin productos; lávalo el día anterior y llega con el cabello totalmente seco.</li>
+                          <li>Cabello desenredado para facilitar la extracción.</li>
+                          <li>No aplicar tratamientos antipiojos antes del servicio.</li>
+                          <li>Ten un espacio cómodo y una toalla limpia para los hombros.</li>
+                          <li>Informa si hay condiciones dermatológicas o alergias.</li>
+                          <li>El procedimiento puede tomar entre 30 y 60 minutos.</li>
+                          <li>Menores de edad deben estar acompañados por un adulto responsable.</li>
+                        </ul>
                       </div>
-                    )}
+                      <div className="space-y-2 text-sm md:text-base text-gray-700 font-bold">
+                        <p className="text-emerald-700 font-black">Cuidados después de la limpieza</p>
+                        <ul className="list-disc list-inside space-y-1">
+                          <li>Lava el cabello después de la limpieza.</li>
+                          <li>Cambia ropa de cama y pijamas de los últimos 3 días (usa agua caliente si es posible).</li>
+                          <li>Lava y desinfecta peines, cepillos, ligas, gorras y diademas.</li>
+                          <li>Evita compartir objetos de cabeza (peines, almohadas, audífonos, bufandas, gorras).</li>
+                          <li>Aspira sillones, almohadas, colchones y asientos del vehículo como medida adicional.</li>
+                          <li>Haz revisiones semanales en casa.</li>
+                          <li>Viste al niño con ropa limpia tras la limpieza.</li>
+                        </ul>
+                      </div>
+                      <p className="text-sm md:text-base font-black text-emerald-700">Gracias por confiar en Chao Piojos 🧡</p>
+                    </div>
                   </div>
 
                   {/* Botón para agendar otra cita */}
@@ -699,23 +656,11 @@ const PublicBooking = () => {
           setSelectedSlot('');
         }
       }}>
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl md:rounded-[2rem] border-4 md:border-8 border-orange-100 p-0">
-          <div className="p-4 md:p-6 bg-gradient-to-r from-orange-400 to-yellow-400 text-white text-center sticky top-0 z-10">
-            <DialogHeader>
-              <div className="flex items-center justify-center gap-3">
-                <img src="/logo.png" alt="Chao Piojos" className="w-10 h-10 md:w-12 md:h-12 object-contain" />
-                <div>
-                  <DialogTitle className="text-xl md:text-2xl lg:text-3xl font-black capitalize">
-                    {selectedDate ? formatLongDate(selectedDate) : 'Reservar'}
-                  </DialogTitle>
-                  <DialogDescription className="text-white/90 font-bold text-xs md:text-sm tracking-wide uppercase">
-                    {!showForm ? 'Selecciona una hora' : 'Completa tus datos'}
-                  </DialogDescription>
-                </div>
-              </div>
-            </DialogHeader>
-          </div>
-
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl md:rounded-[2rem] border-4 md:border-8 border-orange-100 p-0 text-[20px] md:text-xl leading-relaxed md:leading-normal">
+          <DialogHeader className="sr-only">
+            <DialogTitle>{dialogTitleText}</DialogTitle>
+            <DialogDescription>{dialogDescriptionText}</DialogDescription>
+          </DialogHeader>
           <div className="p-4 md:p-6 lg:p-8 space-y-4 md:space-y-5">
             {!showForm ? (
               /* Slot selection */
@@ -738,6 +683,21 @@ const PublicBooking = () => {
                         <button
                           key={slot}
                           onClick={() => {
+                            const now = new Date();
+                            const target = new Date(selectedDate);
+                            target.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                            const twelveHoursMs = 12 * 60 * 60 * 1000;
+
+                            if (target.getTime() - now.getTime() < twelveHoursMs) {
+                              toast({
+                                title: '⏳ Anticipación insuficiente',
+                                description: 'Los servicios se solicitan con mínimo 12 horas de antelación.',
+                                duration: 4000,
+                                variant: 'destructive'
+                              });
+                              return;
+                            }
+
                             setSelectedSlot(slot);
                             setShowForm(true);
                           }}
@@ -769,7 +729,7 @@ const PublicBooking = () => {
               </div>
             ) : (
               /* Booking form */
-              <form className="space-y-4 md:space-y-5" onSubmit={handleSubmit}>
+              <form className="space-y-5 md:space-y-6 text-[20px] md:text-xl" onSubmit={handleSubmit}>
                 {/* Hora seleccionada */}
                 <div className="bg-orange-50 border-4 border-orange-200 rounded-2xl p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -793,24 +753,24 @@ const PublicBooking = () => {
 
                 {/* Datos del Cliente */}
                 <div className="space-y-3">
-                  <p className="text-sm md:text-base font-black text-gray-700 uppercase tracking-wide">📝 Datos del Cliente</p>
-                  <div>
-                    <label className="text-xs md:text-sm font-bold text-gray-700 ml-2 mb-1 block">Nombre Completo *</label>
+                  <p className="text-base md:text-lg font-black text-gray-700 uppercase tracking-wide">📝 Datos del Cliente</p>
+                  <div className="space-y-1">
+                    <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Nombre Completo *</label>
                     <input
                       required
                       type="text"
-                      className="w-full rounded-xl md:rounded-2xl border-2 border-orange-200 bg-orange-50 px-3 md:px-4 py-2.5 md:py-3 font-bold text-gray-800 focus:outline-none focus:border-orange-500 text-sm md:text-base"
+                      className="w-full rounded-xl md:rounded-2xl border-2 border-orange-200 bg-orange-50 px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-orange-500 text-base md:text-lg"
                       value={form.name}
                       onChange={(e) => handleChange('name', e.target.value)}
                       placeholder="Ej: Ana Pérez García"
                     />
                   </div>
 
-                  <div>
-                    <label className="text-xs md:text-sm font-bold text-gray-700 ml-2 mb-1 block">Nivel de Infestación *</label>
+                  <div className="space-y-1">
+                    <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Nivel de Infestación *</label>
                     <select
                       required
-                      className="w-full rounded-xl md:rounded-2xl border-2 border-orange-200 bg-orange-50 px-3 md:px-4 py-2.5 md:py-3 font-bold text-gray-800 focus:outline-none focus:border-orange-500 text-sm md:text-base cursor-pointer"
+                      className="w-full rounded-xl md:rounded-2xl border-2 border-orange-200 bg-orange-50 px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-orange-500 text-base md:text-lg cursor-pointer"
                       value={form.serviceType}
                       onChange={(e) => handleChange('serviceType', e.target.value)}
                     >
@@ -823,15 +783,15 @@ const PublicBooking = () => {
 
                 {/* Contacto del Cliente */}
                 <div className="bg-blue-50 p-4 rounded-2xl border-2 border-blue-200 space-y-3">
-                  <p className="text-xs md:text-sm font-bold text-blue-600 uppercase">📱 Contacto</p>
-                  <div>
-                    <label className="text-xs md:text-sm font-bold text-gray-700 ml-2 mb-1 block">WhatsApp *</label>
+                  <p className="text-base md:text-lg font-black text-blue-600 uppercase">📱 Contacto</p>
+                  <div className="space-y-1">
+                    <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">WhatsApp *</label>
                     <input
                       required
                       type="tel"
                       pattern="[0-9]{10}"
                       maxLength="10"
-                      className="w-full rounded-xl md:rounded-2xl border-2 border-blue-200 bg-white px-3 md:px-4 py-2.5 md:py-3 font-bold text-gray-800 focus:outline-none focus:border-blue-400 text-sm md:text-base"
+                      className="w-full rounded-xl md:rounded-2xl border-2 border-blue-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-blue-400 text-base md:text-lg"
                       value={form.whatsapp}
                       onChange={(e) => {
                         // Solo permitir números
@@ -840,20 +800,19 @@ const PublicBooking = () => {
                       }}
                       placeholder="3001234567"
                     />
-                    <p className="text-xs text-gray-500 ml-2 mt-1">Número de celular colombiano (10 dígitos)</p>
                   </div>
-                  <div>
-                    <label className="text-xs md:text-sm font-bold text-gray-700 ml-2 mb-1 block">Correo (opcional)</label>
+                  <div className="space-y-1">
+                    <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Correo (opcional)</label>
                     <input
                       type="email"
-                      className="w-full rounded-xl md:rounded-2xl border-2 border-blue-200 bg-white px-3 md:px-4 py-2.5 md:py-3 font-bold text-gray-800 focus:outline-none focus:border-blue-400 text-sm md:text-base"
+                      className="w-full rounded-xl md:rounded-2xl border-2 border-blue-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-blue-400 text-base md:text-lg"
                       value={form.email}
                       onChange={(e) => handleChange('email', e.target.value)}
                       placeholder="cliente@email.com"
                     />
                   </div>
-                  <div>
-                    <label className="text-xs md:text-sm font-bold text-gray-700 ml-2 mb-1 block">Dirección *</label>
+                  <div className="space-y-1">
+                    <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Dirección *</label>
                     <AddressAutocomplete
                       value={form.direccion}
                       onChange={(value) => handleChange('direccion', value)}
@@ -868,22 +827,22 @@ const PublicBooking = () => {
                     />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs md:text-sm font-bold text-gray-700 ml-2 mb-1 block">Barrio</label>
+                    <div className="space-y-1">
+                      <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Barrio</label>
                       <input
                         type="text"
-                        className="w-full rounded-xl md:rounded-2xl border-2 border-blue-200 bg-white px-3 md:px-4 py-2.5 md:py-3 font-bold text-gray-800 focus:outline-none focus:border-blue-400 text-sm md:text-base"
+                        className="w-full rounded-xl md:rounded-2xl border-2 border-blue-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-blue-400 text-base md:text-lg"
                         value={form.barrio}
                         onChange={(e) => handleChange('barrio', e.target.value)}
                         placeholder="Ej: Centro"
                       />
                     </div>
-                    <div>
-                      <label className="text-xs md:text-sm font-bold text-gray-700 ml-2 mb-1 block">Nº de Personas</label>
+                    <div className="space-y-1">
+                      <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Nº de Personas</label>
                       <input
                         type="number"
                         min="1"
-                        className="w-full rounded-xl md:rounded-2xl border-2 border-blue-200 bg-white px-3 md:px-4 py-2.5 md:py-3 font-bold text-gray-800 focus:outline-none focus:border-blue-400 text-sm md:text-base"
+                        className="w-full rounded-xl md:rounded-2xl border-2 border-blue-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-blue-400 text-base md:text-lg"
                         value={form.numPersonas}
                         onChange={(e) => handleChange('numPersonas', e.target.value)}
                         placeholder="1"
@@ -894,7 +853,7 @@ const PublicBooking = () => {
 
                 {/* Datos de Salud */}
                 <div className="bg-red-50 p-4 rounded-2xl border-2 border-red-200 space-y-3">
-                  <p className="text-xs md:text-sm font-bold text-red-600 uppercase">⚠️ Datos de Salud</p>
+                  <p className="text-base md:text-lg font-bold text-red-600 uppercase">⚠️ Datos de Salud</p>
                   <div className="flex items-center gap-3">
                     <input
                       type="checkbox"
@@ -903,13 +862,13 @@ const PublicBooking = () => {
                       onChange={(e) => handleChange('hasAlergias', e.target.checked)}
                       className="w-5 h-5 rounded border-2 border-red-300"
                     />
-                    <label htmlFor="hasAlergias" className="font-bold text-gray-700 cursor-pointer text-sm md:text-base">
+                    <label htmlFor="hasAlergias" className="font-bold text-gray-700 cursor-pointer text-base md:text-lg">
                       ¿Tiene alergias o afectaciones de salud?
                     </label>
                   </div>
                   {form.hasAlergias && (
                     <textarea
-                      className="w-full rounded-xl md:rounded-2xl border-2 border-red-200 bg-white px-3 md:px-4 py-2.5 md:py-3 font-bold text-gray-800 focus:outline-none focus:border-red-400 text-sm md:text-base resize-none"
+                      className="w-full rounded-xl md:rounded-2xl border-2 border-red-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-red-400 text-base md:text-lg resize-none"
                       value={form.detalleAlergias}
                       onChange={(e) => handleChange('detalleAlergias', e.target.value)}
                       placeholder="Describe las alergias o afectaciones..."
@@ -920,12 +879,12 @@ const PublicBooking = () => {
 
                 {/* Referencias */}
                 <div className="bg-purple-50 p-4 rounded-2xl border-2 border-purple-200 space-y-3">
-                  <p className="text-xs md:text-sm font-bold text-purple-600 uppercase">📌 Referencias</p>
-                  <div>
-                    <label className="text-xs md:text-sm font-bold text-gray-700 ml-2 mb-1 block">Referido Por (opcional)</label>
+                  <p className="text-base md:text-lg font-bold text-purple-600 uppercase">📌 Referencias</p>
+                  <div className="space-y-1">
+                    <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Referido Por (opcional)</label>
                     <input
                       type="text"
-                      className="w-full rounded-xl md:rounded-2xl border-2 border-purple-200 bg-white px-3 md:px-4 py-2.5 md:py-3 font-bold text-gray-800 focus:outline-none focus:border-purple-400 text-sm md:text-base"
+                      className="w-full rounded-xl md:rounded-2xl border-2 border-purple-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-purple-400 text-base md:text-lg"
                       value={form.referidoPor}
                       onChange={(e) => handleChange('referidoPor', e.target.value)}
                       placeholder="Nombre o fuente"
@@ -1027,7 +986,7 @@ const PublicBooking = () => {
                   <Check className="w-5 h-5 md:w-6 md:h-6 mr-2" /> Confirmar Reserva
                 </Button>
 
-                <p className="text-[10px] md:text-xs text-gray-500 font-bold text-center">
+                <p className="text-sm md:text-base text-gray-500 font-bold text-center">
                   Al reservar aceptas ser contactado por WhatsApp para confirmar la visita.
                 </p>
               </form>
