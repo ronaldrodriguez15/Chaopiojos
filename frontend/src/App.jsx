@@ -196,7 +196,8 @@ function App() {
   const loadBookings = async () => {
     try {
       const token = authService.getToken();
-      const response = await fetch('http://localhost:8000/api/bookings', {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
+      const response = await fetch(`${API_URL}/bookings`, {
         headers: {
           'Accept': 'application/json',
           'Authorization': `Bearer ${token}`
