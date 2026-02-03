@@ -1,0 +1,7 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Enviar todo hacia /back/public
+  RewriteCond %{REQUEST_URI} !^/back/public/
+  RewriteRule ^(.*)$ /back/public/$1 [L]
+</IfModule>

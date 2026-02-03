@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 import { motion } from 'framer-motion';
+import { bookingService } from '@/lib/api';
 import {
   Dialog,
   DialogContent,
@@ -339,19 +340,9 @@ const PublicBooking = () => {
         paymentMethod: form.paymentMethod
       };
 
-      const response = await fetch('http://localhost:8000/api/bookings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(bookingData)
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al crear la reserva');
+      const result = await bookingService.create(bookingData);
+      if (!result.success) {
+        throw new Error(result.message || 'Error al crear la reserva');
       }
 
       // Guardar info de reserva confirmada y mostrar vista de confirmación

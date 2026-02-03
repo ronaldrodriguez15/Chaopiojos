@@ -818,14 +818,14 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
         </TabsContent>
 
         <TabsContent value="users" className="space-y-6">
-          <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-blue-100">
-            <div className="flex justify-between items-center mb-8">
-              <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3">
+          <div className="bg-white rounded-[2.5rem] p-4 sm:p-6 md:p-8 shadow-xl border-4 border-blue-100">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
+              <h3 className="text-xl sm:text-2xl font-black text-gray-800 flex items-center gap-3">
                 <span className="text-3xl">👪</span> La Familia <span className="text-orange-500">Chao</span><span className="text-blue-500">Piojos</span>
               </h3>
               <Button 
                 onClick={() => handleOpenUserDialog()}
-                className="bg-blue-400 hover:bg-blue-500 text-white rounded-2xl px-6 py-6 font-bold text-lg shadow-md hover:shadow-lg border-b-4 border-blue-600 active:border-b-0 active:translate-y-1"
+                className="bg-blue-400 hover:bg-blue-500 text-white rounded-2xl px-4 sm:px-6 py-4 sm:py-6 font-bold text-base sm:text-lg shadow-md hover:shadow-lg border-b-4 border-blue-600 active:border-b-0 active:translate-y-1 w-full sm:w-auto justify-center"
               >
                 <UserPlus className="w-6 h-6 mr-2" />
                 Nuevo Miembro

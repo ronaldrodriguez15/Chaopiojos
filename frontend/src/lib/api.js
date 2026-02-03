@@ -1,6 +1,5 @@
 import axios from 'axios';
-
-const API_URL = 'http://127.0.0.1:8000/api';
+import { API_URL } from '@/lib/config';
 
 // Crear instancia de axios con configuración
 const api = axios.create({
@@ -53,8 +52,23 @@ export const authService = {
         email: email, 
         password: password 
       });
-      
-      const { token, user } = response.data;
+
+      const contentType = response.headers?.['content-type'] || '';
+      if (!contentType.includes('application/json')) {
+        return { 
+          success: false, 
+          message: 'Respuesta inesperada del servidor (no JSON). Revisa la URL del backend y el hosting.' 
+        };
+      }
+
+      const { token, user } = response.data || {};
+
+      if (!token || !user) {
+        return { 
+          success: false, 
+          message: 'Respuesta inválida del servidor. No se recibió token/usuario.' 
+        };
+      }
       
       // Guardar token y usuario en localStorage
       localStorage.setItem('auth_token', token);
@@ -65,7 +79,7 @@ export const authService = {
       console.error('Login error:', error.response?.data);
       return { 
         success: false, 
-        message: error.response?.data?.message || 'Error al iniciar sesión' 
+        message: error.response?.data?.message || error.message || 'Error al iniciar sesión' 
       };
     }
   },
@@ -98,7 +112,16 @@ export const authService = {
 
   getCurrentUser() {
     const userStr = localStorage.getItem('current_user');
-    return userStr ? JSON.parse(userStr) : null;
+    if (!userStr || userStr === 'undefined' || userStr === 'null') {
+      return null;
+    }
+    try {
+      return JSON.parse(userStr);
+    } catch (error) {
+      console.warn('current_user no es JSON válido, limpiando storage');
+      localStorage.removeItem('current_user');
+      return null;
+    }
   },
 
   getToken() {

@@ -446,20 +446,20 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 overflow-x-hidden">
       <motion.div
-        className="bg-gradient-to-r from-lime-400 to-green-400 rounded-[3rem] shadow-xl p-8 text-white relative overflow-hidden border-4 border-white"
+        className="bg-gradient-to-r from-lime-400 to-green-400 rounded-[2.5rem] sm:rounded-[3rem] shadow-xl p-4 sm:p-6 md:p-8 text-white relative overflow-hidden border-4 border-white"
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
       >
          <div className="absolute -right-10 -top-10 w-48 h-48 bg-white opacity-20 rounded-full animate-pulse"></div>
          
-         <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
-           <div className="flex items-center gap-6">
-             <div className="p-4 bg-white/30 rounded-3xl backdrop-blur-md shadow-lg">
-               <Zap className="w-12 h-12 text-white" />
+         <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-4 sm:gap-6">
+           <div className="flex items-center gap-4 sm:gap-6 min-w-0">
+             <div className="p-3 sm:p-4 bg-white/30 rounded-3xl backdrop-blur-md shadow-lg">
+               <Zap className="w-10 h-10 sm:w-12 sm:h-12 text-white" />
              </div>
-             <div>
+             <div className="min-w-0 [&>h2]:!text-2xl sm:[&>h2]:!text-3xl md:[&>h2]:!text-4xl [&>h2]:break-words [&>p]:!text-base sm:[&>p]:!text-lg md:[&>p]:!text-xl [&>p]:break-words [&>span]:!text-xs sm:[&>span]:!text-sm">
                <h2 className="text-4xl font-black mb-1 drop-shadow-md">Central de Héroes</h2>
                <p className="text-lime-100 text-xl font-bold">¡Hola, {currentUser.name}!</p>
                <span className="inline-block mt-2 bg-white/20 px-3 py-1 rounded-full text-sm font-medium border border-white/30">
@@ -468,14 +468,14 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
              </div>
            </div>
            
-           <div className="flex gap-4">
-            <div className="bg-white/20 p-4 rounded-3xl backdrop-blur-md text-center min-w-[150px]">
-              <span className="block text-4xl font-black">{formatCurrency(totalEarnings)}</span>
-              <span className="text-sm font-bold opacity-90">Mis Ganancias</span>
+           <div className="flex flex-wrap justify-center md:justify-end gap-3 sm:gap-4 w-full md:w-auto">
+            <div className="bg-white/20 p-3 sm:p-4 rounded-3xl backdrop-blur-md text-center min-w-[120px] sm:min-w-[150px]">
+              <span className="block text-2xl sm:text-3xl md:text-4xl font-black">{formatCurrency(totalEarnings)}</span>
+              <span className="text-xs sm:text-sm font-bold opacity-90">Mis Ganancias</span>
             </div>
-            <div className="bg-white/20 p-4 rounded-3xl backdrop-blur-md text-center min-w-[150px]">
-              <span className="block text-4xl font-black">{assignedToMe.length}</span>
-              <span className="text-sm font-bold opacity-90">Servicios Asignados</span>
+            <div className="bg-white/20 p-3 sm:p-4 rounded-3xl backdrop-blur-md text-center min-w-[120px] sm:min-w-[150px]">
+              <span className="block text-2xl sm:text-3xl md:text-4xl font-black">{assignedToMe.length}</span>
+              <span className="text-xs sm:text-sm font-bold opacity-90">Servicios Asignados</span>
             </div>
            </div>
          </div>
@@ -486,9 +486,9 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-br from-emerald-200 via-teal-100 to-cyan-100 rounded-[3rem] p-8 shadow-2xl border-4 border-emerald-300 mb-8"
+          className="bg-gradient-to-br from-emerald-200 via-teal-100 to-cyan-100 rounded-[2.5rem] sm:rounded-[3rem] p-4 sm:p-6 md:p-8 shadow-2xl border-4 border-emerald-300 mb-8"
         >
-          <h2 className="text-3xl font-black text-emerald-900 mb-6 flex items-center gap-3">
+          <h2 className="text-2xl sm:text-3xl font-black text-emerald-900 mb-6 flex items-center gap-3">
             🔔 Asignaciones Pendientes ({pendingAssignments.length})
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -500,7 +500,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
               return (
               <div
                 key={apt.id}
-                className={`bg-white rounded-[2rem] p-6 shadow-lg border-4 border-emerald-200 relative overflow-hidden ${isUrgent ? 'ring-4 ring-red-200 animate-pulse' : ''}`}
+                className={`bg-white rounded-[2rem] p-4 sm:p-6 shadow-lg border-4 border-emerald-200 relative overflow-hidden ${isUrgent ? 'ring-4 ring-red-200 animate-pulse' : ''}`}
               >
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-2xl text-emerald-700">
@@ -512,25 +512,25 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                   </div>
                 </div>
 
-                <div className="mb-4 w-full text-center bg-emerald-500 text-white px-4 py-3 rounded-2xl font-black uppercase tracking-wider leading-tight shadow-md">
+                <div className="mb-4 w-full text-center bg-emerald-500 text-white px-4 py-3 rounded-2xl font-black uppercase tracking-wider leading-tight shadow-md [&>span:last-child]:!text-xl sm:[&>span:last-child]:!text-2xl md:[&>span:last-child]:!text-3xl">
                   <span className="block text-xs">Esperando aceptación</span>
                   <span className="block text-2xl md:text-3xl font-black mt-1">⏳ {countdown}</span>
                 </div>
 
                 <div className="bg-emerald-50 p-4 rounded-2xl space-y-2 mb-4">
-                  <div className="flex justify-between items-center text-sm font-bold text-gray-600">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                     <span>💰 Valor:</span>
                     <span className="text-purple-600">{formatCurrency(apt.estimatedPrice || 0)}</span>
                   </div>
-                  <div className="flex justify-between items-center text-sm font-bold text-gray-600">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                     <span>📅 Fecha:</span>
                     <span className="text-emerald-700">{new Date(apt.date).toLocaleDateString()}</span>
                   </div>
-                  <div className="flex justify-between items-center text-sm font-bold text-gray-600">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                     <span>⏰ Hora:</span>
                     <span className="text-emerald-700">{apt.time}</span>
                   </div>
-                  <div className="flex justify-between items-center text-sm font-bold text-gray-600">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                     <span>📍 Dirección:</span>
                     <span className="text-gray-800 text-xs">{apt.direccion || apt.address || apt.addressLine || 'Sin dirección registrada'}</span>
                   </div>
@@ -574,57 +574,57 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
           </Button>
         </div>
 
-        <TabsList className={`w-full bg-white/50 p-2 rounded-[2rem] border-2 border-green-100 mb-8 flex-wrap h-auto gap-2 ${isNavOpen ? 'flex' : 'hidden'} md:flex`}>
-          <TabsTrigger value="panel" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-amber-400 data-[state=active]:text-white transition-all">
+        <TabsList className={`w-full bg-white/50 p-2 rounded-[2rem] border-2 border-green-100 mb-8 h-auto gap-2 ${isNavOpen ? 'grid grid-cols-2' : 'hidden'} sm:flex sm:flex-wrap md:flex`}>
+          <TabsTrigger value="panel" className="flex-1 min-w-[120px] sm:min-w-[150px] w-full rounded-3xl py-2 sm:py-3 font-bold text-base sm:text-lg text-center data-[state=active]:bg-amber-400 data-[state=active]:text-white transition-all">
             📊 Mi Panel
           </TabsTrigger>
-          <TabsTrigger value="agenda" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-green-400 data-[state=active]:text-white transition-all">
+          <TabsTrigger value="agenda" className="flex-1 min-w-[120px] sm:min-w-[150px] w-full rounded-3xl py-2 sm:py-3 font-bold text-base sm:text-lg text-center data-[state=active]:bg-green-400 data-[state=active]:text-white transition-all">
             📅 Mis Servicios ({assignedToMe.length})
           </TabsTrigger>
-          <TabsTrigger value="history" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-blue-400 data-[state=active]:text-white transition-all">
+          <TabsTrigger value="history" className="flex-1 min-w-[120px] sm:min-w-[150px] w-full rounded-3xl py-2 sm:py-3 font-bold text-base sm:text-lg text-center data-[state=active]:bg-blue-400 data-[state=active]:text-white transition-all">
             📜 Historial
           </TabsTrigger>
-          <TabsTrigger value="products" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-purple-400 data-[state=active]:text-white transition-all">
+          <TabsTrigger value="products" className="flex-1 min-w-[120px] sm:min-w-[150px] w-full rounded-3xl py-2 sm:py-3 font-bold text-base sm:text-lg text-center data-[state=active]:bg-purple-400 data-[state=active]:text-white transition-all">
             📦 Productos
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="panel">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div className="rounded-[1.75rem] p-6 bg-gradient-to-br from-blue-50 to-blue-100 border-4 border-blue-200 shadow-xl flex items-center gap-4">
-              <div className="p-3 rounded-2xl bg-white/70 text-blue-700 border-2 border-blue-100">
+            <div className="rounded-[1.75rem] p-4 sm:p-6 bg-gradient-to-br from-blue-50 to-blue-100 border-4 border-blue-200 shadow-xl flex items-center gap-3 sm:gap-4">
+              <div className="p-2 sm:p-3 rounded-2xl bg-white/70 text-blue-700 border-2 border-blue-100">
                 <Clock3 className="w-8 h-8" />
               </div>
               <div>
                 <p className="text-sm font-black text-blue-700">Total Citas</p>
-                <p className="text-4xl font-black text-blue-800 leading-tight">{myCalendarAppointments.length}</p>
+                <p className="text-3xl sm:text-4xl font-black text-blue-800 leading-tight">{myCalendarAppointments.length}</p>
               </div>
             </div>
-            <div className="rounded-[1.75rem] p-6 bg-gradient-to-br from-yellow-50 to-yellow-100 border-4 border-yellow-200 shadow-xl flex items-center gap-4">
-              <div className="p-3 rounded-2xl bg-white/70 text-yellow-600 border-2 border-yellow-100">
+            <div className="rounded-[1.75rem] p-4 sm:p-6 bg-gradient-to-br from-yellow-50 to-yellow-100 border-4 border-yellow-200 shadow-xl flex items-center gap-3 sm:gap-4">
+              <div className="p-2 sm:p-3 rounded-2xl bg-white/70 text-yellow-600 border-2 border-yellow-100">
                 <CalendarClock className="w-8 h-8" />
               </div>
               <div>
                 <p className="text-sm font-black text-yellow-700">Pendientes</p>
-                <p className="text-4xl font-black text-yellow-700 leading-tight">{statusCounts.pendiente + statusCounts.asignado}</p>
+                <p className="text-3xl sm:text-4xl font-black text-yellow-700 leading-tight">{statusCounts.pendiente + statusCounts.asignado}</p>
               </div>
             </div>
-            <div className="rounded-[1.75rem] p-6 bg-gradient-to-br from-emerald-50 to-emerald-100 border-4 border-emerald-200 shadow-xl flex items-center gap-4">
-              <div className="p-3 rounded-2xl bg-white/70 text-emerald-700 border-2 border-emerald-100">
+            <div className="rounded-[1.75rem] p-4 sm:p-6 bg-gradient-to-br from-emerald-50 to-emerald-100 border-4 border-emerald-200 shadow-xl flex items-center gap-3 sm:gap-4">
+              <div className="p-2 sm:p-3 rounded-2xl bg-white/70 text-emerald-700 border-2 border-emerald-100">
                 <Users className="w-8 h-8" />
               </div>
               <div>
                 <p className="text-sm font-black text-emerald-700">Servicios Activos</p>
-                <p className="text-4xl font-black text-emerald-800 leading-tight">{pendingAssignments.length + assignedToMe.length}</p>
+                <p className="text-3xl sm:text-4xl font-black text-emerald-800 leading-tight">{pendingAssignments.length + assignedToMe.length}</p>
               </div>
             </div>
-            <div className="rounded-[1.75rem] p-6 bg-gradient-to-br from-purple-50 to-purple-100 border-4 border-purple-200 shadow-xl flex items-center gap-4">
-              <div className="p-3 rounded-2xl bg-white/70 text-purple-700 border-2 border-purple-100">
+            <div className="rounded-[1.75rem] p-4 sm:p-6 bg-gradient-to-br from-purple-50 to-purple-100 border-4 border-purple-200 shadow-xl flex items-center gap-3 sm:gap-4">
+              <div className="p-2 sm:p-3 rounded-2xl bg-white/70 text-purple-700 border-2 border-purple-100">
                 <DollarSign className="w-8 h-8" />
               </div>
               <div>
                 <p className="text-sm font-black text-purple-700">Ingresos Totales</p>
-                <p className="text-4xl font-black text-purple-800 leading-tight">{formatCurrency(totalEarnings)}</p>
+                <p className="text-3xl sm:text-4xl font-black text-purple-800 leading-tight">{formatCurrency(totalEarnings)}</p>
               </div>
             </div>
           </div>
@@ -734,15 +734,15 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                    </div>
 
                    <div className={`${servicesView === 'rejected' ? 'bg-red-50 border-red-100' : 'bg-green-50 border-green-100'} p-4 rounded-2xl space-y-2 mb-4 border`}>
-                      <div className="flex justify-between items-center text-sm font-bold text-gray-600">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                         <span>💰 Valor:</span>
                         <span className="text-purple-600">{formatCurrency(apt.estimatedPrice || 0)}</span>
                       </div>
-                      <div className="flex justify-between items-center text-sm font-bold text-gray-600">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                         <span>📅 Fecha:</span>
                         <span className="text-green-600">{new Date(apt.date).toLocaleDateString()}</span>
                       </div>
-                      <div className="flex justify-between items-center text-sm font-bold text-gray-600">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                         <span>⏰ Hora:</span>
                         <span className="text-green-600">{apt.time}</span>
                       </div>
@@ -949,7 +949,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
             ) : (
               <div className="space-y-4">
                 {completedHistory.map(apt => (
-                  <div key={apt.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-200 hover:bg-white hover:shadow-md transition-all">
+                  <div key={apt.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-gray-50 rounded-2xl border border-gray-200 hover:bg-white hover:shadow-md transition-all">
                     <div>
                       <p className="font-black text-gray-800">{apt.clientName}</p>
                       <p className="text-xs text-gray-500">{new Date(apt.date).toLocaleDateString()} - {apt.serviceType}</p>
@@ -959,7 +959,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                         </p>
                       )}
                     </div>
-                    <div className="text-right">
+                    <div className="text-left sm:text-right">
                       {(() => {
                         const gross = getServicePrice(apt) * 0.5;
                         const deductions = Number(apt.deductions) || 0;

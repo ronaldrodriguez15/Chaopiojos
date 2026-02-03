@@ -3,7 +3,7 @@
  */
 
 // URL del proxy en el backend
-const API_BASE_URL = 'http://127.0.0.1:8000/api';
+import { API_URL } from '@/lib/config';
 
 /**
  * Descargar eventos del feed iCal
@@ -13,7 +13,7 @@ const API_BASE_URL = 'http://127.0.0.1:8000/api';
 export const fetchICalEvents = async (icalUrl) => {
   try {
     // Usar el proxy del backend para evitar problemas de CORS
-    const proxyUrl = `${API_BASE_URL}/ical-proxy?url=${encodeURIComponent(icalUrl)}`;
+    const proxyUrl = `${API_URL}/ical-proxy?url=${encodeURIComponent(icalUrl)}`;
     
     const response = await fetch(proxyUrl, {
       headers: {

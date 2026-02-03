@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import { authService, userService, bookingService } from '@/lib/api';
+import { API_URL } from '@/lib/config';
 
 const normalizeRejectionHistory = (value) => {
   if (Array.isArray(value)) return value;
@@ -196,7 +197,7 @@ function App() {
   const loadBookings = async () => {
     try {
       const token = authService.getToken();
-      const response = await fetch('http://localhost:8000/api/bookings', {
+      const response = await fetch(`${API_URL}/bookings`, {
         headers: {
           'Accept': 'application/json',
           'Authorization': `Bearer ${token}`
