@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { User, Lock, KeyRound } from 'lucide-react';
+import { User, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { authService } from '@/lib/api';
@@ -10,14 +10,16 @@ const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
+      // Puedes usar rememberMe aquí si lo necesitas para la lógica
       const result = await authService.login(email, password);
-      
+
       if (result.success) {
         onLogin(result.user);
       } else {
@@ -43,20 +45,20 @@ const Login = ({ onLogin }) => {
   return (
     <div className="min-h-[90vh] flex flex-col items-center justify-center p-4 relative overflow-hidden">
       {/* Floating Elements */}
-      <motion.div 
-        animate={{ y: [0, -20, 0] }} 
+      <motion.div
+        animate={{ y: [0, -20, 0] }}
         transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
         className="absolute top-20 left-[10%] text-4xl opacity-20"
       >🦠</motion.div>
-      <motion.div 
-        animate={{ y: [0, 20, 0] }} 
+      <motion.div
+        animate={{ y: [0, 20, 0] }}
         transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 1 }}
         className="absolute bottom-20 right-[10%] w-16 h-16 opacity-30"
       >
         <img src="/logo.png" alt="Chao Piojos" className="w-full h-full object-contain drop-shadow" />
       </motion.div>
 
-      <motion.div 
+      <motion.div
         initial={{ scale: 0.5, opacity: 0, rotate: -10 }}
         animate={{ scale: 1, opacity: 1, rotate: 0 }}
         transition={{ type: "spring", bounce: 0.6 }}
@@ -106,10 +108,24 @@ const Login = ({ onLogin }) => {
                   required
                 />
               </div>
+
+              {/* Recuérdame */}
+              <div className="flex items-center mt-2">
+                <input
+                  id="rememberMe"
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="accent-orange-500 w-5 h-5 rounded focus:ring-2 focus:ring-orange-300 border-2 border-orange-200 mr-2"
+                />
+                <label htmlFor="rememberMe" className="text-gray-500 font-medium select-none cursor-pointer">
+                  Recuérdame
+                </label>
+              </div>
             </div>
 
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={isLoading}
               className="w-full bg-gradient-to-r from-orange-400 to-red-400 hover:from-orange-500 hover:to-red-500 text-white font-black text-lg py-5 rounded-2xl shadow-lg border-b-4 border-red-600 active:border-b-0 active:translate-y-2 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
             >
@@ -121,22 +137,11 @@ const Login = ({ onLogin }) => {
               {isLoading ? 'Entrando...' : '¡A la Aventura!'}
             </Button>
           </form>
+        </div>
 
-          {/* Demo Credentials Hint */}
-          <div className="mt-4 p-3 bg-blue-50 rounded-2xl border-2 border-blue-100 text-xs text-blue-600 font-medium">
-            <p className="font-bold mb-1 text-center text-blue-700 uppercase tracking-wider text-[10px]">🔐 Accesos Demo:</p>
-            <div className="grid grid-cols-2 gap-2 text-center text-[10px]">
-              <div>
-                <span className="block font-bold">Admin:</span> admin@chaopiojos.com
-              </div>
-              <div>
-                <span className="block font-bold">Piojóloga:</span> maria@chaopiojos.com
-              </div>
-              <div className="col-span-2">
-                <span className="font-bold">Password:</span> 123
-              </div>
-            </div>
-          </div>
+        {/* Derechos reservados */}
+        <div className="mt-6 text-center text-xs text-gray-400 font-semibold">
+          © {new Date().getFullYear()} Chao Piojos. Todos los derechos reservados.
         </div>
       </motion.div>
     </div>
