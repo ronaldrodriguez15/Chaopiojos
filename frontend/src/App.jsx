@@ -8,7 +8,7 @@ import { LogOut, Sparkles, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { motion, AnimatePresence } from 'framer-motion';
-import { authService, userService, bookingService } from '@/lib/api';
+import { authService, userService, bookingService, serviceService } from '@/lib/api';
 import { API_URL } from '@/lib/config';
 
 const normalizeRejectionHistory = (value) => {
@@ -161,12 +161,84 @@ function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Services with prices definition
-  const serviceCatalog = {
-    'Normal': 70000,
-    'Elevado': 100000,
-    'Muy Alto': 120000
+  // Services with prices definition (editable from admin)
+  const defaultServices = [
+    { id: 1, name: 'Normal', value: 70000 },
+    { id: 2, name: 'Elevado', value: 100000 },
+    { id: 3, name: 'Muy Alto', value: 120000 }
+  ];
+
+  const normalizeServices = (input) => {
+    if (!input) return [];
+    if (Array.isArray(input)) {
+      return input
+        .map((item, idx) => {
+          if (item && typeof item === 'object') {
+            const name = String(item.name ?? item.label ?? '').trim();
+            const value = Number(item.value ?? item.price ?? 0);
+            if (!name || !Number.isFinite(value)) return null;
+            return { id: Number(item.id ?? Date.now() + idx), name, value };
+          }
+          return null;
+        })
+        .filter(Boolean);
+    }
+    if (typeof input === 'object') {
+      return Object.entries(input).map(([name, value], idx) => ({
+        id: Date.now() + idx,
+        name: String(name).trim(),
+        value: Number(value ?? 0)
+      })).filter(item => item.name && Number.isFinite(item.value));
+    }
+    return [];
   };
+
+  const [services, setServices] = useState(() => {
+    try {
+      const raw = localStorage.getItem('serviceCatalog');
+      const parsed = raw ? JSON.parse(raw) : null;
+      const normalized = normalizeServices(parsed);
+      return normalized.length ? normalized : defaultServices;
+    } catch (e) {
+      return defaultServices;
+    }
+  });
+
+  const persistServices = (nextServices) => {
+    try {
+      localStorage.setItem('serviceCatalog', JSON.stringify(nextServices));
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const loadServices = async () => {
+    const result = await serviceService.getAll();
+    if (result.success && Array.isArray(result.services)) {
+      const normalized = normalizeServices(result.services);
+      const next = normalized.length ? normalized : defaultServices;
+      setServices(next);
+      persistServices(next);
+      return;
+    }
+    // fallback a localStorage/defaults
+    persistServices(services);
+  };
+
+  useEffect(() => {
+    loadServices();
+  }, []);
+
+  useEffect(() => {
+    persistServices(services);
+  }, [services]);
+
+  const serviceCatalog = useMemo(() => {
+    return services.reduce((acc, svc) => {
+      if (svc?.name) acc[svc.name] = Number(svc.value) || 0;
+      return acc;
+    }, {});
+  }, [services]);
 
   // Format currency to COP
   const formatCurrency = (amount) => {
@@ -244,10 +316,11 @@ function App() {
               hasAlergias: booking.hasAlergias,
               detalleAlergias: booking.detalleAlergias,
               referidoPor: booking.referidoPor,
-                price_confirmed: booking.price_confirmed,
+              price_confirmed: booking.price_confirmed,
               estimatedPrice: serviceCatalog[booking.serviceType] || 0,
               status: normalizedStatus,
               piojologistId: booking.piojologist_id || null,
+              payment_status_to_piojologist: booking.payment_status_to_piojologist || 'pending',
               rejectionHistory: normalizeRejectionHistory(booking.rejectionHistory || booking.rejection_history || booking.rejections || cache[booking.id]),
               isPublicBooking: true
             };
@@ -267,6 +340,30 @@ function App() {
     } catch (error) {
       console.error('❌ Error al cargar bookings:', error);
     }
+  };
+
+  const handleCreateService = async (serviceData) => {
+    const result = await serviceService.create(serviceData);
+    if (result.success) {
+      await loadServices();
+    }
+    return result;
+  };
+
+  const handleUpdateService = async (serviceId, serviceData) => {
+    const result = await serviceService.update(serviceId, serviceData);
+    if (result.success) {
+      await loadServices();
+    }
+    return result;
+  };
+
+  const handleDeleteService = async (serviceId) => {
+    const result = await serviceService.delete(serviceId);
+    if (result.success) {
+      await loadServices();
+    }
+    return result;
   };
 
   // Sync appointments and products with localStorage
@@ -402,6 +499,23 @@ function App() {
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showNotifications]);
+
+  // Cerrar dropdown de notificaciones al hacer scroll (solo fuera del modal)
+  useEffect(() => {
+    const handleScroll = (event) => {
+      // Verificar si el scroll es dentro del contenedor de notificaciones
+      const notificationContainer = document.querySelector('.notification-container');
+      if (showNotifications && notificationContainer && !notificationContainer.contains(event.target)) {
+        setShowNotifications(false);
+      }
+    };
+
+    if (showNotifications) {
+      window.addEventListener('scroll', handleScroll, true);
+    }
+    
+    return () => window.removeEventListener('scroll', handleScroll, true);
   }, [showNotifications]);
 
   const updateAppointments = (newAppointments) => {
@@ -602,7 +716,7 @@ function App() {
     return { success: true };
   };
 
-  // Handle earnings logic: Add 50% of service price to piojologist earnings
+  // Handle earnings logic: Apply commission rate from piojologist
   const handleCompleteService = async (appointmentId, productsUsedIds = [], completionData = {}) => {
     const isBookingId = typeof appointmentId === 'string' && appointmentId.startsWith('booking-');
     const bookingMatch = bookings.find(a => a.id === appointmentId || a.backendId === appointmentId || a.bookingId === appointmentId || (isBookingId && a.backendId === Number(appointmentId.replace('booking-',''))));
@@ -612,7 +726,11 @@ function App() {
 
     const backendId = appointment.backendId || appointment.bookingId || (isBookingId ? appointmentId.replace('booking-','') : appointmentId);
     const servicePrice = serviceCatalog[appointment.serviceType] || 0;
-    const piojologistShare = servicePrice * 0.5; // 50%
+    
+    // Get piojologist's commission rate (default to 50% if not set)
+    const piojologist = users.find(u => u.id === appointment.piojologistId);
+    const commissionRate = (piojologist?.commission_rate || 50) / 100;
+    const piojologistShare = servicePrice * commissionRate;
 
     // Calculate deductions from used products
     let productDeductions = 0;
@@ -630,7 +748,8 @@ function App() {
           status: 'completed',
           plan_type: completionData.planType || appointment.serviceType,
           price_confirmed: completionData.priceConfirmed ?? servicePrice,
-          service_notes: completionData.notes || null
+          service_notes: completionData.notes || null,
+          additional_costs: completionData.additionalCosts || 0
         });
       } catch (err) {
         console.error('Error actualizando booking a completed', err);
@@ -653,14 +772,14 @@ function App() {
     if (appointment.isPublicBooking || isBookingId || bookingMatch) {
       const updatedBookings = bookings.map(apt => 
         (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId || (isBookingId && apt.backendId === Number(appointmentId.replace('booking-',''))))
-          ? { ...apt, status: 'completed', price: completionData.priceConfirmed ?? servicePrice, price_confirmed: completionData.priceConfirmed ?? servicePrice, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, earnings: netEarnings, deductions: productDeductions }
+          ? { ...apt, status: 'completed', price: completionData.priceConfirmed ?? servicePrice, price_confirmed: completionData.priceConfirmed ?? servicePrice, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions }
           : apt
       );
       setBookings(updatedBookings);
     } else {
       const updatedAppointments = appointments.map(apt => 
         (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId)
-          ? { ...apt, status: 'completed', price: completionData.priceConfirmed ?? servicePrice, price_confirmed: completionData.priceConfirmed ?? servicePrice, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, earnings: netEarnings, deductions: productDeductions }
+          ? { ...apt, status: 'completed', price: completionData.priceConfirmed ?? servicePrice, price_confirmed: completionData.priceConfirmed ?? servicePrice, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions }
           : apt
       );
       setAppointments(updatedAppointments);
@@ -718,10 +837,13 @@ function App() {
   const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1024;
   const scrollY = typeof window !== 'undefined' ? window.scrollY : 0;
   const isMobile = viewportWidth < 768;
-  const dropdownTop = (bellRect?.bottom || 0) + scrollY + 8;
+  
+  // Para móvil: usar coordenadas del viewport directamente (fixed positioning)
+  // Para desktop: usar coordenadas del documento (absolute positioning)
   const dropdownStyle = isMobile
     ? {
-        top: dropdownTop,
+        position: 'fixed',
+        top: (bellRect?.bottom || 0) + 8,
         left: '50%',
         transform: 'translateX(-50%)',
         width: 'calc(100vw - 32px)',
@@ -729,7 +851,8 @@ function App() {
         zIndex: 99999
       }
     : {
-        top: dropdownTop,
+        position: 'absolute',
+        top: (bellRect?.bottom || 0) + scrollY + 8,
         right: Math.max(16, viewportWidth - (bellRect?.right || viewportWidth)),
         width: '24rem',
         zIndex: 99999
@@ -833,9 +956,14 @@ function App() {
                     bookings={bookings}
                     updateAppointments={updateAppointments}
                     updateBookings={updateBookingsState}
+                    reloadBookings={loadBookings}
                     piojologists={piojologists}
                     products={products}
                     updateProducts={updateProducts}
+                    services={services}
+                    onCreateService={handleCreateService}
+                    onUpdateService={handleUpdateService}
+                    onDeleteService={handleDeleteService}
                     serviceCatalog={serviceCatalog}
                     formatCurrency={formatCurrency}
                     syncICalEvents={() => {}}
@@ -859,7 +987,7 @@ function App() {
       {/* Notification Dropdown - Rendered at root level */}
       {showNotifications && currentUser && (
         <div 
-          className="fixed bg-white rounded-2xl shadow-2xl border-4 border-yellow-200 max-h-[500px] overflow-hidden flex flex-col notification-container w-full md:w-96"
+          className="bg-white rounded-2xl shadow-2xl border-4 border-yellow-200 max-h-[500px] overflow-hidden flex flex-col notification-container w-full md:w-96"
           style={dropdownStyle}
         >
           <div className="bg-yellow-100 px-4 py-3 border-b-2 border-yellow-200 flex justify-between items-center">
@@ -932,29 +1060,29 @@ function App() {
 
       {/* Notification Detail Modal */}
       <Dialog open={Boolean(selectedNotification)} onOpenChange={(open) => !open && setSelectedNotification(null)}>
-        <DialogContent className="rounded-[2rem] border-8 border-yellow-100 p-0 overflow-hidden w-[95vw] max-w-xl">
-          <div className="bg-yellow-400 p-6 text-white">
-            <DialogHeader>
-              <DialogTitle className="text-2xl font-black flex items-center gap-2">
+        <DialogContent className="rounded-[2rem] border-8 border-yellow-100 overflow-hidden w-[95vw] max-w-xl p-4 sm:p-6 md:p-8">
+          <DialogHeader className="mb-4">
+            <DialogTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
+              <span className="inline-flex items-center gap-2 bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs sm:text-sm font-bold">
                 🔔 Detalle de notificación
-              </DialogTitle>
-            </DialogHeader>
-            <p className="text-sm font-bold text-white/90">
-              {selectedNotification?.timestamp ? new Date(selectedNotification.timestamp).toLocaleString('es-ES', {
-                day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-              }) : ''}
-            </p>
-          </div>
+              </span>
+            </DialogTitle>
+          </DialogHeader>
 
-          <div className="p-6 space-y-4 bg-white">
-            <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4">
+          <div className="space-y-4">
+            <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-3 sm:p-4">
               <p className="text-xs font-black text-yellow-700 uppercase mb-1">Mensaje</p>
-              <p className="text-gray-800 font-bold">{selectedNotification?.message}</p>
-              <p className="text-[11px] text-gray-500 mt-1">Tipo: <span className="font-bold uppercase">{selectedNotification?.type}</span></p>
+              <p className="text-gray-800 font-bold text-sm sm:text-base">{selectedNotification?.message}</p>
+              <p className="text-[10px] sm:text-[11px] text-gray-500 mt-2">
+                {selectedNotification?.timestamp ? new Date(selectedNotification.timestamp).toLocaleString('es-ES', {
+                  day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                }) : ''}
+              </p>
+              <p className="text-[10px] sm:text-[11px] text-gray-500 mt-1">Tipo: <span className="font-bold uppercase">{selectedNotification?.type}</span></p>
             </div>
 
             {selectedNotification?.appointment && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm font-semibold text-gray-700">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs sm:text-sm font-semibold text-gray-700">
                 <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
                   🧑‍🤝‍🧑 Cliente<br />
                   <span className="font-bold text-gray-900">{selectedNotification.appointment.clientName || 'N/A'}</span>
@@ -979,15 +1107,15 @@ function App() {
             )}
 
             {selectedNotification?.rejection_history?.length > 0 && (
-              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 text-sm font-semibold text-red-700">
+              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 text-xs sm:text-sm font-semibold text-red-700">
                 ⚠️ Rechazos: {selectedNotification.rejection_history.join(', ')}
               </div>
             )}
 
-            <div className="flex justify-end">
+            <div className="flex justify-end pt-2">
               <Button
                 onClick={() => setSelectedNotification(null)}
-                className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-2xl px-6 py-3 font-bold shadow-md border-b-4 border-yellow-600"
+                className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-2xl px-6 py-3 font-bold shadow-md border-b-4 border-yellow-600 w-full sm:w-auto text-sm sm:text-base"
               >
                 Cerrar
               </Button>

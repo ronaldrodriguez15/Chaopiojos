@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use Illuminate\Support\Str;
 
 class User extends Authenticatable
 {
@@ -28,6 +29,9 @@ class User extends Authenticatable
         'address',
         'lat',
         'lng',
+        'commission_rate',
+        'referral_code',
+        'referred_by_id',
     ];
 
     /**
@@ -48,4 +52,62 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
     ];
+
+    /**
+     * Generar código de referido único al crear el usuario
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($user) {
+            if ($user->role === 'piojologist' && empty($user->referral_code)) {
+                $user->referral_code = self::generateUniqueReferralCode();
+            }
+        });
+    }
+
+    /**
+     * Genera un código de referido único
+     */
+    public static function generateUniqueReferralCode()
+    {
+        do {
+            $code = 'PIOJO' . strtoupper(Str::random(6));
+        } while (self::where('referral_code', $code)->exists());
+
+        return $code;
+    }
+
+    /**
+     * Piojóloga que refirió a este usuario
+     */
+    public function referredBy()
+    {
+        return $this->belongsTo(User::class, 'referred_by_id');
+    }
+
+    /**
+     * Piojólogas que este usuario ha referido
+     */
+    public function referrals()
+    {
+        return $this->hasMany(User::class, 'referred_by_id');
+    }
+
+    /**
+     * Comisiones que ha ganado por referir a otras piojólogas
+     */
+    public function commissionsEarned()
+    {
+        return $this->hasMany(ReferralCommission::class, 'referrer_id');
+    }
+
+    /**
+     * Comisiones generadas por ser referida
+     */
+    public function commissionsGenerated()
+    {
+        return $this->hasMany(ReferralCommission::class, 'referred_id');
+    }
 }

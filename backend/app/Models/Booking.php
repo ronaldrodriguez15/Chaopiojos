@@ -28,7 +28,9 @@ class Booking extends Model
         'plan_type',
         'price_confirmed',
         'service_notes',
-        'rejection_history'
+        'rejection_history',
+        'additional_costs',
+        'payment_status_to_piojologist'
     ];
 
     protected $casts = [
@@ -37,6 +39,7 @@ class Booking extends Model
         'numPersonas' => 'integer',
         'piojologist_id' => 'integer',
         'price_confirmed' => 'decimal:2',
+        'additional_costs' => 'decimal:2',
         'rejection_history' => 'array'
     ];
 }

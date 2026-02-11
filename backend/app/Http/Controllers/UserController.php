@@ -50,6 +50,7 @@ class UserController extends Controller
                 'address' => 'nullable|string|max:255',
                 'lat' => 'nullable|numeric',
                 'lng' => 'nullable|numeric',
+                'referral_code_used' => 'nullable|string|max:20', // Código de referido ingresado
             ]);
 
             $validated['password'] = Hash::make($validated['password']);
@@ -58,6 +59,25 @@ class UserController extends Controller
             if (!isset($validated['available'])) {
                 $validated['available'] = true;
             }
+
+            // Si es piojóloga y se proporcionó un código de referido
+            if ($validated['role'] === 'piojologist' && !empty($validated['referral_code_used'])) {
+                $referrer = User::where('referral_code', $validated['referral_code_used'])
+                    ->where('role', 'piojologist')
+                    ->first();
+
+                if ($referrer) {
+                    $validated['referred_by_id'] = $referrer->id;
+                } else {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'El código de referido no es válido'
+                    ], 422);
+                }
+            }
+
+            // Remover el código usado de los datos validados (no es parte del modelo)
+            unset($validated['referral_code_used']);
 
             $user = User::create($validated);
 
@@ -201,6 +221,89 @@ class UserController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al eliminar usuario: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Validar código de referido
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
+    public function validateReferralCode(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'code' => 'required|string|max:20',
+            ]);
+
+            $user = User::where('referral_code', $validated['code'])
+                ->where('role', 'piojologist')
+                ->first();
+
+            if ($user) {
+                return response()->json([
+                    'success' => true,
+                    'valid' => true,
+                    'referrer' => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                    ]
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'valid' => false,
+                'message' => 'Código de referido no válido'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al validar código: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Regenerar código de referido para una piojóloga
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function regenerateReferralCode($id)
+    {
+        try {
+            $user = User::findOrFail($id);
+
+            if ($user->role !== 'piojologist') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Solo las piojólogas pueden tener código de referido'
+                ], 400);
+            }
+
+            // Generar nuevo código único
+            $newCode = User::generateUniqueReferralCode();
+            $user->referral_code = $newCode;
+            $user->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Código de referido regenerado exitosamente',
+                'referral_code' => $newCode,
+                'user' => $user->fresh()
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Usuario no encontrado'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al regenerar código: ' . $e->getMessage()
             ], 500);
         }
     }

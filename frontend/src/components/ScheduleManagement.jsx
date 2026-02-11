@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Calendar, Trash2, Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -109,7 +109,7 @@ const ScheduleManagement = ({
     setIsServiceDialogOpen(false);
     resetServiceForm();
     toast({ 
-      title: "¡Servicio Creado! ✨", 
+      title: "Servicio Creado!", 
       className: "bg-yellow-100 text-yellow-800 rounded-2xl border-2 border-yellow-200" 
     });
   };
@@ -119,7 +119,7 @@ const ScheduleManagement = ({
     if (!assignPiojologistId) {
       toast({
         title: 'Selecciona una piojóloga',
-        description: 'Debes elegir a quién asignar este agendamiento.',
+        description: 'Debes elegir a quien asignar este agendamiento.',
         className: 'rounded-2xl border-2 border-yellow-200 bg-yellow-50 text-yellow-700 font-bold'
       });
       return;
@@ -140,36 +140,40 @@ const ScheduleManagement = ({
 
     setIsServiceDetailOpen(false);
     toast({
-      title: 'Asignado con éxito',
-      description: selectedPio ? `Asignado a ${selectedPio.name}` : 'Asignación guardada',
+      title: 'Asignado con xito',
+      description: selectedPio ? `Asignado a ${selectedPio.name}` : 'Asignacin guardada',
       className: 'rounded-2xl border-2 border-green-200 bg-green-50 text-green-700 font-bold'
     });
   };
 
   return (
     <div className="space-y-6">
-      {/* Gestión de Servicios */}
-      <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-yellow-100 relative overflow-hidden">
+      {/* Gestion de Servicios */}
+      <div className="bg-white rounded-[2.5rem] p-4 sm:p-6 md:p-8 shadow-xl border-4 border-yellow-100 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-200 rounded-bl-full opacity-50 -mr-4 -mt-4"></div>
         
-        <div className="flex justify-between items-center mb-6 relative z-10">
-          <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3">
-            <span className="text-3xl">📋</span> Servicios Activos
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 relative z-10">
+          <h3 className="text-xl sm:text-2xl font-black text-gray-800 flex items-center gap-3">
+            Servicios Activos
           </h3>
           <Dialog open={isServiceDialogOpen} onOpenChange={setIsServiceDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-2xl px-6 py-6 font-bold text-lg shadow-md border-b-4 border-yellow-600 active:border-b-0 active:translate-y-1">
+              <Button className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-2xl px-4 sm:px-6 py-4 sm:py-6 font-bold text-base sm:text-lg shadow-md hover:shadow-lg border-b-4 border-yellow-600 active:border-b-0 active:translate-y-1 w-full sm:w-auto justify-center">
                 <Calendar className="w-6 h-6 mr-2" />
                 Crear Servicio
               </Button>
             </DialogTrigger>
-            <DialogContent className="rounded-[2.5rem] border-8 border-yellow-100 p-0 overflow-hidden sm:max-w-md bg-white max-h-[90vh] flex flex-col">
-              <div className="bg-yellow-400 p-6 text-white text-center flex-shrink-0">
-                <DialogHeader>
-                  <DialogTitle className="text-3xl font-black">Nuevo Servicio ✨</DialogTitle>
-                </DialogHeader>
-              </div>
-              <form onSubmit={handleServiceSubmit} className="p-8 space-y-4 flex-1 overflow-y-auto">
+            <DialogContent className="rounded-[2.5rem] border-4 border-yellow-200 p-0 overflow-hidden sm:max-w-md bg-gradient-to-b from-yellow-50 to-white max-h-[90vh] flex flex-col">
+              <DialogHeader className="sr-only">
+                <DialogTitle>Nuevo Servicio</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleServiceSubmit} className="relative p-6 md:p-8 space-y-4 flex-1 overflow-y-auto">
+                <div className="text-center mb-2">
+                  <div className="inline-flex items-center gap-2 bg-yellow-100 px-3 py-1 rounded-full">
+                    <Calendar className="w-4 h-4 text-yellow-600" />
+                    <span className="text-xs font-black text-yellow-600 uppercase">Nuevo Servicio</span>
+                  </div>
+                </div>
                 <div>
                   <Label className="font-bold text-gray-500 ml-2 mb-1 block">Nombre del Cliente</Label>
                   <input 
@@ -177,7 +181,7 @@ const ScheduleManagement = ({
                     value={serviceFormData.clientName}
                     onChange={e => setServiceFormData({...serviceFormData, clientName: e.target.value})}
                     className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-yellow-400"
-                    placeholder="Ej. Familia Pérez"
+                    placeholder="Ej. Familia Prez"
                   />
                 </div>
                 <div>
@@ -244,7 +248,7 @@ const ScheduleManagement = ({
         <div className="mb-6 bg-yellow-50 rounded-2xl p-4 border-2 border-yellow-200">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <Label className="text-xs font-bold text-gray-600 mb-1 block">🔍 Cliente</Label>
+              <Label className="text-xs font-bold text-gray-600 mb-1 block"> Cliente</Label>
               <input
                 type="text"
                 placeholder="Buscar por nombre..."
@@ -257,7 +261,7 @@ const ScheduleManagement = ({
               />
             </div>
             <div>
-              <Label className="text-xs font-bold text-gray-600 mb-1 block">📊 Tipo</Label>
+              <Label className="text-xs font-bold text-gray-600 mb-1 block"> Tipo</Label>
               <select
                 value={serviceFilters.serviceType}
                 onChange={(e) => {
@@ -273,7 +277,7 @@ const ScheduleManagement = ({
               </select>
             </div>
             <div>
-              <Label className="text-xs font-bold text-gray-600 mb-1 block">🦸 Piojóloga</Label>
+              <Label className="text-xs font-bold text-gray-600 mb-1 block">Piojóloga</Label>
               <select
                 value={serviceFilters.piojologist}
                 onChange={(e) => {
@@ -289,7 +293,7 @@ const ScheduleManagement = ({
               </select>
             </div>
             <div>
-              <Label className="text-xs font-bold text-gray-600 mb-1 block">🎯 Estado</Label>
+              <Label className="text-xs font-bold text-gray-600 mb-1 block"> Estado</Label>
               <select
                 value={serviceFilters.status}
                 onChange={(e) => {
@@ -306,7 +310,7 @@ const ScheduleManagement = ({
               </select>
             </div>
             <div>
-              <Label className="text-xs font-bold text-gray-600 mb-1 block">⚠️ Rechazos</Label>
+              <Label className="text-xs font-bold text-gray-600 mb-1 block"> Rechazos</Label>
               <select
                 value={serviceFilters.rejections}
                 onChange={(e) => {
@@ -366,8 +370,8 @@ const ScheduleManagement = ({
                 <div className="col-span-full py-12 text-center bg-yellow-50 rounded-[2rem] border-2 border-dashed border-yellow-300">
                   <p className="text-xl font-bold text-yellow-600">
                     {serviceFilters.clientName || serviceFilters.serviceType || serviceFilters.piojologist || serviceFilters.status !== 'all'
-                      ? '🔍 No se encontraron servicios con esos filtros'
-                      : '¡No hay servicios activos! 🌟'
+                      ? ' No se encontraron servicios con esos filtros'
+                      : 'No hay servicios activos! '
                     }
                   </p>
                 </div>
@@ -413,17 +417,17 @@ const ScheduleManagement = ({
                     }}
                   >
                     <div className="flex justify-between items-start mb-3">
-                      <span className="font-bold text-lg truncate">{apt.clientName}</span>
+                      <span className="font-black text-xl text-gray-800 truncate">{apt.clientName}</span>
                       <span className={`text-xs font-bold px-3 py-1.5 rounded-full border-2 ${config.badge} shadow-sm`}>
                         {config.label}
                       </span>
                     </div>
                     <p className="text-sm mb-1 font-bold text-gray-700 opacity-80">{apt.serviceType}</p>
                     <p className="text-lg text-purple-600 mb-2 font-black">{formatCurrency(serviceCatalog[apt.serviceType] || 0)}</p>
-                    <p className="text-sm text-gray-500 mb-3 font-medium">📅 {apt.date} - {apt.time}</p>
+                    <p className="text-sm text-gray-500 mb-3 font-medium"> {apt.date} - {apt.time}</p>
                     <div className="bg-green-50 p-2 rounded-xl border border-green-200">
                       <p className="text-xs font-bold text-green-700">
-                        👨‍⚕️ {apt.piojologistName || 'Sin asignar'}
+                         {apt.piojologistName || 'Sin asignar'}
                       </p>
                     </div>
                   </div>
@@ -459,17 +463,17 @@ const ScheduleManagement = ({
                 disabled={servicesPage === 1}
                 className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-xl px-4 py-2 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                ← Anterior
+                 Anterior
               </Button>
               <span className="text-sm font-bold text-gray-600">
-                Página {servicesPage} de {Math.ceil(filteredCount / servicesPerPage)}
+                Pgina {servicesPage} de {Math.ceil(filteredCount / servicesPerPage)}
               </span>
               <Button
                 onClick={() => setServicesPage(prev => prev + 1)}
                 disabled={servicesPage >= Math.ceil(filteredCount / servicesPerPage)}
                 className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-xl px-4 py-2 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Siguiente →
+                Siguiente 
               </Button>
             </div>
           );
@@ -477,11 +481,11 @@ const ScheduleManagement = ({
       </div>
 
       {/* Calendario (al final) */}
-      <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-yellow-100 relative overflow-hidden">
+      <div className="bg-white rounded-[2.5rem] p-4 sm:p-6 md:p-8 shadow-xl border-4 border-yellow-100 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-200 rounded-bl-full opacity-50 -mr-4 -mt-4"></div>
-        <div className="flex justify-between items-center mb-6 relative z-10">
-          <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3">
-            <span className="text-3xl">📅</span> Agenda General
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 relative z-10">
+          <h3 className="text-xl sm:text-2xl font-black text-gray-800 flex items-center gap-3">
+            Agenda General
           </h3>
         </div>
         <div className="relative z-10">
@@ -503,34 +507,44 @@ const ScheduleManagement = ({
           if (!open) setSelectedService(null);
         }}
       >
-        <DialogContent className="rounded-[2.5rem] border-8 border-yellow-100 p-0 overflow-hidden max-w-xl">
+        <DialogContent className="rounded-[2.5rem] border-4 border-yellow-200 p-0 overflow-hidden bg-gradient-to-b from-yellow-50 to-white max-w-xl">
           {selectedService && (
-            <div className="bg-white">
-              <div className="bg-yellow-400 p-6 text-white">
-                <DialogHeader>
-                  <DialogTitle className="text-2xl font-black">{selectedService.clientName}</DialogTitle>
-                  <p className="text-sm font-bold text-white/80">{selectedService.serviceType}</p>
-                </DialogHeader>
-              </div>
+            <div className="bg-transparent">
+              <DialogHeader className="sr-only">
+                <DialogTitle>Detalle del Servicio: {selectedService.clientName}</DialogTitle>
+              </DialogHeader>
 
-              <div className="p-6 space-y-4">
+              <div className="p-6 md:p-8">
+                <div className="text-center mb-6">
+                  <div className="inline-flex items-center gap-2 bg-yellow-100 px-3 py-1 rounded-full mb-3">
+                    <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    <span className="text-xs font-black text-yellow-600 uppercase">Detalle del Servicio</span>
+                  </div>
+                  <h2 className="text-2xl md:text-3xl font-black text-gray-800">{selectedService.clientName}</h2>
+                  <p className="text-sm font-bold text-gray-600 mt-1">{selectedService.serviceType}</p>
+                </div>
+
+                <div className="max-h-[60vh] overflow-y-auto">
+                  <div className="space-y-4 pr-2">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3 text-sm font-bold text-gray-700">
-                    📅 {selectedService.date} - {selectedService.time}
+                     {selectedService.date} - {selectedService.time}
                   </div>
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3 text-sm font-black text-purple-700">
-                    💵 {formatCurrency(serviceCatalog[selectedService.serviceType] || 0)}
+                     {formatCurrency(serviceCatalog[selectedService.serviceType] || 0)}
                   </div>
                 </div>
 
                 <div className="bg-white border-2 border-amber-200 rounded-xl p-3 text-sm font-bold text-amber-700 flex items-center justify-between">
                   <div>
-                    💳 Método de pago<br />
+                     Mtodo de pago<br />
                     <span className="text-gray-800">
                       {(() => {
                         const payment = selectedService.paymentMethod || selectedService.payment_method;
-                        if (payment === 'pay_now') return 'Paga en línea (Bold)';
-                        if (payment === 'pay_later') return 'Paga después del servicio';
+                        if (payment === 'pay_now') return 'Paga en lnea (Bold)';
+                        if (payment === 'pay_later') return 'Paga despus del servicio';
                         return 'No registrado';
                       })()}
                     </span>
@@ -541,32 +555,32 @@ const ScheduleManagement = ({
                 </div>
 
                 <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3 text-sm font-semibold text-gray-700">
-                  👨‍⚕️ {selectedService.piojologistName || 'Sin asignar'}
+                   {selectedService.piojologistName || 'Sin asignar'}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm font-semibold text-gray-700">
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
-                    📍 Dirección:<br />
+                     Dirección:<br />
                     <span className="font-bold text-gray-800">{selectedService.direccion || selectedService.address || 'No registrada'}</span>
                   </div>
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
-                    🏘️ Barrio:<br />
+                     Barrio:<br />
                     <span className="font-bold text-gray-800">{selectedService.barrio || 'No registrado'}</span>
                   </div>
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
-                    📞 WhatsApp:<br />
+                     WhatsApp:<br />
                     <span className="font-bold text-gray-800">{selectedService.whatsapp || 'No registrado'}</span>
                   </div>
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
-                    ✉️ Email:<br />
+                     Email:<br />
                     <span className="font-bold text-gray-800">{selectedService.email || 'No registrado'}</span>
                   </div>
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
-                    👥 Personas:<br />
+                     Personas:<br />
                     <span className="font-bold text-gray-800">{selectedService.numPersonas || 'No informado'}</span>
                   </div>
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
-                    🪱 Referido por:<br />
+                     Referido por:<br />
                     <span className="font-bold text-gray-800">{selectedService.referidoPor || 'No informado'}</span>
                   </div>
                 </div>
@@ -583,7 +597,7 @@ const ScheduleManagement = ({
                     return (
                       <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 text-sm font-semibold text-red-700 space-y-2">
                         <div className="flex items-center gap-2">
-                          <span>⚠️ Rechazos previos</span>
+                          <span> Rechazos previos</span>
                           <span className="text-xs text-red-600 font-bold bg-white/70 px-2 py-0.5 rounded-full border border-red-200">
                             {selectedService.rejectionHistory.length}
                           </span>
@@ -627,6 +641,8 @@ const ScheduleManagement = ({
                     </div>
                   </div>
                 )}
+                </div>
+                </div>
               </div>
             </div>
           )}
@@ -637,3 +653,5 @@ const ScheduleManagement = ({
 };
 
 export default ScheduleManagement;
+
+

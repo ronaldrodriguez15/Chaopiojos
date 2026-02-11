@@ -4,7 +4,10 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Booking;
+use App\Models\User;
+use App\Models\ReferralCommission;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class BookingController extends Controller
@@ -97,25 +100,39 @@ class BookingController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $booking = Booking::findOrFail($id);
+        try {
+            $booking = Booking::findOrFail($id);
 
-        $validator = Validator::make($request->all(), [
-            'estado' => ['nullable', 'string', Rule::in(['pendiente', 'confirmado', 'completado', 'cancelado', 'assigned', 'accepted', 'rejected', 'completed'])],
-            'piojologist_id' => ['nullable', 'exists:users,id'],
-            'piojologistId' => ['nullable', 'exists:users,id'],
-            'piojologistName' => ['nullable', 'string'],
-            'status' => ['nullable', 'string'],
-            'estimatedPrice' => ['nullable', 'numeric'],
-            'plan_type' => ['nullable', 'string', 'max:255'],
-            'price_confirmed' => ['nullable', 'numeric'],
-            'service_notes' => ['nullable', 'string'],
-            'paymentMethod' => ['nullable', Rule::in(['pay_now', 'pay_later'])],
-            'rejection_history' => ['nullable'],
-            'rejectionHistory' => ['nullable']
-        ]);
+            Log::info('Actualizando booking', [
+                'id' => $id,
+                'current_payment_status' => $booking->payment_status_to_piojologist,
+                'new_data' => $request->all()
+            ]);
+
+            $validator = Validator::make($request->all(), [
+                'estado' => ['nullable', 'string', Rule::in(['pendiente', 'confirmado', 'completado', 'cancelado', 'assigned', 'accepted', 'rejected', 'completed'])],
+                'piojologist_id' => ['nullable', 'exists:users,id'],
+                'piojologistId' => ['nullable', 'exists:users,id'],
+                'piojologistName' => ['nullable', 'string'],
+                'status' => ['nullable', 'string'],
+                'estimatedPrice' => ['nullable', 'numeric'],
+                'plan_type' => ['nullable', 'string', 'max:255'],
+                'price_confirmed' => ['nullable', 'numeric'],
+                'service_notes' => ['nullable', 'string'],
+                'additional_costs' => ['nullable', 'numeric', 'min:0'],
+                'payment_status_to_piojologist' => ['nullable', 'string', Rule::in(['pending', 'paid'])],
+                'paymentMethod' => ['nullable', Rule::in(['pay_now', 'pay_later'])],
+                'rejection_history' => ['nullable'],
+                'rejectionHistory' => ['nullable']
+            ]);
 
         if ($validator->fails()) {
+            Log::warning('Validación fallida', [
+                'id' => $id,
+                'errors' => $validator->errors()->toArray()
+            ]);
             return response()->json([
+                'success' => false,
                 'message' => 'Error de validación',
                 'errors' => $validator->errors()
             ], 422);
@@ -137,6 +154,12 @@ class BookingController extends Controller
         }
         if ($request->has('service_notes')) {
             $booking->service_notes = $request->service_notes;
+        }
+        if ($request->has('additional_costs')) {
+            $booking->additional_costs = $request->additional_costs;
+        }
+        if ($request->has('payment_status_to_piojologist')) {
+            $booking->payment_status_to_piojologist = $request->payment_status_to_piojologist;
         }
 
         if ($request->has('paymentMethod')) {
@@ -179,12 +202,112 @@ class BookingController extends Controller
             $booking->piojologist_id = $request->piojologistId;
         }
 
-        $booking->save();
+        // Detectar cambio a estado 'completed'
+        $wasCompleted = $booking->isDirty('estado') && $booking->estado === 'completed';
+
+        Log::info('Antes de save()', [
+            'id' => $booking->id,
+            'payment_status_to_piojologist' => $booking->payment_status_to_piojologist,
+            'dirty_fields' => $booking->getDirty()
+        ]);
+
+        $saved = $booking->save();
+
+        Log::info('Después de save()', [
+            'id' => $booking->id,
+            'save_result' => $saved,
+            'updated_payment_status' => $booking->payment_status_to_piojologist,
+            'fresh_from_db' => $booking->fresh()->payment_status_to_piojologist
+        ]);
+
+        // Si el booking acaba de completarse, verificar si genera comisión por referido
+        if ($wasCompleted && $booking->piojologist_id) {
+            $this->processReferralCommission($booking);
+        }
 
         return response()->json([
             'message' => 'Reserva actualizada',
             'booking' => $booking
         ]);
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        Log::error('Booking no encontrado', ['id' => $id]);
+        return response()->json([
+            'success' => false,
+            'message' => 'Booking no encontrado'
+        ], 404);
+    } catch (\Exception $e) {
+        Log::error('Error actualizando booking', [
+            'id' => $id,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al actualizar: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+    /**
+     * Procesar comisión por referido si aplica
+     *
+     * @param  Booking  $booking
+     * @return void
+     */
+    private function processReferralCommission($booking)
+    {
+        try {
+            // Obtener la piojóloga que realizó el servicio
+            $piojologist = User::find($booking->piojologist_id);
+
+            if (!$piojologist || !$piojologist->referred_by_id) {
+                // No fue referida por nadie
+                return;
+            }
+
+            // Verificar si es el primer servicio completado de esta piojóloga
+            $previousCompletedBookings = Booking::where('piojologist_id', $piojologist->id)
+                ->where('estado', 'completed')
+                ->where('id', '!=', $booking->id)
+                ->count();
+
+            if ($previousCompletedBookings > 0) {
+                // No es su primer servicio
+                return;
+            }
+
+            // Verificar que no se haya generado ya una comisión para este booking
+            $existingCommission = ReferralCommission::where('booking_id', $booking->id)->exists();
+
+            if ($existingCommission) {
+                // Ya existe una comisión para este booking
+                return;
+            }
+
+            // Calcular el monto del servicio y la comisión del 10%
+            $serviceAmount = $booking->price_confirmed ?? 0;
+
+            if ($serviceAmount <= 0) {
+                // No hay precio confirmado, no se puede calcular comisión
+                return;
+            }
+
+            $commissionAmount = $serviceAmount * 0.10; // 10%
+
+            // Crear la comisión
+            ReferralCommission::create([
+                'referrer_id' => $piojologist->referred_by_id,
+                'referred_id' => $piojologist->id,
+                'booking_id' => $booking->id,
+                'service_amount' => $serviceAmount,
+                'commission_amount' => $commissionAmount,
+                'status' => 'pending',
+            ]);
+
+        } catch (\Exception $e) {
+            // Log error pero no fallar la actualización del booking
+            logger()->error('Error al procesar comisión por referido: ' . $e->getMessage());
+        }
     }
 
     /**

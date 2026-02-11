@@ -229,87 +229,90 @@ const ScheduleCalendar = ({
   };
 
   return (
-    <div className="bg-white rounded-[2.5rem] p-6 md:p-8 shadow-xl border-4 border-orange-100 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div className="bg-white rounded-[2.5rem] p-3 sm:p-6 md:p-8 shadow-xl border-4 border-orange-100 space-y-4 sm:space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 sm:gap-4">
         <div>
-          <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3 capitalize">
-            <span className="text-3xl">📆</span>
-            {title}
+          <h3 className="text-lg sm:text-2xl font-black text-gray-800 flex items-center gap-2 sm:gap-3 capitalize">
+            <span className="text-2xl sm:text-3xl">📆</span>
+            <span className="hidden sm:inline">{title}</span>
+            <span className="sm:hidden">Agenda</span>
           </h3>
-          <p className="text-sm font-bold text-gray-500 mt-1 capitalize">{getViewLabel()}</p>
+          <p className="text-xs sm:text-sm font-bold text-gray-500 mt-1 capitalize">{getViewLabel()}</p>
         </div>
-        <div className="flex flex-col md:flex-row gap-4 items-center">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center">
           {/* View Mode Selector */}
-          <div className="flex gap-2 bg-orange-50 border-2 border-orange-200 rounded-2xl p-2">
+          <div className="flex gap-1 sm:gap-2 bg-orange-50 border-2 border-orange-200 rounded-2xl p-1 sm:p-2">
             <button
               onClick={() => setViewMode('month')}
               title="Vista de mes"
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-colors ${
+              className={`flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl font-bold text-xs sm:text-base transition-colors ${
                 viewMode === 'month' 
                   ? 'bg-orange-400 text-white' 
                   : 'bg-white text-orange-600 hover:bg-orange-100'
               }`}
             >
               <Grid3x3 className="w-4 h-4" />
-              Mes
+              <span className="hidden xs:inline">Mes</span>
             </button>
             <button
               onClick={() => setViewMode('week')}
               title="Vista de semana"
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-colors ${
+              className={`flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl font-bold text-xs sm:text-base transition-colors ${
                 viewMode === 'week' 
                   ? 'bg-orange-400 text-white' 
                   : 'bg-white text-orange-600 hover:bg-orange-100'
               }`}
             >
               <List className="w-4 h-4" />
-              Semana
+              <span className="hidden xs:inline">Semana</span>
             </button>
             <button
               onClick={() => setViewMode('day')}
               title="Vista de día"
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-colors ${
+              className={`flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl font-bold text-xs sm:text-base transition-colors ${
                 viewMode === 'day' 
                   ? 'bg-orange-400 text-white' 
                   : 'bg-white text-orange-600 hover:bg-orange-100'
               }`}
             >
               <CalendarDays className="w-4 h-4" />
-              Día
+              <span className="hidden xs:inline">Día</span>
             </button>
           </div>
           {/* Navigation Buttons */}
-          <button
-            type="button"
-            onClick={goToPreviousMonth}
-            className="flex items-center gap-2 bg-orange-100 hover:bg-orange-200 text-orange-600 font-bold px-4 py-2 rounded-2xl border-2 border-orange-200 transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Anterior
-          </button>
-          <button
-            type="button"
-            onClick={goToToday}
-            className="flex items-center gap-2 bg-blue-100 hover:bg-blue-200 text-blue-600 font-bold px-4 py-2 rounded-2xl border-2 border-blue-200 transition-colors"
-          >
-            <CalendarDays className="w-4 h-4" />
-            Hoy
-          </button>
-          <button
-            type="button"
-            onClick={goToNextMonth}
-            className="flex items-center gap-2 bg-orange-100 hover:bg-orange-200 text-orange-600 font-bold px-4 py-2 rounded-2xl border-2 border-orange-200 transition-colors"
-          >
-            Siguiente
-            <ChevronRight className="w-4 h-4" />
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={goToPreviousMonth}
+              className="flex items-center justify-center gap-1 sm:gap-2 bg-orange-100 hover:bg-orange-200 text-orange-600 font-bold px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl border-2 border-orange-200 transition-colors flex-1 sm:flex-none text-xs sm:text-base"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">Anterior</span>
+            </button>
+            <button
+              type="button"
+              onClick={goToToday}
+              className="flex items-center justify-center gap-1 sm:gap-2 bg-blue-100 hover:bg-blue-200 text-blue-600 font-bold px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl border-2 border-blue-200 transition-colors flex-1 sm:flex-none text-xs sm:text-base"
+            >
+              <CalendarDays className="w-4 h-4" />
+              <span>Hoy</span>
+            </button>
+            <button
+              type="button"
+              onClick={goToNextMonth}
+              className="flex items-center justify-center gap-1 sm:gap-2 bg-orange-100 hover:bg-orange-200 text-orange-600 font-bold px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl border-2 border-orange-200 transition-colors flex-1 sm:flex-none text-xs sm:text-base"
+            >
+              <span className="hidden sm:inline">Siguiente</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
       {enablePiojologistFilter && (
-        <div className="bg-orange-50 border-2 border-orange-100 rounded-2xl p-4">
-          <div className="mb-3">
-            <label className="text-sm font-bold text-gray-500 mb-2 block">
+        <div className="bg-orange-50 border-2 border-orange-100 rounded-2xl p-3 sm:p-4">
+          <div className="mb-2 sm:mb-3">
+            <label className="text-xs sm:text-sm font-bold text-gray-500 mb-1.5 sm:mb-2 block">
               Filtrar agenda por:
             </label>
             <div className="flex gap-2">
@@ -318,26 +321,26 @@ const ScheduleCalendar = ({
                   setFilterMode('piojologist');
                   setSelectedStatus('all');
                 }}
-                className={`flex-1 px-4 py-2 rounded-xl font-bold transition-colors ${
+                className={`flex-1 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl font-bold text-xs sm:text-base transition-colors ${
                   filterMode === 'piojologist'
                     ? 'bg-orange-400 text-white'
                     : 'bg-white text-gray-600 border-2 border-orange-200'
                 }`}
               >
-                👥 Piojólogas
+                👥 <span className="hidden xs:inline">Piojólogas</span>
               </button>
               <button
                 onClick={() => {
                   setFilterMode('status');
                   setSelectedPiojologist('all');
                 }}
-                className={`flex-1 px-4 py-2 rounded-xl font-bold transition-colors ${
+                className={`flex-1 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl font-bold text-xs sm:text-base transition-colors ${
                   filterMode === 'status'
                     ? 'bg-orange-400 text-white'
                     : 'bg-white text-gray-600 border-2 border-orange-200'
                 }`}
               >
-                📊 Estados
+                📊 <span className="hidden xs:inline">Estados</span>
               </button>
             </div>
           </div>
@@ -346,7 +349,7 @@ const ScheduleCalendar = ({
             <select
               value={selectedPiojologist}
               onChange={(event) => setSelectedPiojologist(event.target.value)}
-              className="w-full bg-white border-2 border-orange-200 rounded-2xl px-4 py-3 font-bold text-gray-700 focus:outline-none focus:border-orange-400"
+              className="w-full bg-white border-2 border-orange-200 rounded-2xl px-3 sm:px-4 py-2 sm:py-3 font-bold text-xs sm:text-base text-gray-700 focus:outline-none focus:border-orange-400"
             >
               <option value="all">Todas las piojólogas</option>
               {piojologists.map((piojologist) => (
@@ -359,7 +362,7 @@ const ScheduleCalendar = ({
             <select
               value={selectedStatus}
               onChange={(event) => setSelectedStatus(event.target.value)}
-              className="w-full bg-white border-2 border-orange-200 rounded-2xl px-4 py-3 font-bold text-gray-700 focus:outline-none focus:border-orange-400"
+              className="w-full bg-white border-2 border-orange-200 rounded-2xl px-3 sm:px-4 py-2 sm:py-3 font-bold text-xs sm:text-base text-gray-700 focus:outline-none focus:border-orange-400"
             >
               <option value="all">Todos los estados</option>
               <option value="pending">Pendiente</option>
@@ -371,11 +374,11 @@ const ScheduleCalendar = ({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-gray-500">
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[9px] xs:text-[10px] sm:text-[11px] font-bold text-gray-500">
         {Object.entries(statusLabels).map(([status, label]) => (
           <span
             key={status}
-            className={`px-3 py-1 rounded-full border ${statusColors[status] || 'bg-gray-100 text-gray-500 border-gray-200'}`}
+            className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border ${statusColors[status] || 'bg-gray-100 text-gray-500 border-gray-200'}`}
           >
             {label}
           </span>
@@ -401,9 +404,9 @@ const ScheduleCalendar = ({
               const isSelected = selectedDayKey === key;
               const hasAppointments = dayAppointments.length > 0;
               const cellClasses = [
-                'rounded-3xl border-2 min-h-[86px] sm:min-h-[120px] flex flex-col p-1.5 sm:p-3 gap-2 transition-all',
+                'rounded-2xl sm:rounded-3xl border-2 min-h-[70px] xs:min-h-[80px] sm:min-h-[120px] flex flex-col p-1 xs:p-1.5 sm:p-3 gap-1 sm:gap-2 transition-all',
                 isCurrentMonth ? 'bg-white border-orange-100' : 'bg-gray-50 border-gray-100 opacity-60',
-                isToday ? 'shadow-lg border-blue-300 ring-2 ring-blue-200 ring-offset-2' : '',
+                isToday ? 'shadow-lg border-blue-300 ring-1 sm:ring-2 ring-blue-200 ring-offset-1 sm:ring-offset-2' : '',
                 hasAppointments ? 'cursor-pointer hover:-translate-y-1 hover:shadow-lg hover:border-orange-300' : 'cursor-default',
                 isSelected ? 'border-4 border-orange-300 shadow-xl' : ''
               ].join(' ');
@@ -414,8 +417,8 @@ const ScheduleCalendar = ({
                   className={cellClasses}
                   onClick={() => handleDayClick(dayInfo)}
                 >
-                  <div className="flex items-center justify-between text-xs sm:text-sm font-black text-gray-500">
-                    <span className="bg-orange-100 text-orange-600 px-2 py-0.5 sm:py-1 rounded-xl">
+                  <div className="flex items-center justify-between text-[10px] xs:text-xs sm:text-sm font-black text-gray-500">
+                    <span className="bg-orange-100 text-orange-600 px-1.5 xs:px-2 py-0.5 sm:py-1 rounded-lg sm:rounded-xl text-[10px] xs:text-xs sm:text-sm">
                       {dateLabel}
                     </span>
                     {dayAppointments.length > 0 && (
@@ -426,7 +429,7 @@ const ScheduleCalendar = ({
                   </div>
 
                   {dayAppointments.length > 0 && (
-                    <div className="space-y-2 overflow-y-auto pr-0.5 sm:pr-1 max-h-[110px] sm:max-h-[140px]">
+                    <div className="space-y-0.5 xs:space-y-1 sm:space-y-2 overflow-y-auto pr-0.5 sm:pr-1 max-h-[60px] xs:max-h-[90px] sm:max-h-[140px]">
                       {dayAppointments.map((appointment) => {
                         const statusKey = appointment.isExternal ? 'external' : appointment.status;
                         const color = statusColors[statusKey] || 'bg-blue-100 text-blue-700 border-blue-200';
@@ -437,7 +440,7 @@ const ScheduleCalendar = ({
                         return (
                           <div
                             key={`${appointment.id}-${appointment.time || 'no-time'}`}
-                            className={`rounded-2xl border-2 px-2.5 sm:px-3 py-1.5 sm:py-2 text-left text-[10px] sm:text-xs font-bold space-y-1 ${color} ${
+                            className={`rounded-xl sm:rounded-2xl border-2 px-1.5 xs:px-2 sm:px-3 py-1 xs:py-1.5 sm:py-2 text-left text-[9px] xs:text-[10px] sm:text-xs font-bold space-y-0.5 xs:space-y-1 ${color} ${
                               appointment.isExternal ? 'border-dashed' : ''
                             } cursor-pointer hover:shadow-md transition`}
                             onClick={(e) => {
@@ -445,8 +448,8 @@ const ScheduleCalendar = ({
                               handleDayClick(dayInfo);
                             }}
                           >
-                            <div className="sm:hidden flex items-center justify-center py-1">
-                              <Eye className="w-4 h-4 text-blue-700" />
+                            <div className="sm:hidden flex items-center justify-center py-0.5">
+                              <Eye className="w-3 h-3 sm:w-4 sm:h-4 text-blue-700" />
                             </div>
 
                             <div className="hidden sm:block space-y-1">
@@ -582,17 +585,20 @@ const ScheduleCalendar = ({
 
       {/* MODAL - igual para todas las vistas */}
       <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
-        <DialogContent className="rounded-[2.5rem] border-8 border-orange-100 p-0 overflow-hidden bg-white max-w-2xl">
-          <div className="bg-gradient-to-r from-orange-400 to-yellow-400 p-6 text-white text-center">
-            <DialogHeader>
-              <DialogTitle className="text-3xl font-black capitalize">{dialogDateLabel}</DialogTitle>
-              <DialogDescription className="text-white/80 font-bold text-sm tracking-wide uppercase">
-                {selectedDay?.appointments.length || 0} servicios programados
-              </DialogDescription>
-            </DialogHeader>
-          </div>
+        <DialogContent className="rounded-[2.5rem] border-4 border-orange-200 p-0 overflow-hidden bg-gradient-to-b from-orange-50 to-white max-w-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>{dialogDateLabel}</DialogTitle>
+            <DialogDescription>{selectedDay?.appointments.length || 0} servicios programados</DialogDescription>
+          </DialogHeader>
 
-          <div className="p-6 md:p-8 space-y-4 max-h-[420px] overflow-y-auto">
+          <div className="relative p-6 md:p-8 space-y-4 max-h-[520px] overflow-y-auto">
+            <div className="text-center mb-2">
+              <div className="inline-flex items-center gap-2 bg-gradient-to-r from-orange-100 to-yellow-100 px-3 py-1 rounded-full">
+                <span className="text-lg">📅</span>
+                <span className="text-xs font-black text-orange-600 uppercase">{dialogDateLabel}</span>
+              </div>
+              <p className="text-[10px] font-bold text-gray-500 uppercase mt-1">{selectedDay?.appointments.length || 0} servicios programados</p>
+            </div>
             {selectedDay?.appointments.map((appointment, idx) => {
               const statusKey = appointment.isExternal ? 'external' : appointment.status;
               const statusStyle = statusBadgeStyles[statusKey] || 'bg-blue-200 text-blue-700 border-blue-300';

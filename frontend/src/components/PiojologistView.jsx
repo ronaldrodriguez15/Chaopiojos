@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Bell, Calendar, User, Check, X, Clock, Zap, Star, DollarSign, ShoppingBag, ArrowRight, Clock3, CalendarClock, Users, BarChart3, LineChart, Menu } from 'lucide-react';
+import { Bell, Calendar, User, Check, X, Clock, Zap, Star, DollarSign, ShoppingBag, ArrowRight, Clock3, CalendarClock, Users, BarChart3, LineChart, Menu, Gift, Copy, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import ScheduleCalendar from '@/components/ScheduleCalendar';
 import ProductRequestView from '@/components/ProductRequestView';
-import { bookingService } from '@/lib/api';
+import { bookingService, referralService } from '@/lib/api';
 
 const ASSIGNED_AT_STORAGE_KEY = 'piojoAssignedAtMap';
 
@@ -42,12 +42,19 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   const [finishingPlan, setFinishingPlan] = useState('');
   const [finishingPrice, setFinishingPrice] = useState('');
   const [finishingNotes, setFinishingNotes] = useState('');
+  const [finishingAdditionalCosts, setFinishingAdditionalCosts] = useState('');
   const [servicesView, setServicesView] = useState(() => localStorage.getItem('piojoServicesView') || 'assigned'); // assigned | rejected
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('piojoTab') || 'panel');
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [nowTs, setNowTs] = useState(Date.now());
   const releaseRequestsRef = useRef(new Set());
   const assignedAtFallbackRef = useRef(loadAssignedAtFromStorage());
+
+  // Referral state
+  const [referralCommissions, setReferralCommissions] = useState([]);
+  const [myReferrals, setMyReferrals] = useState([]);
+  const [loadingReferrals, setLoadingReferrals] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
 
   const persistAssignedFallback = () => {
     try {
@@ -120,6 +127,49 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   useEffect(() => {
     setIsNavOpen(false);
   }, [activeTab]);
+
+  // Cargar datos de referidos cuando se cambia a la pestaña de referidos
+  useEffect(() => {
+    if (activeTab === 'referrals') {
+      loadReferralData();
+    }
+  }, [activeTab]);
+
+  const loadReferralData = async () => {
+    setLoadingReferrals(true);
+    try {
+      const [commissionsResult, referralsResult] = await Promise.all([
+        referralService.getMyCommissions(),
+        referralService.getMyReferrals()
+      ]);
+
+      if (commissionsResult.success) {
+        setReferralCommissions(commissionsResult.data.commissions || []);
+      }
+
+      if (referralsResult.success) {
+        setMyReferrals(referralsResult.data.referrals || []);
+      }
+    } catch (error) {
+      console.error('Error cargando datos de referidos:', error);
+    } finally {
+      setLoadingReferrals(false);
+    }
+  };
+
+  const copyReferralCode = () => {
+    if (currentUser.referral_code) {
+      const message = `Hola, mi nombre es ${currentUser.name || 'piojóloga'} y este es mi código de referido: ${currentUser.referral_code}`;
+      navigator.clipboard.writeText(message);
+      setCopiedCode(true);
+      toast({
+        title: "✨ ¡Mensaje copiado!",
+        description: "Ahora puedes compartirlo con otras piojólogas",
+        className: "bg-purple-100 border-2 border-purple-200 text-purple-800 rounded-2xl font-bold"
+      });
+      setTimeout(() => setCopiedCode(false), 2000);
+    }
+  };
 
   const getServicePrice = (apt = {}) => {
     const raw = apt.price ?? apt.price_confirmed ?? apt.estimatedPrice ?? serviceCatalog[apt.serviceType] ?? 0;
@@ -313,6 +363,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     if (!finishingAppointmentId) return;
 
     const priceValue = parseFloat(finishingPrice || '0');
+    const additionalCostsValue = parseFloat(finishingAdditionalCosts || '0');
     if (!finishingPlan) {
       toast({ title: 'Selecciona un plan', className: 'bg-red-100 border-2 border-red-200 text-red-700 font-bold' });
       return;
@@ -325,7 +376,8 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     await handleCompleteService(finishingAppointmentId, selectedProducts, {
       planType: finishingPlan,
       priceConfirmed: priceValue,
-      notes: finishingNotes
+      notes: finishingNotes,
+      additionalCosts: additionalCostsValue
     });
     
     setFinishingAppointmentId(null);
@@ -333,6 +385,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     setFinishingPlan('');
     setFinishingPrice('');
     setFinishingNotes('');
+    setFinishingAdditionalCosts('');
     toast({
       title: "¡Victoria Total! 🏆",
       description: "Servicio completado y ganancias registradas.",
@@ -359,7 +412,16 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   const completedHistory = appointments.filter(apt => apt.piojologistId === currentUser.id && apt.status === 'completed');
   const myRejectedServices = appointments.filter(apt => normalizeHistory(apt.rejectionHistory || apt.rejection_history || apt.rejections).includes(currentUser.name));
   const visibleServices = servicesView === 'rejected' ? myRejectedServices : assignedToMe;
-  const totalEarnings = completedHistory.reduce((acc, apt) => acc + (getServicePrice(apt) * 0.5 - (Number(apt.deductions) || 0)), 0);
+  const commissionRate = (currentUser.commission_rate || 50) / 100;
+  
+  // Calcular ganancias solo de los servicios pagados
+  const totalEarnings = completedHistory
+    .filter(apt => {
+      const paymentStatus = apt.payment_status_to_piojologist || apt.paymentStatusToPiojologist || 'pending';
+      return paymentStatus === 'paid';
+    })
+    .reduce((acc, apt) => acc + (getServicePrice(apt) * commissionRate - (Number(apt.deductions) || 0)), 0);
+  
   const myProductRequests = (productRequests || []).filter(req => req.piojologistId === currentUser.id);
   const kitRequestedOnce = myProductRequests.some(req => req.isKitCompleto);
   const pendingRequests = myProductRequests.filter(req => req.status === 'pending').length;
@@ -408,7 +470,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   const earningsByMonthMap = completedHistory.reduce((acc, apt) => {
     const date = apt.date ? new Date(apt.date) : new Date();
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    const net = getServicePrice(apt) * 0.5 - (Number(apt.deductions) || 0);
+    const net = getServicePrice(apt) * commissionRate - (Number(apt.deductions) || 0);
     acc[key] = (acc[key] || 0) + net;
     return acc;
   }, {});
@@ -462,9 +524,14 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
              <div className="min-w-0 [&>h2]:!text-2xl sm:[&>h2]:!text-3xl md:[&>h2]:!text-4xl [&>h2]:break-words [&>p]:!text-base sm:[&>p]:!text-lg md:[&>p]:!text-xl [&>p]:break-words [&>span]:!text-xs sm:[&>span]:!text-sm">
                <h2 className="text-4xl font-black mb-1 drop-shadow-md">Central de Héroes</h2>
                <p className="text-lime-100 text-xl font-bold">¡Hola, {currentUser.name}!</p>
-               <span className="inline-block mt-2 bg-white/20 px-3 py-1 rounded-full text-sm font-medium border border-white/30">
-                 {currentUser.specialty || 'Experto General'}
-               </span>
+               <div className="flex flex-wrap gap-2 mt-2">
+                 <span className="inline-block bg-white/20 px-3 py-1 rounded-full text-sm font-medium border border-white/30">
+                   {currentUser.specialty || 'Experto General'}
+                 </span>
+                 <span className="inline-block bg-yellow-400 text-yellow-900 px-3 py-1 rounded-full text-sm font-bold border-2 border-yellow-500">
+                   💰 {currentUser.commission_rate || 50}% Comisión
+                 </span>
+               </div>
              </div>
            </div>
            
@@ -586,6 +653,9 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
           </TabsTrigger>
           <TabsTrigger value="products" className="flex-1 min-w-[120px] sm:min-w-[150px] w-full rounded-3xl py-2 sm:py-3 font-bold text-base sm:text-lg text-center data-[state=active]:bg-purple-400 data-[state=active]:text-white transition-all">
             📦 Productos
+          </TabsTrigger>
+          <TabsTrigger value="referrals" className="flex-1 min-w-[120px] sm:min-w-[150px] w-full rounded-3xl py-2 sm:py-3 font-bold text-base sm:text-lg text-center data-[state=active]:bg-pink-400 data-[state=active]:text-white transition-all">
+            🎁 Referidos
           </TabsTrigger>
         </TabsList>
 
@@ -816,19 +886,24 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                                 setFinishingPlan(apt.planType || apt.serviceType || 'Normal');
                                 setFinishingPrice(basePrice);
                                 setFinishingNotes(apt.serviceNotes || '');
+                                setFinishingAdditionalCosts('');
                              }}
                              className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-2xl py-6 font-bold shadow-md border-b-4 border-blue-700 active:border-b-0 active:translate-y-1"
                            >
                              <Check className="mr-2" /> Completar Servicio
                            </Button>
                          </DialogTrigger>
-                         <DialogContent className="rounded-[2.5rem] border-8 border-blue-100 p-0 overflow-hidden sm:max-w-md w-[95vw] max-h-[90vh] bg-white">
-                        <div className="bg-blue-400 p-6 text-white text-center">
-                          <DialogHeader>
-                            <DialogTitle className="text-2xl font-black">Reporte de Misión 📋</DialogTitle>
+                         <DialogContent className="rounded-[2.5rem] border-4 border-blue-200 p-0 overflow-hidden sm:max-w-md w-[95vw] max-h-[90vh] bg-gradient-to-b from-blue-50 to-white">
+                          <DialogHeader className="sr-only">
+                            <DialogTitle>Reporte de Misión</DialogTitle>
                           </DialogHeader>
-                        </div>
-                          <div className="p-6 space-y-6 bg-gradient-to-b from-blue-50 via-white to-blue-50">
+                          <div className="relative p-6 space-y-6">
+                            <div className="text-center mb-2">
+                              <div className="inline-flex items-center gap-2 bg-blue-100 px-3 py-1 rounded-full">
+                                <span className="text-lg">📋</span>
+                                <span className="text-xs font-black text-blue-600 uppercase">Reporte de Misión</span>
+                              </div>
+                            </div>
                             <div className="rounded-2xl border-2 border-blue-100 bg-white p-4 shadow-inner space-y-2 relative overflow-hidden">
                               <div className="absolute -top-6 -right-6 w-24 h-24 bg-blue-100 rounded-full opacity-40 blur-2xl"></div>
                               <p className="text-xs font-black text-blue-600 uppercase flex items-center gap-2">
@@ -861,32 +936,41 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                             <div className="space-y-3">
                             <div className="bg-white border-2 border-blue-100 rounded-2xl p-3 shadow-sm">
                               <Label className="font-black text-gray-700 text-sm mb-1 block flex items-center gap-2">
-                                🎯 Plan ejecutado
+                                🎯 Servicio ejecutado
                               </Label>
                               <select
                                 value={finishingPlan}
-                                onChange={(e) => setFinishingPlan(e.target.value)}
+                                onChange={(e) => {
+                                  const selectedService = e.target.value;
+                                  setFinishingPlan(selectedService);
+                                  // Actualizar precio automáticamente
+                                  if (selectedService && serviceCatalog[selectedService]) {
+                                    setFinishingPrice(serviceCatalog[selectedService]);
+                                  }
+                                }}
                                 className="w-full bg-gradient-to-r from-white to-blue-50 border-2 border-blue-200 rounded-xl p-3 text-sm font-semibold text-gray-700 focus:border-blue-400 outline-none"
                               >
-                                <option value="">Selecciona el plan</option>
-                                <option value="Normal">Normal</option>
-                                <option value="Elevado">Elevado</option>
-                                <option value="Muy Alto">Muy Alto</option>
+                                <option value="">Selecciona el servicio</option>
+                                {Object.entries(serviceCatalog).map(([serviceName, servicePrice]) => (
+                                  <option key={serviceName} value={serviceName}>
+                                    {serviceName} - {formatCurrency(servicePrice)}
+                                  </option>
+                                ))}
                               </select>
                             </div>
 
-                            <div className="bg-white border-2 border-amber-100 rounded-2xl p-3 shadow-sm">
+                            <div className="bg-white border-2 border-purple-100 rounded-2xl p-3 shadow-sm">
                               <Label className="font-black text-gray-700 text-sm mb-1 block flex items-center gap-2">
-                                💰 Valor cobrado
+                                💵 Costos adicionales <span className="text-xs text-gray-500 font-normal">(opcional)</span>
                               </Label>
                               <input
                                 type="number"
                                 min="0"
                                 step="1000"
-                                value={finishingPrice}
-                                onChange={(e) => setFinishingPrice(e.target.value)}
-                                className="w-full bg-gradient-to-r from-white to-amber-50 border-2 border-amber-200 rounded-xl p-3 text-sm font-semibold text-gray-700 focus:border-amber-400 outline-none"
-                                placeholder="Ingresa el valor final"
+                                value={finishingAdditionalCosts}
+                                onChange={(e) => setFinishingAdditionalCosts(e.target.value)}
+                                className="w-full bg-gradient-to-r from-white to-purple-50 border-2 border-purple-200 rounded-xl p-3 text-sm font-semibold text-gray-700 focus:border-purple-400 outline-none"
+                                placeholder="Ej: transporte, materiales extras"
                               />
                             </div>
 
@@ -940,44 +1024,166 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
         </TabsContent>
 
         <TabsContent value="history">
-          <div className="bg-white rounded-[2.5rem] p-6 shadow-xl border-4 border-blue-100">
-            <h3 className="text-xl font-black text-gray-800 mb-6 flex items-center gap-2">
-              <ShoppingBag className="w-6 h-6 text-blue-500" /> Historial de Ganancias
-            </h3>
-            {completedHistory.length === 0 ? (
-               <div className="text-center py-12 text-gray-400 font-bold">Aún no hay misiones completadas.</div>
-            ) : (
-              <div className="space-y-4">
-                {completedHistory.map(apt => (
-                  <div key={apt.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-gray-50 rounded-2xl border border-gray-200 hover:bg-white hover:shadow-md transition-all">
-                    <div>
-                      <p className="font-black text-gray-800">{apt.clientName}</p>
-                      <p className="text-xs text-gray-500">{new Date(apt.date).toLocaleDateString()} - {apt.serviceType}</p>
-                      {(apt.yourLoss || apt.ourPayment || apt.age) && (
-                        <p className="text-xs text-yellow-600 font-bold mt-1">
-                          📊 {apt.age ? `${apt.age}a ` : ''}| Pierdes: {formatCurrency(parseFloat(apt.yourLoss) || 0)} | Te pagamos: {formatCurrency(parseFloat(apt.ourPayment) || 0)}
-                        </p>
-                      )}
+          <div className="space-y-6">
+            {/* Servicios Cobrados Pendientes de Pago */}
+            <div className="bg-white rounded-[2.5rem] p-6 shadow-xl border-4 border-amber-100">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-black text-amber-700 flex items-center gap-2">
+                  <Clock className="w-6 h-6" /> Cobrados - Pendientes de Pago
+                </h3>
+                {(() => {
+                  const pending = completedHistory.filter(apt => {
+                    const paymentStatus = apt.payment_status_to_piojologist || apt.paymentStatusToPiojologist || 'pending';
+                    return paymentStatus === 'pending';
+                  });
+                  const pendingTotal = pending.reduce((acc, apt) => {
+                    const gross = getServicePrice(apt) * commissionRate;
+                    const deductions = Number(apt.deductions) || 0;
+                    return acc + (gross - deductions);
+                  }, 0);
+                  return (
+                    <div className="text-right">
+                      <p className="text-xs text-amber-600 font-bold">Total pendiente</p>
+                      <p className="text-2xl font-black text-amber-700">{formatCurrency(pendingTotal)}</p>
                     </div>
-                    <div className="text-left sm:text-right">
-                      {(() => {
-                        const gross = getServicePrice(apt) * 0.5;
-                        const deductions = Number(apt.deductions) || 0;
-                        const net = gross - deductions;
-                        return (
-                          <>
-                            <p className="text-green-600 font-black text-lg">+{formatCurrency(net)}</p>
-                            {deductions > 0 && (
-                              <p className="text-xs text-red-400 font-bold">-{formatCurrency(deductions)} en productos</p>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })()}
               </div>
-            )}
+
+              {(() => {
+                const pendingServices = completedHistory.filter(apt => {
+                  const paymentStatus = apt.payment_status_to_piojologist || apt.paymentStatusToPiojologist || 'pending';
+                  return paymentStatus === 'pending';
+                });
+
+                if (pendingServices.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-amber-400 font-bold">
+                      ✨ No hay servicios pendientes de pago
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-4">
+                    {pendingServices.map(apt => (
+                      <div key={apt.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-amber-50 rounded-2xl border-2 border-amber-200 hover:bg-white hover:shadow-md transition-all">
+                        <div className="flex-grow">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="bg-amber-500 text-white px-2 py-0.5 rounded-full text-xs font-black">
+                              ⏳ PENDIENTE
+                            </span>
+                          </div>
+                          <p className="font-black text-gray-800">{apt.clientName}</p>
+                          <p className="text-xs text-gray-500">{new Date(apt.date).toLocaleDateString()} - {apt.serviceType}</p>
+                          {(apt.yourLoss || apt.ourPayment || apt.age) && (
+                            <p className="text-xs text-yellow-600 font-bold mt-1">
+                              📊 {apt.age ? `${apt.age}a ` : ''}| Pierdes: {formatCurrency(parseFloat(apt.yourLoss) || 0)} | Te pagamos: {formatCurrency(parseFloat(apt.ourPayment) || 0)}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-left sm:text-right">
+                          {(() => {
+                            const gross = getServicePrice(apt) * commissionRate;
+                            const deductions = Number(apt.deductions) || 0;
+                            const net = gross - deductions;
+                            return (
+                              <>
+                                <p className="text-xs text-gray-500 mb-1">A recibir</p>
+                                <p className="text-amber-600 font-black text-xl">+{formatCurrency(net)}</p>
+                                {deductions > 0 && (
+                                  <p className="text-xs text-red-400 font-bold">-{formatCurrency(deductions)} en productos</p>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Servicios Ya Pagados */}
+            <div className="bg-white rounded-[2.5rem] p-6 shadow-xl border-4 border-green-100">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-black text-green-700 flex items-center gap-2">
+                  <Check className="w-6 h-6" /> Ya Pagados
+                </h3>
+                {(() => {
+                  const paid = completedHistory.filter(apt => {
+                    const paymentStatus = apt.payment_status_to_piojologist || apt.paymentStatusToPiojologist || 'pending';
+                    return paymentStatus === 'paid';
+                  });
+                  const paidTotal = paid.reduce((acc, apt) => {
+                    const gross = getServicePrice(apt) * commissionRate;
+                    const deductions = Number(apt.deductions) || 0;
+                    return acc + (gross - deductions);
+                  }, 0);
+                  return (
+                    <div className="text-right">
+                      <p className="text-xs text-green-600 font-bold">Total recibido</p>
+                      <p className="text-2xl font-black text-green-700">{formatCurrency(paidTotal)}</p>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {(() => {
+                const paidServices = completedHistory.filter(apt => {
+                  const paymentStatus = apt.payment_status_to_piojologist || apt.paymentStatusToPiojologist || 'pending';
+                  return paymentStatus === 'paid';
+                });
+
+                if (paidServices.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-gray-400 font-bold">
+                      Aún no hay pagos recibidos.
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-4">
+                    {paidServices.map(apt => (
+                      <div key={apt.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-green-50 rounded-2xl border-2 border-green-200 hover:bg-white hover:shadow-md transition-all">
+                        <div className="flex-grow">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="bg-green-500 text-white px-2 py-0.5 rounded-full text-xs font-black">
+                              ✅ PAGADO
+                            </span>
+                          </div>
+                          <p className="font-black text-gray-800">{apt.clientName}</p>
+                          <p className="text-xs text-gray-500">{new Date(apt.date).toLocaleDateString()} - {apt.serviceType}</p>
+                          {(apt.yourLoss || apt.ourPayment || apt.age) && (
+                            <p className="text-xs text-yellow-600 font-bold mt-1">
+                              📊 {apt.age ? `${apt.age}a ` : ''}| Pierdes: {formatCurrency(parseFloat(apt.yourLoss) || 0)} | Te pagamos: {formatCurrency(parseFloat(apt.ourPayment) || 0)}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-left sm:text-right">
+                          {(() => {
+                            const gross = getServicePrice(apt) * commissionRate;
+                            const deductions = Number(apt.deductions) || 0;
+                            const net = gross - deductions;
+                            return (
+                              <>
+                                <p className="text-xs text-gray-500 mb-1">Recibiste</p>
+                                <p className="text-green-600 font-black text-xl">+{formatCurrency(net)}</p>
+                                {deductions > 0 && (
+                                  <p className="text-xs text-red-400 font-bold">-{formatCurrency(deductions)} en productos</p>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         </TabsContent>
 
@@ -989,6 +1195,221 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
             productRequests={productRequests || []}
             formatCurrency={formatCurrency}
           />
+        </TabsContent>
+
+        <TabsContent value="referrals">
+          <div className="space-y-6">
+            {/* Código de Referido Propio */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-[2rem] p-6 bg-gradient-to-br from-pink-50 to-purple-50 border-4 border-pink-200 shadow-xl"
+            >
+              <div className="text-center mb-4">
+                <div className="inline-flex items-center gap-2 bg-gradient-to-r from-pink-200 to-purple-200 px-4 py-2 rounded-full">
+                  <Gift className="w-5 h-5 text-pink-600" />
+                  <span className="text-sm font-black text-pink-600 uppercase">Tu Código de Referido</span>
+                </div>
+              </div>
+              
+              <div className="text-center space-y-4">
+                <div className="bg-white rounded-2xl p-6 border-2 border-pink-300 shadow-lg">
+                  {currentUser.referral_code ? (
+                    <>
+                      <p className="text-4xl font-black text-pink-500 mb-2 tracking-wider">
+                        {currentUser.referral_code}
+                      </p>
+                      <p className="text-sm text-gray-600 font-bold">¡Comparte este código con otras piojólogas!</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-black text-gray-400 mb-2">
+                        Sin código asignado
+                      </p>
+                      <p className="text-sm text-gray-500 font-bold">Contacta con administración para obtener tu código</p>
+                    </>
+                  )}
+                </div>
+
+                <Button
+                  onClick={copyReferralCode}
+                  disabled={!currentUser.referral_code}
+                  className="w-full bg-gradient-to-r from-pink-400 to-purple-400 hover:from-pink-500 hover:to-purple-500 text-white rounded-2xl py-6 font-bold shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {copiedCode ? (
+                    <>
+                      <CheckCircle2 className="w-5 h-5 mr-2" />
+                      ¡Copiado!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-5 h-5 mr-2" />
+                      Copiar mensaje para compartir
+                    </>
+                  )}
+                </Button>
+
+                <div className="bg-yellow-50 rounded-2xl p-4 border-2 border-yellow-200">
+                  <p className="text-sm text-yellow-800 font-bold">
+                    💡 Cuando alguien se registre con tu código, ¡ganarás el 10% de su primer servicio completado!
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Estadísticas de Referidos */}
+            {loadingReferrals ? (
+              <div className="text-center py-12">
+                <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-pink-200 border-t-pink-500"></div>
+                <p className="mt-4 text-gray-600 font-bold">Cargando información...</p>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="rounded-2xl p-6 bg-gradient-to-br from-purple-50 to-purple-100 border-4 border-purple-200 shadow-lg">
+                    <div className="flex items-center gap-3">
+                      <Users className="w-8 h-8 text-purple-500" />
+                      <div>
+                        <p className="text-sm font-bold text-purple-600">Referidos Totales</p>
+                        <p className="text-3xl font-black text-purple-700">{myReferrals.length}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl p-6 bg-gradient-to-br from-green-50 to-green-100 border-4 border-green-200 shadow-lg">
+                    <div className="flex items-center gap-3">
+                      <DollarSign className="w-8 h-8 text-green-500" />
+                      <div>
+                        <p className="text-sm font-bold text-green-600">Ganado</p>
+                        <p className="text-3xl font-black text-green-700">
+                          {formatCurrency(
+                            referralCommissions
+                              .filter(c => c.status === 'paid')
+                              .reduce((sum, c) => sum + parseFloat(c.commission_amount || 0), 0)
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl p-6 bg-gradient-to-br from-yellow-50 to-yellow-100 border-4 border-yellow-200 shadow-lg">
+                    <div className="flex items-center gap-3">
+                      <Clock className="w-8 h-8 text-yellow-500" />
+                      <div>
+                        <p className="text-sm font-bold text-yellow-600">Pendiente</p>
+                        <p className="text-3xl font-black text-yellow-700">
+                          {formatCurrency(
+                            referralCommissions
+                              .filter(c => c.status === 'pending')
+                              .reduce((sum, c) => sum + parseFloat(c.commission_amount || 0), 0)
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Piojólogas Referidas */}
+                <div className="rounded-[2rem] p-6 bg-white border-4 border-purple-200 shadow-xl">
+                  <h3 className="text-2xl font-black text-purple-600 mb-4 flex items-center gap-2">
+                    <Users className="w-6 h-6" />
+                    Piojólogas que Referiste
+                  </h3>
+
+                  {myReferrals.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500 font-bold">Aún no has referido a nadie</p>
+                      <p className="text-sm text-gray-400 mt-2">¡Comparte tu código y empieza a ganar comisiones!</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {myReferrals.map(referral => (
+                        <div
+                          key={referral.id}
+                          className="bg-purple-50 rounded-2xl p-4 border-2 border-purple-200"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-bold text-gray-800">{referral.name}</p>
+                              <p className="text-sm text-gray-600">{referral.email}</p>
+                              {referral.specialty && (
+                                <p className="text-xs text-purple-600 mt-1">⚡ {referral.specialty}</p>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-gray-500">Servicios completados</p>
+                              <p className="text-2xl font-black text-purple-600">
+                                {referral.commissions_generated_count || 0}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Historial de Comisiones */}
+                <div className="rounded-[2rem] p-6 bg-white border-4 border-pink-200 shadow-xl">
+                  <h3 className="text-2xl font-black text-pink-600 mb-4 flex items-center gap-2">
+                    <DollarSign className="w-6 h-6" />
+                    Historial de Comisiones
+                  </h3>
+
+                  {referralCommissions.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500 font-bold">No hay comisiones aún</p>
+                      <p className="text-sm text-gray-400 mt-2">Las comisiones se generan cuando tus referidos completan su primer servicio</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {referralCommissions.map(commission => (
+                        <div
+                          key={commission.id}
+                          className={`rounded-2xl p-4 border-2 ${
+                            commission.status === 'paid'
+                              ? 'bg-green-50 border-green-200'
+                              : 'bg-yellow-50 border-yellow-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <p className="font-bold text-gray-800">
+                                {commission.referred?.name || 'Piojóloga'}
+                              </p>
+                              <p className="text-sm text-gray-600">
+                                Cliente: {commission.booking?.clientName || 'N/A'}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                {new Date(commission.created_at).toLocaleDateString('es-ES', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric'
+                                })}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-2xl font-black text-pink-600">
+                                {formatCurrency(commission.commission_amount)}
+                              </p>
+                              <p className={`text-xs font-bold mt-1 ${
+                                commission.status === 'paid' ? 'text-green-600' : 'text-yellow-600'
+                              }`}>
+                                {commission.status === 'paid' ? '✓ Pagado' : '⏳ Pendiente'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-xs text-gray-500 pt-2 border-t border-gray-200">
+                            Servicio: {formatCurrency(commission.service_amount)} × 10% = {formatCurrency(commission.commission_amount)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </TabsContent>
       </Tabs>
     </div>

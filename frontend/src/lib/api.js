@@ -200,6 +200,19 @@ export const userService = {
         message: error.response?.data?.message || 'Error al obtener usuario' 
       };
     }
+  },
+
+  async regenerateReferralCode(userId) {
+    try {
+      const response = await api.post(`/regenerate-referral-code/${userId}`);
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error('Error regenerando código:', error.response?.data);
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Error al regenerar código' 
+      };
+    }
   }
 };
 
@@ -242,6 +255,145 @@ export const bookingService = {
         success: false, 
         message: error.response?.data?.message || 'Error al crear booking',
         errors: error.response?.data?.errors
+      };
+    }
+  }
+};
+
+// Servicios del catalogo
+export const serviceService = {
+  async getAll() {
+    try {
+      const response = await api.get('/services');
+      return { success: true, services: response.data };
+    } catch (error) {
+      console.error('Error obteniendo servicios:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al obtener servicios'
+      };
+    }
+  },
+
+  async create(serviceData) {
+    try {
+      const response = await api.post('/services', serviceData);
+      return { success: true, service: response.data.service };
+    } catch (error) {
+      console.error('Error creando servicio:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al crear servicio',
+        errors: error.response?.data?.errors
+      };
+    }
+  },
+
+  async update(serviceId, serviceData) {
+    try {
+      const response = await api.put(`/services/${serviceId}`, serviceData);
+      return { success: true, service: response.data.service };
+    } catch (error) {
+      console.error('Error actualizando servicio:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al actualizar servicio',
+        errors: error.response?.data?.errors
+      };
+    }
+  },
+
+  async delete(serviceId) {
+    try {
+      const response = await api.delete(`/services/${serviceId}`);
+      return { success: true, message: response.data.message };
+    } catch (error) {
+      console.error('Error eliminando servicio:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al eliminar servicio'
+      };
+    }
+  }
+};
+
+// Servicios de referidos
+export const referralService = {
+  async getMyCommissions() {
+    try {
+      const response = await api.get('/my-referral-commissions');
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error('Error obteniendo comisiones:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al obtener comisiones'
+      };
+    }
+  },
+
+  async getMyReferrals() {
+    try {
+      const response = await api.get('/my-referrals');
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error('Error obteniendo referidos:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al obtener referidos'
+      };
+    }
+  },
+
+  async validateReferralCode(code) {
+    try {
+      const response = await api.post('/validate-referral-code', { code });
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error('Error validando código:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al validar código'
+      };
+    }
+  },
+
+  // Admin endpoints
+  async getPaymentHistory() {
+    try {
+      const response = await api.get('/referral-payment-history');
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error('Error obteniendo historial:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al obtener historial'
+      };
+    }
+  },
+
+  async markAsPaid(commissionId) {
+    try {
+      const response = await api.put(`/referral-commissions/${commissionId}/mark-paid`);
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error('Error marcando como pagado:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al marcar como pagado'
+      };
+    }
+  },
+
+  async markAllAsPaid(referrerId) {
+    try {
+      const response = await api.put(`/referral-commissions/mark-all-paid/${referrerId}`);
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error('Error marcando todos como pagados:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al marcar todos como pagados'
       };
     }
   }

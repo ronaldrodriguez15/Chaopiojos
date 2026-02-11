@@ -1,8 +1,6 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense, startTransition } from 'react';
 import { motion } from 'framer-motion';
-import { Settings, UserPlus, Calendar, User, CheckCircle, PieChart, Crown, Users, Trash2, Edit, Save, X, ShoppingBag, DollarSign, PackagePlus, Map, Loader, RefreshCw, Menu } from 'lucide-react';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
-import { Bar, Pie, Line } from 'react-chartjs-2';
+import { Settings, UserPlus, Calendar, User, CheckCircle, PieChart, Crown, Users, Trash2, Edit, Save, X, ShoppingBag, DollarSign, PackagePlus, Map, Loader, RefreshCw, Menu, Eye, CheckCircle2, XCircle, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -15,26 +13,54 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { Bar, Pie, Line } from 'react-chartjs-2';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import ScheduleManagement from '@/components/ScheduleManagement';
 import PiojologistMap from '@/components/PiojologistMap';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { geocodeAddress } from '@/lib/geocoding';
-import { bookingService } from '@/lib/api';
+import { bookingService, referralService, userService } from '@/lib/api';
 
+// Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement);
-// Aplicar estilos globales de tipografía del sistema a Chart.js
-ChartJS.defaults.font.family = 'Fredoka';
-ChartJS.defaults.font.size = 12;
-ChartJS.defaults.font.weight = 700;
-ChartJS.defaults.color = '#374151';
 
-const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, baseAppointments = [], bookings = [], updateAppointments, updateBookings, piojologists, products, updateProducts, serviceCatalog, formatCurrency, syncICalEvents, productRequests, onApproveRequest, onRejectRequest, onNotify }) => {
+// Lazy load módulos pesados para mejor rendimiento
+const DashboardModule = lazy(() => import('@/components/admin/DashboardModule'));
+const UsersModule = lazy(() => import('@/components/admin/UsersModule'));
+const ProductsModule = lazy(() => import('@/components/admin/ProductsModule'));
+const ServicesModule = lazy(() => import('@/components/admin/ServicesModule'));
+const EarningsModule = lazy(() => import('@/components/admin/EarningsModule'));
+const RequestsModule = lazy(() => import('@/components/admin/RequestsModule'));
+const ProductDetailDialog = lazy(() => import('@/components/admin/dialogs/ProductDetailDialog'));
+
+// Lazy load diálogos para mejor rendimiento
+const ServiceCatalogDialog = lazy(() => import('@/components/admin/dialogs/ServiceCatalogDialog'));
+const DeleteConfirmDialog = lazy(() => import('@/components/admin/dialogs/DeleteConfirmDialog'));
+const RejectRequestDialog = lazy(() => import('@/components/admin/dialogs/RejectRequestDialog'));
+const UserDetailDialog = lazy(() => import('@/components/admin/dialogs/UserDetailDialog'));
+const EarningsDialog = lazy(() => import('@/components/admin/dialogs/EarningsDialog'));
+const PayAllDialog = lazy(() => import('@/components/admin/dialogs/PaymentDialogs').then(module => ({ default: module.PayAllDialog })));
+const PaymentConfirmDialog = lazy(() => import('@/components/admin/dialogs/PaymentDialogs').then(module => ({ default: module.PaymentConfirmDialog })));
+
+// Loading component
+const LoadingModule = () => (
+  <div className="flex items-center justify-center p-12">
+    <Loader className="w-8 h-8 animate-spin text-blue-500" />
+  </div>
+);
+
+const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, baseAppointments = [], bookings = [], updateAppointments, updateBookings, reloadBookings, piojologists, products, updateProducts, services = [], onCreateService, onUpdateService, onDeleteService, serviceCatalog, formatCurrency, syncICalEvents, productRequests, onApproveRequest, onRejectRequest, onNotify }) => {
   const { toast } = useToast();
   
   // User Management State
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [isGeocodifying, setIsGeocodifying] = useState(false);
+  const [isUserDetailOpen, setIsUserDetailOpen] = useState(false);
+  const [detailUser, setDetailUser] = useState(null);
+  const [referralCodeValidation, setReferralCodeValidation] = useState({ isValidating: false, isValid: null, message: '' });
+  const [isRegeneratingCode, setIsRegeneratingCode] = useState(false);
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const [userFormData, setUserFormData] = useState({
     name: '',
     email: '',
@@ -42,7 +68,10 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     role: 'piojologist',
     specialty: '',
     available: true,
-    address: ''
+    address: '',
+    commission_rate: 50,
+    referral_code_used: '', // Código de referido ingresado
+    unique_referral_code: '' // Código único generado para la piojóloga
   });
 
   // Service Creation State
@@ -67,8 +96,39 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     terminosAceptados: false
   });
 
-  // Pagination for Active Services
+  // Delete Confirmation Modals
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [deleteType, setDeleteType] = useState(null); // 'service' or 'product'
+
+  // Reject Request Confirmation Modal
+  const [rejectConfirmOpen, setRejectConfirmOpen] = useState(false);
+  const [requestToReject, setRequestToReject] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+
+  // Earnings Modal State
+  const [showEarningsModal, setShowEarningsModal] = useState(false);
+  const [earningsHistory, setEarningsHistory] = useState([]);
+  const [loadingEarnings, setLoadingEarnings] = useState(false);
+  const [payingAll, setPayingAll] = useState(false);
+  const [selectedPiojologist, setSelectedPiojologist] = useState(null);
+
+  // Payment Confirmation Modal
+  const [showPaymentConfirm, setShowPaymentConfirm] = useState(false);
+  const [paymentData, setPaymentData] = useState(null);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  
+  // Detalles de Servicios por Piojóloga Modal
+  const [openPayDialog, setOpenPayDialog] = useState(null); // ID de la piojóloga para pagar servicios
+  const [openHistoryDialog, setOpenHistoryDialog] = useState(null); // ID de la piojóloga para ver historial
+
+  // Pagination states
+  const [usersPage, setUsersPage] = useState(1);
+  const [productsPage, setProductsPage] = useState(1);
   const [servicesPage, setServicesPage] = useState(1);
+  const [earningsPage, setEarningsPage] = useState(1);
+  const [requestsPage, setRequestsPage] = useState(1);
+  const itemsPerPage = 10;
   const servicesPerPage = 6;
 
   // Search filters for Active Services
@@ -82,8 +142,10 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
   // Persist active tab across refresh
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('adminTab') || 'dashboard');
   const handleTabChange = (value) => {
-    setActiveTab(value);
-    localStorage.setItem('adminTab', value);
+    startTransition(() => {
+      setActiveTab(value);
+      localStorage.setItem('adminTab', value);
+    });
   };
 
   // Mobile nav toggle for tabs
@@ -92,6 +154,26 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     // Close mobile nav when tab changes
     setIsNavOpen(false);
   }, [activeTab]);
+
+  const [appointmentFormData, setAppointmentFormData] = useState({
+    clientName: '',
+    serviceType: '',
+    date: '',
+    time: '',
+    piojologistId: '',
+    yourLoss: '',
+    ourPayment: '',
+    total: '',
+    age: '',
+    whatsapp: '',
+    direccion: '',
+    barrio: '',
+    numPersonas: '',
+    hasAlergias: false,
+    detalleAlergias: '',
+    referidoPor: '',
+    terminosAceptados: false
+  });
 
   // Resolver nombres de piojólogas faltantes en bookings/appointments combinados
   const normalizeRejectionHistory = (value) => {
@@ -159,9 +241,12 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
       role: 'piojologist',
       specialty: '',
       available: true,
-      address: ''
+      address: '',
+      referral_code_used: '',
+      unique_referral_code: ''
     });
     setEditingUser(null);
+    setReferralCodeValidation({ isValid: true, message: '' });
   };
 
   const resetServiceForm = () => {
@@ -207,6 +292,55 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     }
   };
 
+  const handleRemoveImage = () => {
+    setProductFormData({...productFormData, image: ''});
+  };
+
+  const getImageUrl = (imagePath) => {
+    if (!imagePath) return '';
+    // Si ya es una URL completa o base64, devolverla tal como está
+    if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
+      return imagePath;
+    }
+    // Si es una ruta relativa, construir la URL completa
+    return `/storage/products/${imagePath}`;
+  };
+
+  const formatPriceInput = (value) => {
+    if (!value) return '';
+    // Formatear con puntos de miles al estilo colombiano
+    const numericValue = value.toString().replace(/[^\d]/g, '');
+    if (!numericValue) return '';
+    return parseInt(numericValue).toLocaleString('es-CO');
+  };
+
+  const handlePriceChange = (e) => {
+    let value = e.target.value;
+    // Remover todo excepto números
+    value = value.replace(/[^\d]/g, '');
+    
+    setProductFormData({...productFormData, price: value});
+  };
+
+  const formatDate12H = (dateString) => {
+    if (!dateString) return 'No especificado';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'Fecha inválida';
+      
+      return date.toLocaleString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      return 'Error en fecha';
+    }
+  };
+
   const handleOpenUserDialog = (user = null) => {
     if (user) {
       setEditingUser(user);
@@ -217,12 +351,36 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     setIsUserDialogOpen(true);
   };
 
+  const handleOpenUserDetail = (user) => {
+    setDetailUser(user);
+    setIsUserDetailOpen(true);
+  };
+
+  const handleOpenEarningsModal = (piojologist) => {
+    setShowEarningsModal(true);
+    // Aquí puedes agregar lógica adicional si necesitas filtrar por piojóloga específica
+  };
+
   const handleUserSubmit = async (e) => {
     e.preventDefault();
     setIsGeocodifying(true);
 
     try {
       let userToSave = { ...userFormData };
+
+      // Validar código de referido si se está usando uno
+      if (!editingUser && userToSave.referral_code_used && userToSave.role === 'piojologist') {
+        if (!referralCodeValidation.isValid) {
+          toast({
+            title: "❌ Código de referido inválido",
+            description: "Por favor verifica el código de referido.",
+            variant: "destructive",
+            className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+          });
+          setIsGeocodifying(false);
+          return;
+        }
+      }
 
       // Si la piojóloga tiene dirección y es piojologist, ya tiene coordenadas del autocomplete
       if (userToSave.role === 'piojologist' && userToSave.address && !userToSave.lat) {
@@ -256,6 +414,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
           toast({ title: "¡Usuario Actualizado! 🎉", className: "bg-green-100 text-green-800 rounded-2xl border-2 border-green-200" });
           setIsUserDialogOpen(false);
           resetUserForm();
+          setReferralCodeValidation({ isValid: true, message: '' });
         } else {
           toast({
             title: "Error al actualizar",
@@ -265,11 +424,32 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
           });
         }
       } else {
+        // Generar código único de referido para nuevas piojólogas
+        if (userToSave.role === 'piojologist') {
+          try {
+            // Generar código único simple
+            const timestamp = Date.now().toString(36);
+            const randomStr = Math.random().toString(36).substr(2, 5).toUpperCase();
+            const uniqueCode = `${userToSave.name?.substring(0,3).toUpperCase() || 'REF'}${randomStr}${timestamp.substr(-2)}`;
+            
+            userToSave.unique_referral_code = uniqueCode;
+            toast({
+              title: "🎯 Código generado",
+              description: `Código único asignado: ${uniqueCode}`,
+              className: "bg-yellow-100 text-yellow-800 rounded-2xl border-2 border-yellow-200"
+            });
+          } catch (error) {
+            console.warn('Error generando código único:', error);
+            // Continuar sin código único - no es crítico
+          }
+        }
+
         result = await handleCreateUser(userToSave);
         if (result.success) {
           toast({ title: "¡Nuevo Amigo Añadido! 🎈", className: "bg-blue-100 text-blue-800 rounded-2xl border-2 border-blue-200" });
           setIsUserDialogOpen(false);
           resetUserForm();
+          setReferralCodeValidation({ isValid: true, message: '' });
         } else {
           toast({
             title: "Error al crear",
@@ -330,6 +510,73 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
       description: `Asignado a ${piojologist?.name}`,
       className: "bg-purple-100 text-purple-800 rounded-2xl border-2 border-purple-200" 
     });
+  };
+
+  // Earnings Logic
+  const handleMarkServiceAsPaid = async (serviceId, piojologistId, piojologistName, amount, clientName, serviceType, serviceDate) => {
+    try {
+      // Buscar el appointment completo
+      const appointment = appointments.find(apt => apt.id === serviceId);
+      if (!appointment) {
+        toast({
+          title: "❌ Error",
+          description: "No se encontró el servicio",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Obtener el ID correcto para la API (backendId, bookingId o id)
+      const backendId = appointment.backendId || appointment.bookingId || appointment.id;
+      
+      // Actualizar en la base de datos primero
+      const result = await bookingService.update(backendId, {
+        payment_status_to_piojologist: 'paid'
+      });
+
+      if (!result.success) {
+        toast({
+          title: "❌ Error al guardar",
+          description: result.message || "No se pudo guardar el pago en la base de datos",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Solo si la API respondió exitosamente, actualizar el estado local
+      const updatedAppointments = appointments.map(apt => 
+        apt.id === serviceId 
+          ? { 
+              ...apt, 
+              payment_status_to_piojologist: 'paid',
+              paymentStatusToPiojologist: 'paid'
+            }
+          : apt
+      );
+      
+      if (typeof updateAppointments === 'function') {
+        updateAppointments(updatedAppointments);
+      }
+
+      // Recargar bookings desde el backend para asegurar sincronización
+      if (typeof reloadBookings === 'function') {
+        await reloadBookings();
+      }
+
+      toast({
+        title: "💰 Servicio Pagado",
+        description: `Se marcó como pagado el servicio de ${piojologistName} por ${formatCurrency(amount)}`,
+        className: "bg-green-100 text-green-800 rounded-2xl border-2 border-green-200"
+      });
+
+    } catch (error) {
+      console.error('Error marcando servicio como pagado:', error);
+      toast({
+        title: "❌ Error",
+        description: "No se pudo marcar el servicio como pagado",
+        variant: "destructive"
+      });
+    }
   };
 
   // Product Logic
@@ -672,7 +919,6 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                     }
                   }}
                 />
-
               </div>
             </div>
 
@@ -818,319 +1064,84 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
         </TabsContent>
 
         <TabsContent value="users" className="space-y-6">
-          <div className="bg-white rounded-[2.5rem] p-4 sm:p-6 md:p-8 shadow-xl border-4 border-blue-100">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
-              <h3 className="text-xl sm:text-2xl font-black text-gray-800 flex items-center gap-3">
-                <span className="text-3xl">👪</span> La Familia <span className="text-orange-500">Chao</span><span className="text-blue-500">Piojos</span>
-              </h3>
-              <Button 
-                onClick={() => handleOpenUserDialog()}
-                className="bg-blue-400 hover:bg-blue-500 text-white rounded-2xl px-4 sm:px-6 py-4 sm:py-6 font-bold text-base sm:text-lg shadow-md hover:shadow-lg border-b-4 border-blue-600 active:border-b-0 active:translate-y-1 w-full sm:w-auto justify-center"
-              >
-                <UserPlus className="w-6 h-6 mr-2" />
-                Nuevo Miembro
-              </Button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b-2 border-gray-100">
-                    <th className="p-4 font-black text-gray-400">Nombre</th>
-                    <th className="p-4 font-black text-gray-400">Rol</th>
-                    <th className="p-4 font-black text-gray-400">Email</th>
-                    <th className="p-4 font-black text-gray-400 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map(user => (
-                    <tr key={user.id} className="group hover:bg-blue-50/50 transition-colors">
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-sm
-                            ${user.role === 'admin' ? 'bg-purple-100' : user.role === 'piojologist' ? 'bg-green-100' : 'bg-orange-100'}
-                          `}>
-                            {user.role === 'admin' ? '👑' : user.role === 'piojologist' ? '🦸' : '👶'}
-                          </div>
-                          <span className="font-bold text-gray-700">{user.name}</span>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <span className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider
-                          ${user.role === 'admin' ? 'bg-purple-100 text-purple-600' : 
-                            user.role === 'piojologist' ? 'bg-green-100 text-green-600' : 
-                            'bg-orange-100 text-orange-600'}
-                        `}>
-                          {user.role}
-                        </span>
-                      </td>
-                      <td className="p-4 font-medium text-gray-500">{user.email}</td>
-                      <td className="p-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button 
-                            size="icon" 
-                            variant="ghost" 
-                            onClick={() => handleOpenUserDialog(user)}
-                            className="h-10 w-10 rounded-xl bg-blue-100 text-blue-500 hover:bg-blue-200"
-                          >
-                            <Edit className="w-5 h-5" />
-                          </Button>
-                          <Button 
-                            size="icon" 
-                            variant="ghost" 
-                            onClick={async () => {
-                              const result = await handleDeleteUser(user.id);
-                              if (result.success) {
-                                toast({
-                                  title: "¡Usuario Eliminado! 🗑️",
-                                  description: result.message,
-                                  className: "bg-orange-100 text-orange-800 rounded-2xl border-2 border-orange-200"
-                                });
-                              } else {
-                                toast({
-                                  title: "Error al eliminar",
-                                  description: result.message || "No se pudo eliminar el usuario",
-                                  variant: "destructive",
-                                  className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
-                                });
-                              }
-                            }}
-                            className="h-10 w-10 rounded-xl bg-red-100 text-red-500 hover:bg-red-200"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <Suspense fallback={<div>Cargando...</div>}>
+            <UsersModule
+              users={users}
+              handleOpenUserDialog={handleOpenUserDialog}
+              handleOpenUserDetail={handleOpenUserDetail}
+              handleDeleteUser={handleDeleteUser}
+              handleOpenEarningsModal={handleOpenEarningsModal}
+            />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="products" className="space-y-6">
-           <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-pink-100">
-             <div className="flex justify-between items-center mb-8">
-              <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3">
-                <span className="text-3xl">🧼</span> Almacén de Productos
-              </h3>
-              <Dialog open={isProductDialogOpen} onOpenChange={setIsProductDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button className="bg-pink-400 hover:bg-pink-500 text-white rounded-2xl px-6 py-6 font-bold text-lg shadow-md border-b-4 border-pink-600 active:border-b-0 active:translate-y-1">
-                    <PackagePlus className="w-6 h-6 mr-2" />
-                    Crear Producto
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="rounded-[2.5rem] border-8 border-pink-100 p-0 overflow-hidden sm:max-w-md bg-white">
-                  <div className="bg-pink-400 p-6 text-white text-center">
-                    <DialogHeader>
-                      <DialogTitle className="text-3xl font-black">Nuevo Artilugio 🧴</DialogTitle>
-                    </DialogHeader>
-                  </div>
-                  <form onSubmit={handleProductSubmit} className="p-8 space-y-4">
-                    <div>
-                      <Label className="font-bold text-gray-500 ml-2 mb-1 block">Nombre del Producto</Label>
-                      <input 
-                        required
-                        value={productFormData.name}
-                        onChange={e => setProductFormData({...productFormData, name: e.target.value})}
-                        className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-pink-400"
-                        placeholder="Ej. Spray Mágico"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label className="font-bold text-gray-500 ml-2 mb-1 block">Precio ($)</Label>
-                        <input 
-                          required
-                          type="number"
-                          value={productFormData.price}
-                          onChange={e => setProductFormData({...productFormData, price: e.target.value})}
-                          className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-pink-400"
-                          placeholder="15"
-                        />
-                      </div>
-                      <div>
-                        <Label className="font-bold text-gray-500 ml-2 mb-1 block">Stock</Label>
-                        <input 
-                          required
-                          type="number"
-                          value={productFormData.stock}
-                          onChange={e => setProductFormData({...productFormData, stock: e.target.value})}
-                          className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-pink-400"
-                          placeholder="50"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="font-bold text-gray-500 ml-2 mb-1 block">URL Imagen</Label>
-                      <input 
-                        value={productFormData.image}
-                        onChange={e => setProductFormData({...productFormData, image: e.target.value})}
-                        className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-pink-400"
-                        placeholder="https://..."
-                      />
-                    </div>
-                    <Button type="submit" className="w-full bg-pink-500 hover:bg-pink-600 text-white rounded-2xl py-6 font-bold mt-4 shadow-md border-b-4 border-pink-700">
-                      Guardar en Inventario
-                    </Button>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {products.map(product => (
-                <div key={product.id} className="bg-white border-4 border-pink-100 rounded-[2rem] p-4 flex flex-col gap-4 shadow-sm hover:border-pink-300 hover:shadow-xl transition-all transform hover:scale-105 cursor-pointer group">
-                  <div 
-                    onClick={() => {
-                      setSelectedProduct(product);
-                      setIsProductDetailOpen(true);
-                    }}
-                    className="w-full h-32 bg-gradient-to-br from-pink-50 to-purple-50 rounded-2xl overflow-hidden relative"
-                  >
-                    <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
-                    <div className="absolute top-2 right-2 bg-white px-3 py-1 rounded-full text-xs font-black shadow-lg border-2 border-pink-200">
-                      📦 {product.stock}
-                    </div>
-                  </div>
-                  <div onClick={() => {
-                    setSelectedProduct(product);
-                    setIsProductDetailOpen(true);
-                  }}>
-                    <h4 className="text-lg font-black text-gray-800 truncate">{product.name}</h4>
-                    <p className="text-pink-500 font-bold text-xl">{formatCurrency(product.price)}</p>
-                  </div>
-                  <div className="flex gap-2 mt-auto">
-                    <Button 
-                      onClick={() => handleOpenProductDialog(product)}
-                      variant="ghost" 
-                      className="flex-1 bg-blue-50 text-blue-500 hover:bg-blue-100 rounded-xl font-bold"
-                    >
-                      <Edit className="w-4 h-4 mr-2" /> Editar
-                    </Button>
-                    <Button 
-                      onClick={() => handleDeleteProduct(product.id)}
-                      variant="ghost" 
-                      className="flex-1 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl font-bold"
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" /> Eliminar
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-           </div>
+          <Suspense fallback={<div>Cargando...</div>}>
+            <ProductsModule
+              products={products}
+              formatCurrency={formatCurrency}
+              handleProductSubmit={handleProductSubmit}
+              handleDeleteProduct={handleDeleteProduct}
+              productFormData={productFormData}
+              setProductFormData={setProductFormData}
+              isProductDialogOpen={isProductDialogOpen}
+              setIsProductDialogOpen={setIsProductDialogOpen}
+              setSelectedProduct={setSelectedProduct}
+              setIsProductDetailOpen={setIsProductDetailOpen}
+              formatPriceInput={formatPriceInput}
+              handlePriceChange={handlePriceChange}
+              getImageUrl={getImageUrl}
+              handleImageUpload={handleImageUpload}
+              handleRemoveImage={handleRemoveImage}
+            />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="earnings" className="space-y-6">
-          <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-green-100 space-y-8">
-             <div className="flex items-center gap-4">
-               <div className="p-4 bg-green-100 text-green-600 rounded-full">
-                 <DollarSign className="w-8 h-8" />
-               </div>
-               <h3 className="text-2xl font-black text-gray-800">
-                 Reporte Financiero
-               </h3>
-             </div>
-
-             {(() => {
-               const completed = appointments.filter(a => a.status === 'completed');
-               const totalBruto = completed.reduce((acc, curr) => acc + getServicePrice(curr), 0);
-               const comisionStudio = totalBruto * 0.5;
-               const pagoPiojologas = totalBruto - comisionStudio;
-
-               const cards = [
-                 { label: 'Servicios completados', value: completed.length, tone: 'bg-blue-50 text-blue-700 border-blue-200' },
-                 { label: 'Total facturado', value: formatCurrency(totalBruto), tone: 'bg-green-50 text-green-700 border-green-200' },
-                 { label: 'Comisión Chao Piojos (50%)', value: formatCurrency(comisionStudio), tone: 'bg-orange-50 text-orange-700 border-orange-200' },
-                 { label: 'Pago a piojólogas', value: formatCurrency(pagoPiojologas), tone: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
-               ];
-
-               return (
-                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                   {cards.map(card => (
-                     <div key={card.label} className={`rounded-2xl border-2 ${card.tone} p-4 font-black text-lg`}> 
-                       <p className="text-xs uppercase tracking-wide font-black opacity-70">{card.label}</p>
-                       <p className="text-2xl mt-2">{card.value}</p>
-                     </div>
-                   ))}
-                 </div>
-               );
-             })()}
-
-             <div className="overflow-x-auto">
-               <table className="w-full text-left">
-                 <thead>
-                   <tr className="border-b-2 border-gray-100">
-                     <th className="p-4 font-black text-gray-400">Piojólogo</th>
-                     <th className="p-4 font-black text-gray-400">Servicios Completados</th>
-                     <th className="p-4 font-black text-gray-400 text-right">Total Facturado</th>
-                     <th className="p-4 font-black text-gray-400 text-right">Comisión Chao (50%)</th>
-                     <th className="p-4 font-black text-gray-400 text-right">Pago Piojóloga</th>
-                   </tr>
-                 </thead>
-                 <tbody>
-                   {piojologists.map(pioj => {
-                     const completedServices = appointments.filter(a => a.piojologistId === pioj.id && a.status === 'completed');
-                     const totalServiceValue = completedServices.reduce((acc, curr) => acc + getServicePrice(curr), 0);
-                     const commissionValue = totalServiceValue * 0.5;
-                     const payoutValue = totalServiceValue - commissionValue;
-
-                     return (
-                       <tr key={pioj.id} className="border-b border-gray-50 last:border-0 hover:bg-green-50/50 transition-colors">
-                         <td className="p-4 font-bold text-gray-700 flex items-center gap-2">
-                           <div className="w-8 h-8 bg-green-200 rounded-full flex items-center justify-center text-green-700 text-xs">
-                             {pioj.name.charAt(0)}
-                           </div>
-                           {pioj.name}
-                         </td>
-                         <td className="p-4 font-medium">{completedServices.length}</td>
-                         <td className="p-4 text-right font-medium text-gray-800">{formatCurrency(totalServiceValue)}</td>
-                         <td className="p-4 text-right font-medium text-orange-600">{formatCurrency(commissionValue)}</td>
-                         <td className="p-4 text-right">
-                           <span className="bg-green-100 text-green-700 px-3 py-1 rounded-xl font-black">
-                             {formatCurrency(payoutValue)}
-                           </span>
-                         </td>
-                       </tr>
-                     );
-                   })}
-                 </tbody>
-               </table>
-             </div>
-          </div>
+          <Suspense fallback={<div>Cargando...</div>}>
+            <EarningsModule
+              piojologists={piojologists}
+              appointments={appointments}
+              users={users}
+              getServicePrice={getServicePrice}
+              formatCurrency={formatCurrency}
+              handleMarkServiceAsPaid={handleMarkServiceAsPaid}
+              openPayDialog={openPayDialog}
+              setOpenPayDialog={setOpenPayDialog}
+              openHistoryDialog={openHistoryDialog}
+              setOpenHistoryDialog={setOpenHistoryDialog}
+            />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="map" className="space-y-6">
-          <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-cyan-100">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-4">
-                <div className="p-4 bg-cyan-100 text-cyan-600 rounded-full">
-                  <Map className="w-8 h-8" />
+          <div className="bg-white rounded-[2.5rem] p-4 sm:p-6 md:p-8 shadow-xl border-4 border-cyan-100">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="p-3 sm:p-4 bg-cyan-100 text-cyan-600 rounded-full">
+                  <Map className="w-6 h-6 sm:w-8 sm:h-8" />
                 </div>
-                <h3 className="text-2xl font-black text-gray-800">
+                <h3 className="text-xl sm:text-2xl font-black text-gray-800">
                   Ubicaciones de Piojólogas
                 </h3>
               </div>
-              <div className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded-full text-sm font-bold">
+              <div className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded-full text-sm font-bold self-start sm:self-auto">
                 🎯 {users.filter(u => u.role === 'piojologist' && u.lat && u.lng).length} ubicadas
               </div>
             </div>
             
-            <div style={{ height: '600px' }} className="rounded-2xl overflow-hidden">
+            <div className="h-[400px] sm:h-[500px] md:h-[600px] rounded-2xl overflow-hidden">
               <PiojologistMap key={users.length} piojologists={users} />
             </div>
 
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-cyan-50 p-4 rounded-2xl border-2 border-cyan-200">
-                <p className="text-sm text-gray-600">
+            <div className="mt-4 sm:mt-6 grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+              <div className="bg-cyan-50 p-3 sm:p-4 rounded-2xl border-2 border-cyan-200">
+                <p className="text-xs sm:text-sm text-gray-600">
                   <span className="font-bold">📍 Nota:</span> El mapa se actualiza automáticamente cuando agregas piojólogas con dirección.
                 </p>
               </div>
-              <div className="bg-green-50 p-4 rounded-2xl border-2 border-green-200">
-                <p className="text-sm text-gray-600">
+              <div className="bg-green-50 p-3 sm:p-4 rounded-2xl border-2 border-green-200">
+                <p className="text-xs sm:text-sm text-gray-600">
                   <span className="font-bold">💡 Tip:</span> Usa el autocomplete al crear piojólogas para ubicaciones precisas.
                 </p>
               </div>
@@ -1139,222 +1150,67 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
         </TabsContent>
 
         <TabsContent value="requests" className="space-y-6">
-          <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-purple-100">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-4">
-                <div className="p-4 bg-purple-100 text-purple-600 rounded-full">
-                  <PackagePlus className="w-8 h-8" />
-                </div>
-                <h3 className="text-2xl font-black text-gray-800">
-                  Solicitudes de Productos
-                </h3>
-              </div>
-              <div className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-bold">
-                {productRequests.filter(r => r.status === 'pending').length} pendientes
-              </div>
-            </div>
-
-            {productRequests.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                <PackagePlus className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                <p className="font-bold text-lg">No hay solicitudes aún</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {productRequests.map(request => {
-                  const pricing = resolveRequestTotals(request);
-                  return (
-                    <motion.div
-                      key={request.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={`p-6 rounded-2xl border-4 ${
-                        request.status === 'pending' 
-                          ? 'bg-yellow-50 border-yellow-200' 
-                          : request.status === 'approved'
-                          ? 'bg-green-50 border-green-200'
-                          : 'bg-red-50 border-red-200'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <h4 className="text-lg font-bold text-gray-800">
-                            {request.piojologistName}
-                          </h4>
-                          <p className="text-sm text-gray-600">
-                            {new Date(request.requestDate).toLocaleString('es-ES', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </p>
-                        </div>
-                        <span className={`px-4 py-2 rounded-xl text-sm font-bold ${
-                          request.status === 'pending'
-                            ? 'bg-yellow-200 text-yellow-800'
-                            : request.status === 'approved'
-                            ? 'bg-green-200 text-green-800'
-                            : 'bg-red-200 text-red-800'
-                        }`}>
-                          {request.status === 'pending' && '⏳ Pendiente'}
-                          {request.status === 'approved' && '✅ Aprobada'}
-                          {request.status === 'rejected' && '❌ Rechazada'}
-                        </span>
-                      </div>
-
-                      <div className="mb-4">
-                        <h5 className="font-bold text-gray-700 mb-2">
-                          {request.isKitCompleto ? '🎁 Kit Completo' : 'Productos Solicitados:'}
-                        </h5>
-                        {!request.isKitCompleto && (
-                          <ul className="space-y-1 bg-white p-3 rounded-xl">
-                            {(request.items || []).map((item, idx) => (
-                              <li key={idx} className="text-sm text-gray-700 flex items-center gap-2 justify-between">
-                                <div className="flex items-center gap-2">
-                                  <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
-                                  {item.productName} <span className="font-bold">x{item.quantity}</span>
-                                </div>
-                                {item.price ? <span className="font-bold text-purple-700">{toMoney((item.price || 0) * (item.quantity || 1))}</span> : null}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-
-                      {request.isKitCompleto ? (
-                        <div className="bg-white p-3 rounded-xl border-2 border-purple-100">
-                          <p className="text-sm font-bold text-gray-700">Valor kit: {toMoney(pricing.baseKitPrice)}</p>
-                          <p className="text-xs font-bold text-green-700">Aporta estudio: {toMoney(pricing.studioShare)}</p>
-                          <p className="text-xs font-bold text-purple-700">Aporta piojóloga: {toMoney(pricing.piojologistShare)}</p>
-                          {request.isFirstKitBenefit && (
-                            <p className="text-xs text-emerald-600 font-black mt-1">Beneficio de primer kit aplicado (50%)</p>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="bg-white p-3 rounded-xl border-2 border-gray-100 flex justify-between text-sm font-bold text-gray-700">
-                          <span>Total estimado</span>
-                          <span>{toMoney(pricing.total)}</span>
-                        </div>
-                      )}
-
-                      {request.notes && (
-                        <div className="mb-4 mt-4 bg-white p-3 rounded-xl">
-                          <p className="text-sm text-gray-600">
-                            <span className="font-bold">Notas:</span> {request.notes}
-                          </p>
-                        </div>
-                      )}
-
-                      {request.status === 'pending' ? (
-                        <div className="flex gap-3 mt-4">
-                          <Button
-                            onClick={() => {
-                              const notes = prompt('Comentario de aprobación (opcional):');
-                              if (notes !== null) {
-                                onApproveRequest(request.id, notes);
-                                toast({
-                                  title: "✅ Solicitud Aprobada",
-                                  description: `La solicitud de ${request.piojologistName} fue aprobada`,
-                                  className: "bg-green-100 text-green-800 rounded-2xl border-2 border-green-200"
-                                });
-                              }
-                            }}
-                            className="flex-1 bg-green-500 hover:bg-green-600 text-white rounded-xl py-3 font-bold"
-                          >
-                            ✅ Aprobar
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              const reason = prompt('Razón del rechazo:');
-                              if (reason) {
-                                onRejectRequest(request.id, reason);
-                                toast({
-                                  title: "❌ Solicitud Rechazada",
-                                  description: `La solicitud de ${request.piojologistName} fue rechazada`,
-                                  variant: "destructive",
-                                  className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
-                                });
-                              }
-                            }}
-                            className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-xl py-3 font-bold"
-                          >
-                            ❌ Rechazar
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="bg-white p-4 rounded-xl border-2 border-gray-200 mt-4">
-                          <p className="text-sm font-bold text-gray-700 mb-1">
-                            {request.status === 'approved' ? '✅ Aprobado' : '❌ Rechazado'} por {request.resolvedByName}
-                          </p>
-                          <p className="text-xs text-gray-600 mb-2">
-                            {new Date(request.resolvedDate).toLocaleString('es-ES', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </p>
-                          {request.adminNotes && (
-                            <p className="text-sm text-gray-700">
-                              <span className="font-bold">Comentario:</span> {request.adminNotes}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </motion.div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <Suspense fallback={<div>Cargando...</div>}>
+            <RequestsModule
+              productRequests={productRequests}
+              resolveRequestTotals={resolveRequestTotals}
+              formatCurrency={formatCurrency}
+              onApproveRequest={onApproveRequest}
+              onRejectRequest={onRejectRequest}
+            />
+          </Suspense>
         </TabsContent>
       </Tabs>
 
       {/* User Dialog Modal */}
       <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
-        <DialogContent className="rounded-[2.5rem] border-8 border-blue-100 p-0 sm:max-w-md bg-white max-h-[85vh] overflow-y-auto">
-          <div className="bg-blue-400 p-6 text-white text-center relative overflow-hidden">
-             <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-            <DialogHeader>
-              <DialogTitle className="text-3xl font-black flex items-center justify-center gap-2 relative z-10">
-                {editingUser ? '✏️ Editar Amigo' : '🌟 Nuevo Amigo'}
-              </DialogTitle>
-            </DialogHeader>
+        <DialogContent className="rounded-[3rem] border-4 border-blue-400 p-0 overflow-hidden sm:max-w-md bg-blue-50 shadow-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>{editingUser ? 'Editar Miembro' : 'Nuevo Miembro'}</DialogTitle>
+          </DialogHeader>
+          {/* Title */}
+          <div className="text-center pt-8 pb-6">
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <User className="w-6 h-6 text-blue-600" />
+              <h2 className="text-2xl font-black text-blue-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
+                {editingUser ? 'EDITAR MIEMBRO' : 'NUEVO MIEMBRO'}
+              </h2>
+            </div>
           </div>
           
-          <form onSubmit={handleUserSubmit} className="p-8 space-y-4">
+          <div className="max-h-[60vh] overflow-y-auto">
+            <form onSubmit={handleUserSubmit} className="px-8 pb-8 space-y-4">
             <div>
-              <Label className="font-bold text-gray-500 ml-2 mb-1 block">Nombre Completo</Label>
+              <label className="block text-sm font-medium text-gray-600 mb-2">Nombre del Cliente</label>
               <input 
                 required
-                className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-blue-400 focus:bg-white transition-all"
+                className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
                 value={userFormData.name}
                 onChange={e => setUserFormData({...userFormData, name: e.target.value})}
-                placeholder="Ej. Pepito Pérez"
+                placeholder="Ej. Familia Pérez"
               />
             </div>
             
-            <div className="form-grid">
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="field-label">Rol</Label>
-                 <select 
-                  className="form-select focus:border-blue-400"
-                    value={userFormData.role}
-                    onChange={e => setUserFormData({...userFormData, role: e.target.value})}
-                 >
-                   <option value="piojologist">🦸 Piojóloga</option>
-                   <option value="admin">👑 Administrador</option>
-                 </select>
+                <label className="block text-sm font-medium text-gray-600 mb-2">Rol</label>
+                <select 
+                  className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all"
+                  value={userFormData.role}
+                  onChange={e => setUserFormData({...userFormData, role: e.target.value})}
+                >
+                  <option value="piojologist">🦸 Piojóloga</option>
+                  <option value="admin">👑 Administrador</option>
+                </select>
               </div>
-               <div>
-                <Label className="field-label">Contraseña {editingUser && <span className="text-xs text-gray-500">(mantener actual)</span>}</Label>
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-2">
+                  Contraseña {editingUser && <span className="text-xs text-gray-400">(mantener actual)</span>}
+                </label>
                 <input 
                   required={!editingUser}
                   type="password"
-                  className="form-input focus:border-blue-400 focus:bg-white transition-all"
+                  className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
                   value={userFormData.password}
                   onChange={e => setUserFormData({...userFormData, password: e.target.value})}
                   placeholder={editingUser ? "Dejar vacío si no cambia" : "***"}
@@ -1363,11 +1219,11 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
             </div>
 
             <div>
-              <Label className="field-label">Email</Label>
+              <label className="block text-sm font-medium text-gray-600 mb-2">Email</label>
               <input 
                 required
                 type="email"
-                className="form-input focus:border-blue-400 focus:bg-white transition-all"
+                className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
                 value={userFormData.email}
                 onChange={e => setUserFormData({...userFormData, email: e.target.value})}
                 placeholder="correo@ejemplo.com"
@@ -1375,20 +1231,114 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
             </div>
 
             {userFormData.role === 'piojologist' && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}>
-                <Label className="field-label">Especialidad (Súper Poder)</Label>
-                <input 
-                  className="form-input bg-green-50 border-green-200 text-green-700 focus:border-green-400 focus:bg-white transition-all placeholder-green-300"
-                  value={userFormData.specialty || ''}
-                  onChange={e => setUserFormData({...userFormData, specialty: e.target.value})}
-                  placeholder="Ej. Visión de Rayos X"
-                />
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">Especialidad (Súper Poder)</label>
+                  <input 
+                    className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
+                    value={userFormData.specialty || ''}
+                    onChange={e => setUserFormData({...userFormData, specialty: e.target.value})}
+                    placeholder="Ej. Visión de Rayos X"
+                  />
+                </div>
+
+                {/* Código de Referido Usado */}
+                {!editingUser && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-2">
+                      🎁 Código de Referido <span className="text-xs text-gray-400">(opcional)</span>
+                    </label>
+                    <input 
+                      className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
+                      value={userFormData.referral_code_used || ''}
+                      onChange={async (e) => {
+                        const code = e.target.value.toUpperCase();
+                        setUserFormData({...userFormData, referral_code_used: code});
+                        
+                        // Validar código si no está vacío
+                        if (code.trim()) {
+                          try {
+                            const isValid = await referralService.validateCode(code);
+                            setReferralCodeValidation({
+                              isValid,
+                              message: isValid ? '✅ Código válido' : '❌ Código no válido'
+                            });
+                          } catch (error) {
+                            setReferralCodeValidation({
+                              isValid: false,
+                              message: '❌ Error al validar código'
+                            });
+                          }
+                        } else {
+                          setReferralCodeValidation({ isValid: true, message: '' });
+                        }
+                      }}
+                      placeholder="Ej. MARIA2024"
+                    />
+                    {referralCodeValidation.message && (
+                      <p className={`text-xs mt-2 font-medium ${referralCodeValidation.isValid ? 'text-green-600' : 'text-red-600'}`}>
+                        {referralCodeValidation.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Código de Referido Propio */}
+                {editingUser && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-2">
+                      🔗 Código de Referido Único
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <input 
+                          className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 font-mono text-lg font-bold text-gray-700 outline-none focus:border-blue-500 transition-all h-14"
+                          value={userFormData.unique_referral_code || ''}
+                          readOnly
+                          placeholder="Se genera automáticamente"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            // Generar código único simple
+                            const timestamp = Date.now().toString(36);
+                            const randomStr = Math.random().toString(36).substr(2, 5).toUpperCase();
+                            const newCode = `${userFormData.name?.substring(0,3).toUpperCase() || 'REF'}${randomStr}${timestamp.substr(-2)}`;
+                            
+                            setUserFormData({...userFormData, unique_referral_code: newCode});
+                            
+                            toast({
+                              title: "🎯 Código Regenerado",
+                              description: `Nuevo código: ${newCode}`,
+                              className: "bg-blue-100 text-blue-800 rounded-2xl border-2 border-blue-200"
+                            });
+                          } catch (error) {
+                            toast({
+                              title: "❌ Error",
+                              description: "No se pudo regenerar el código",
+                              variant: "destructive"
+                            });
+                          }
+                        }}
+                        className="flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white rounded-2xl w-14 h-14 shadow-lg transition-all"
+                        title="Regenerar Código"
+                      >
+                        <RefreshCw className="w-5 h-5" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Este código puede ser usado por otras piojólogas para referenciarla
+                    </p>
+                  </div>
+                )}
               </motion.div>
             )}
 
             {userFormData.role === 'piojologist' && (
               <div>
-                <Label className="field-label">📍 Dirección</Label>
+                <label className="block text-sm font-medium text-gray-600 mb-2">📍 Dirección</label>
                 <AddressAutocomplete
                   value={userFormData.address || ''}
                   onChange={(address) => setUserFormData({...userFormData, address})}
@@ -1402,7 +1352,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                     toast({
                       title: "📍 Ubicación seleccionada",
                       description: `${suggestion.name}`,
-                      className: "bg-cyan-100 text-cyan-800 rounded-2xl border-2 border-cyan-200"
+                      className: "bg-blue-100 text-blue-800 rounded-2xl border-2 border-blue-200"
                     });
                   }}
                 />
@@ -1411,7 +1361,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
 
             {userFormData.role !== 'piojologist' && (
               <div>
-                <Label className="field-label">📍 Dirección (Opcional)</Label>
+                <label className="block text-sm font-medium text-gray-600 mb-2">📍 Dirección (Opcional)</label>
                 <AddressAutocomplete
                   value={userFormData.address || ''}
                   onChange={(address) => setUserFormData({...userFormData, address})}
@@ -1425,27 +1375,18 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                     toast({
                       title: "📍 Ubicación seleccionada",
                       description: `${suggestion.name || suggestion.displayName}`,
-                      className: "bg-cyan-100 text-cyan-800 rounded-2xl border-2 border-cyan-200"
+                      className: "bg-blue-100 text-blue-800 rounded-2xl border-2 border-blue-200"
                     });
                   }}
                 />
               </div>
             )}
 
-            <div className="pt-4 flex gap-3">
-              <Button 
-                type="button" 
-                variant="ghost" 
-                onClick={() => setIsUserDialogOpen(false)}
-                disabled={isGeocodifying}
-                className="flex-1 rounded-2xl py-6 font-bold text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-50"
-              >
-                Cancelar
-              </Button>
+            <div className="pt-6">
               <Button 
                 type="submit"
                 disabled={isGeocodifying}
-                className="flex-1 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl py-6 font-bold shadow-lg border-b-4 border-blue-700 active:border-b-0 active:translate-y-1 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-3xl py-4 px-6 font-bold text-lg shadow-lg transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isGeocodifying ? (
                   <>
@@ -1453,88 +1394,66 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                     Localizando...
                   </>
                 ) : (
-                  editingUser ? 'Guardar Cambios' : '¡Crear!'
+                  editingUser ? 'Guardar Cambios' : 'Crear y Asignar Miembro'
                 )}
               </Button>
             </div>
           </form>
+          </div>
         </DialogContent>
       </Dialog>
 
-      {/* Product Detail Modal */}
-      <Dialog open={isProductDetailOpen} onOpenChange={setIsProductDetailOpen}>
-        <DialogContent className="rounded-[2.5rem] border-8 border-pink-100 p-0 overflow-hidden sm:max-w-lg bg-white">
-          {selectedProduct && (
-            <>
-              <div className="bg-gradient-to-r from-pink-400 to-purple-400 p-6 text-white text-center relative overflow-hidden">
-                <div className="absolute top-0 right-0 text-9xl opacity-10">🎨</div>
-                <DialogHeader>
-                  <DialogTitle className="text-3xl font-black relative z-10">¡Producto Mágico! ✨</DialogTitle>
-                </DialogHeader>
-              </div>
-              
-              <div className="p-8 space-y-6">
-                {/* Image */}
-                <div className="w-full h-64 bg-gradient-to-br from-pink-50 to-purple-50 rounded-3xl overflow-hidden border-4 border-pink-200 shadow-lg relative">
-                  <img 
-                    src={selectedProduct.image} 
-                    alt={selectedProduct.name} 
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute top-4 right-4 bg-white px-4 py-2 rounded-full shadow-lg border-2 border-pink-300">
-                    <span className="text-2xl font-black text-pink-500">📦 {selectedProduct.stock}</span>
-                  </div>
-                </div>
+      {/* Product Detail Dialog */}
+      <Suspense fallback={<div>Cargando...</div>}>
+        <ProductDetailDialog
+          isOpen={isProductDetailOpen}
+          onClose={setIsProductDetailOpen}
+          product={selectedProduct}
+          formatCurrency={formatCurrency}
+          onEdit={(product) => {
+            setIsProductDetailOpen(false);
+            handleOpenProductDialog(product);
+          }}
+          onDelete={(productId) => {
+            handleDeleteProduct(productId);
+            setIsProductDetailOpen(false);
+          }}
+        />
+      </Suspense>
 
-                {/* Details */}
-                <div className="space-y-4">
-                  <div className="bg-pink-50 p-4 rounded-2xl border-2 border-pink-200">
-                    <h3 className="text-2xl font-black text-gray-800 mb-2">
-                      {selectedProduct.name}
-                    </h3>
-                    <p className="text-3xl font-black text-pink-500">
-                      {formatCurrency(selectedProduct.price)}
-                    </p>
-                  </div>
+      {/* User Detail Dialog */}
+      <Suspense fallback={<div>Cargando...</div>}>
+        <UserDetailDialog
+          isOpen={isUserDetailOpen}
+          onClose={() => setIsUserDetailOpen(false)}
+          user={detailUser}
+          formatCurrency={formatCurrency}
+          formatDate12H={formatDate12H}
+          onEdit={(user) => {
+            setIsUserDetailOpen(false);
+            handleOpenUserDialog(user);
+          }}
+          onDelete={(userId) => {
+            handleDeleteUser(userId);
+            setIsUserDetailOpen(false);
+          }}
+        />
+      </Suspense>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-purple-50 p-4 rounded-2xl border-2 border-purple-200 text-center">
-                      <p className="text-sm font-bold text-purple-600 mb-1">Stock Disponible</p>
-                      <p className="text-3xl font-black text-purple-700">{selectedProduct.stock}</p>
-                    </div>
-                    <div className="bg-blue-50 p-4 rounded-2xl border-2 border-blue-200 text-center">
-                      <p className="text-sm font-bold text-blue-600 mb-1">Precio Unitario</p>
-                      <p className="text-lg font-black text-blue-700">{formatCurrency(selectedProduct.price)}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-3 pt-4">
-                  <Button
-                    onClick={() => {
-                      setIsProductDetailOpen(false);
-                      handleOpenProductDialog(selectedProduct);
-                    }}
-                    className="flex-1 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl py-6 font-bold shadow-lg border-b-4 border-blue-700"
-                  >
-                    <Edit className="w-5 h-5 mr-2" /> Editar
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      handleDeleteProduct(selectedProduct.id);
-                      setIsProductDetailOpen(false);
-                    }}
-                    className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-2xl py-6 font-bold shadow-lg border-b-4 border-red-700"
-                  >
-                    <Trash2 className="w-5 h-5 mr-2" /> Eliminar
-                  </Button>
-                </div>
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Earnings Dialog */}
+      <Suspense fallback={<div>Cargando...</div>}>
+        <EarningsDialog
+          isOpen={showEarningsModal}
+          onClose={() => setShowEarningsModal(false)}
+          piojologists={piojologists}
+          appointments={appointments}
+          users={users}
+          formatCurrency={formatCurrency}
+          formatDate12H={formatDate12H}
+          earningsHistory={earningsHistory}
+          loadingEarnings={loadingEarnings}
+        />
+      </Suspense>
     </div>
   );
 };

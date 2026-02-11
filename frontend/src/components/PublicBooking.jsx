@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, CalendarDays, Clock, Sparkles, Copy, Check } from 'lucide-react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight, CalendarDays, Clock, Sparkles, Copy, Check, Bug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 import { motion } from 'framer-motion';
-import { bookingService } from '@/lib/api';
+import { bookingService, serviceService } from '@/lib/api';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 
-const WEEK_DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const WEEK_DAYS = ['Lun', 'Mar', 'Mi', 'Jue', 'Vie', 'Sb', 'Dom'];
 
 const pad = (value) => (value < 10 ? `0${value}` : `${value}`);
 
@@ -56,11 +56,53 @@ const piojologists = [
   { id: 103, name: 'Vero', zone: 'Sur', gradient: 'from-lime-400 to-emerald-500' }
 ];
 
-const serviceCatalog = [
-  { value: 'Normal', label: 'Nivel Normal' },
-  { value: 'Elevado', label: 'Nivel Elevado' },
-  { value: 'Muy Alto', label: 'Nivel Muy Alto' }
+const defaultServiceCatalog = [
+  { name: 'Normal', value: 70000 },
+  { name: 'Elevado', value: 100000 },
+  { name: 'Muy Alto', value: 120000 }
 ];
+
+const normalizeServiceCatalog = (input) => {
+  if (!input) return [];
+  if (Array.isArray(input)) {
+    return input
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+        const name = String(item.name ?? item.label ?? '').trim();
+        const value = Number(item.value ?? item.price ?? 0);
+        if (!name || !Number.isFinite(value)) return null;
+        return { value: name, label: name, amount: value };
+      })
+      .filter(Boolean);
+  }
+  if (typeof input === 'object') {
+    return Object.entries(input)
+      .map(([name, value]) => {
+        const cleanName = String(name).trim();
+        const amount = Number(value ?? 0);
+        if (!cleanName || !Number.isFinite(amount)) return null;
+        return { value: cleanName, label: cleanName, amount };
+      })
+      .filter(Boolean);
+  }
+  return [];
+};
+
+const loadServiceCatalog = () => {
+  try {
+    const raw = localStorage.getItem('serviceCatalog');
+    const parsed = raw ? JSON.parse(raw) : null;
+    const normalized = normalizeServiceCatalog(parsed);
+    if (normalized.length) return normalized;
+  } catch (e) {
+    // ignore
+  }
+  return defaultServiceCatalog.map((svc) => ({
+    value: svc.name,
+    label: svc.name,
+    amount: svc.value
+  }));
+};
 
 const boldPaymentOptions = {
   Normal: {
@@ -78,6 +120,15 @@ const boldPaymentOptions = {
 };
 
 const PublicBooking = () => {
+  const [serviceOptions, setServiceOptions] = useState(() => loadServiceCatalog());
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: 'COP',
+      minimumFractionDigits: 0
+    }).format(amount || 0);
+  };
+
   const [bookings, setBookings] = useState(() => {
     const saved = localStorage.getItem('publicBookings');
     return saved ? JSON.parse(saved) : [];
@@ -102,7 +153,7 @@ const PublicBooking = () => {
     phone: '',
     address: '',
     notes: '',
-    serviceType: 'Normal',
+    serviceType: serviceOptions[0]?.value || 'Normal',
     whatsapp: '',
     direccion: '',
     barrio: '',
@@ -116,6 +167,8 @@ const PublicBooking = () => {
 
   const shareLink = `${window.location.origin}/agenda`;
   const currentPaymentOption = boldPaymentOptions[form.serviceType];
+  const currentServiceValue = serviceOptions.find((service) => service.value === form.serviceType)?.amount || 0;
+  const isPayNowAvailable = Boolean(currentPaymentOption?.link);
 
   const today = useMemo(() => {
     const d = new Date();
@@ -123,7 +176,38 @@ const PublicBooking = () => {
     return d;
   }, []);
 
+  useEffect(() => {
+    if (!isPayNowAvailable && form.paymentMethod === 'pay_now') {
+      setForm(prev => ({ ...prev, paymentMethod: 'pay_later' }));
+      setPayNowAcknowledged(true);
+    }
+  }, [form.serviceType, isPayNowAvailable]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadServices = async () => {
+      const result = await serviceService.getAll();
+      if (result.success && Array.isArray(result.services) && result.services.length) {
+        const normalized = normalizeServiceCatalog(result.services);
+        if (isMounted && normalized.length) {
+          setServiceOptions(normalized);
+          setForm(prev => ({ ...prev, serviceType: normalized[0]?.value || prev.serviceType }));
+        }
+      }
+    };
+    loadServices();
+    return () => { isMounted = false; };
+  }, []);
+
   const selectPaymentMethod = (method) => {
+    if (method === 'pay_now' && !isPayNowAvailable) {
+      toast({
+        title: 'Pago en lnea no disponible',
+        description: 'Este servicio solo permite pago al finalizar.',
+        duration: 3000
+      });
+      return;
+    }
     handleChange('paymentMethod', method);
     setPayNowAcknowledged(method === 'pay_later');
   };
@@ -144,7 +228,7 @@ const PublicBooking = () => {
       const key = buildDateKey(day);
       const isToday = buildDateKey(today) === key;
       const isCurrentMonth = day.getMonth() === currentMonth.getMonth();
-      // Cupos ilimitados - todos los días tienen slots disponibles
+      // Cupos ilimitados - todos los das tienen slots disponibles
       const availableSlots = baseSlots;
 
       return {
@@ -199,7 +283,7 @@ const PublicBooking = () => {
       phone: '',
       address: '',
       notes: '',
-      serviceType: 'Normal',
+      serviceType: serviceOptions[0]?.value || 'Normal',
       whatsapp: '',
       direccion: '',
       barrio: '',
@@ -216,13 +300,13 @@ const PublicBooking = () => {
     try {
       await navigator.clipboard.writeText(shareLink);
       toast({
-        title: '✅ Enlace copiado',
+        title: ' Enlace copiado',
         description: 'Comparte este link con tus clientes',
         duration: 2500
       });
     } catch (error) {
       toast({
-        title: '❌ No se pudo copiar',
+        title: ' No se pudo copiar',
         description: 'Copia manualmente el enlace',
         duration: 2500,
         variant: 'destructive'
@@ -234,8 +318,8 @@ const PublicBooking = () => {
     event.preventDefault();
     if (!selectedDate || !selectedSlot) {
       toast({
-        title: '📅 Selecciona día y hora',
-        description: 'Escoge un día disponible y una hora libre',
+        title: ' Selecciona dia y hora',
+        description: 'Escoge un da disponible y una hora libre',
         duration: 3000
       });
       return;
@@ -246,7 +330,7 @@ const PublicBooking = () => {
 
     if (selectedDateStart < today) {
       toast({
-        title: '⏰ Fecha no disponible',
+        title: ' Fecha no disponible',
         description: 'Solo puedes agendar desde hoy en adelante.',
         duration: 3000,
         variant: 'destructive'
@@ -254,10 +338,10 @@ const PublicBooking = () => {
       return;
     }
 
-    // Validaciones específicas para cada campo
+    // Validaciones especficas para cada campo
     if (!form.name || form.name.trim() === '') {
       toast({
-        title: '👤 Falta tu nombre',
+        title: ' Falta tu nombre',
         description: 'Por favor ingresa tu nombre completo',
         duration: 3000
       });
@@ -266,19 +350,19 @@ const PublicBooking = () => {
 
     if (!form.whatsapp || form.whatsapp.trim() === '') {
       toast({
-        title: '📱 Falta número de WhatsApp',
-        description: 'Necesitamos tu número para confirmar la cita',
+        title: ' Falta nmero de WhatsApp',
+        description: 'Necesitamos tu nmero para confirmar la cita',
         duration: 3000
       });
       return;
     }
 
-    // Validar formato de número de WhatsApp (Colombia: 10 dígitos, empieza con 3)
+    // Validar formato de nmero de WhatsApp (Colombia: 10 dgitos, empieza con 3)
     const whatsappClean = form.whatsapp.replace(/\D/g, '');
     if (whatsappClean.length !== 10 || !whatsappClean.startsWith('3')) {
       toast({
-        title: '⚠️ Número de WhatsApp inválido',
-        description: 'Debe ser un número de celular colombiano válido (10 dígitos, inicia con 3)',
+        title: ' Nmero de WhatsApp invlido',
+        description: 'Debe ser un nmero de celular colombiano vlido (10 dgitos, inicia con 3)',
         duration: 4000,
         variant: 'destructive'
       });
@@ -287,8 +371,8 @@ const PublicBooking = () => {
 
     if (!form.direccion || form.direccion.trim() === '') {
       toast({
-        title: '📍 Falta la dirección',
-        description: 'Necesitamos saber dónde realizar el servicio',
+        title: ' Falta la direccin',
+        description: 'Necesitamos saber dnde realizar el servicio',
         duration: 3000
       });
       return;
@@ -296,14 +380,14 @@ const PublicBooking = () => {
 
     if (!form.terminosAceptados) {
       toast({
-        title: '✅ Acepta los términos',
-        description: 'Debes aceptar los términos y condiciones',
+        title: ' Acepta los trminos',
+        description: 'Debes aceptar los trminos y condiciones',
         duration: 3000
       });
       return;
     }
 
-    // Validar anticipación mínima de 12 horas
+    // Validar anticipacin mnima de 12 horas
     const now = new Date();
     const selectedDateTime = new Date(selectedDate);
     const [slotHour, slotMinute] = selectedSlot.split(':').map((v) => parseInt(v, 10));
@@ -312,8 +396,8 @@ const PublicBooking = () => {
 
     if (selectedDateTime.getTime() - now.getTime() < twelveHoursMs) {
       toast({
-        title: '⏳ Anticipación insuficiente',
-        description: 'Los servicios se solicitan con mínimo 12 horas de antelación.',
+        title: ' Anticipacin insuficiente',
+        description: 'Los servicios se solicitan con mnimo 12 horas de antelacin.',
         duration: 4000,
         variant: 'destructive'
       });
@@ -345,7 +429,7 @@ const PublicBooking = () => {
         throw new Error(result.message || 'Error al crear la reserva');
       }
 
-      // Guardar info de reserva confirmada y mostrar vista de confirmación
+      // Guardar info de reserva confirmada y mostrar vista de confirmacion
       const confirmedData = {
         clientName: form.name,
         fecha: formatLongDate(selectedDate),
@@ -358,16 +442,16 @@ const PublicBooking = () => {
 
       setConfirmedBooking(confirmedData);
       setIsModalOpen(false); // Cerrar el modal
-      setShowConfirmation(true); // Mostrar confirmación en la página principal
+      setShowConfirmation(true); // Mostrar confirmacion en la pagina principal
       setShowForm(false);
       setPayNowAcknowledged(false);
       
-      // Scroll hacia arriba para ver el mensaje de confirmación
+      // Scroll hacia arriba para ver el mensaje de confirmacion
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
       console.error('Error al crear reserva:', error);
       toast({
-        title: '❌ Error al agendar',
+        title: ' Error al agendar',
         description: error.message || 'No se pudo crear la reserva. Intenta nuevamente.',
         duration: 4000,
         variant: 'destructive'
@@ -384,26 +468,18 @@ const PublicBooking = () => {
       <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-lime-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 pointer-events-none"></div>
 
       {/* Floating Elements - Same as Login */}
-      <motion.div 
-        animate={{ y: [0, -20, 0] }} 
+      <motion.div
+        animate={{ y: [0, -20, 0] }}
         transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute top-20 left-[10%] text-4xl md:text-5xl opacity-20 pointer-events-none z-0"
+        className="absolute top-20 left-[10%] text-4xl opacity-20"
       >🦠</motion.div>
-      <motion.div 
-        animate={{ y: [0, 20, 0] }} 
+      <motion.div
+        animate={{ y: [0, 20, 0] }}
         transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-        className="absolute bottom-20 right-[10%] text-4xl md:text-5xl opacity-20 pointer-events-none z-0"
-      >✨</motion.div>
-      <motion.div 
-        animate={{ y: [0, -15, 0], x: [0, 10, 0] }} 
-        transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 2 }}
-        className="absolute top-1/3 right-[20%] text-3xl md:text-4xl opacity-15 pointer-events-none z-0"
-      >🪮</motion.div>
-      <motion.div 
-        animate={{ y: [0, 15, 0], x: [0, -10, 0] }} 
-        transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-        className="absolute bottom-1/3 left-[15%] text-3xl md:text-4xl opacity-15 pointer-events-none z-0"
-      >💫</motion.div>
+        className="absolute bottom-20 right-[10%] w-16 h-16 opacity-30"
+      >
+        <img src="/logo.png" alt="Chao Piojos" className="w-full h-full object-contain drop-shadow" />
+      </motion.div>
 
       <div className="max-w-7xl w-full mx-auto px-0 md:px-4 py-4 md:py-8 relative z-10 flex justify-center">
         <div className="bg-white rounded-[2rem] md:rounded-[2.5rem] p-4 md:p-8 shadow-2xl border-4 border-orange-200 relative overflow-hidden max-w-5xl mx-auto">
@@ -411,14 +487,14 @@ const PublicBooking = () => {
           <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-orange-300 rounded-full mix-blend-multiply opacity-50 animate-pulse pointer-events-none"></div>
 
           <div className="relative">
-            {/* Calendar o Vista de Confirmación */}
+            {/* Calendar o Vista de Confirmacion */}
             {!showConfirmation ? (
             <div className="bg-white rounded-2xl md:rounded-[2rem] p-4 md:p-6 shadow-xl border-4 border-orange-100 space-y-4 md:space-y-5">
               {/* Month navigation */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <h3 className="text-xl md:text-2xl font-black text-gray-800 flex items-center gap-2 capitalize">
-                    <span className="text-2xl md:text-3xl">📆</span>
+                    <span className="text-2xl md:text-3xl"></span>
                     Horarios Disponibles
                   </h3>
                   <p className="text-xs md:text-sm font-bold text-gray-500 mt-1 capitalize">{monthLabel}</p>
@@ -484,7 +560,7 @@ const PublicBooking = () => {
                       onClick={() => {
                         if (isPast) {
                           toast({
-                            title: '⏰ Fecha no disponible',
+                            title: ' Fecha no disponible',
                             description: 'Solo puedes agendar desde hoy en adelante.',
                             duration: 3000,
                             variant: 'destructive'
@@ -517,11 +593,11 @@ const PublicBooking = () => {
               </div>
 
               <p className="text-xs md:text-sm text-gray-600 font-bold text-center">
-                Toca un día para ver los horarios disponibles.
+                Toca un da para ver los horarios disponibles.
               </p>
             </div>
             ) : (
-              /* Vista de Confirmación */
+              /* Vista de Confirmacion */
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
@@ -529,7 +605,7 @@ const PublicBooking = () => {
                 className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl md:rounded-[2rem] p-6 md:p-10 shadow-xl border-4 border-green-200"
               >
                 <div className="text-center space-y-6">
-                  {/* Icono de éxito */}
+                  {/* Icono de xito */}
                   <motion.div
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
@@ -545,10 +621,10 @@ const PublicBooking = () => {
                     </motion.div>
                   </motion.div>
 
-                  {/* Mensaje de éxito */}
+                  {/* Mensaje de xito */}
                   <div className="space-y-3">
                     <h2 className="text-2xl md:text-4xl font-black text-green-600">
-                      ¡Reserva Confirmada!
+                      Reserva Confirmada!
                     </h2>
                     <p className="text-base md:text-xl text-gray-700 font-bold">
                       Hola <span className="text-green-600">{confirmedBooking?.clientName}</span>, tu cita ha sido agendada exitosamente.
@@ -580,51 +656,75 @@ const PublicBooking = () => {
                   </div>
 
                   {/* Mensaje informativo */}
-                  <div className="bg-blue-50 p-4 md:p-5 rounded-2xl border-2 border-blue-200 max-w-2xl mx-auto">
+                  <div className="bg-blue-50 p-4 md:p-5 rounded-2xl border-2 border-blue-200 max-w-2xl mx-auto space-y-3">
                     <p className="text-sm md:text-base text-gray-700 font-bold">
                       📱 Te contactaremos vía <span className="text-blue-600">WhatsApp</span> al número{' '}
                       <span className="text-blue-600 font-black">{confirmedBooking?.whatsapp}</span> para confirmar tu visita.
                     </p>
+                    
+                    {/* Botón para enviar confirmación por WhatsApp */}
+                    <a
+                      href={`https://wa.me/573227932394?text=${encodeURIComponent(
+                        `✅ *Confirmación de Reserva - Chao Piojos*\n\n` +
+                        `Hola! Acabo de agendar mi cita:\n\n` +
+                        `👤 *Nombre:* ${confirmedBooking?.clientName}\n` +
+                        `📅 *Fecha:* ${confirmedBooking?.fecha}\n` +
+                        `🕐 *Hora:* ${confirmedBooking?.hora}\n` +
+                        `💆 *Servicio:* ${confirmedBooking?.serviceType}\n` +
+                        `📍 *Dirección:* ${confirmedBooking?.direccion}\n` +
+                        `🏘️ *Barrio:* ${confirmedBooking?.barrio || 'No especificado'}\n` +
+                        `📱 *WhatsApp:* ${confirmedBooking?.whatsapp}\n\n` +
+                        `Confirmo mi asistencia y espero su contacto. ¡Gracias!`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full inline-flex items-center justify-center gap-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-black text-sm md:text-base px-6 py-4 rounded-2xl shadow-lg border-b-4 border-green-700 active:border-b-0 active:translate-y-1 transition-all"
+                    >
+                      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                      </svg>
+                      Enviar Confirmación por WhatsApp
+                    </a>
                   </div>
 
                   {/* Recomendaciones */}
                   <div className="max-w-3xl mx-auto w-full">
                     <div className="bg-white border-2 border-emerald-200 rounded-2xl p-4 md:p-5 space-y-3 shadow-sm">
                       <p className="text-base md:text-lg font-black text-emerald-700 flex items-center gap-2">
-                        <span aria-hidden="true">💡</span> Recomendaciones para tu visita
+                        <span aria-hidden="true"></span> Recomendaciones para tu visita
                       </p>
                       <p className="text-sm md:text-base font-black text-gray-800">
-                        Si tienes dudas o cambios escríbenos al WhatsApp <span className="text-emerald-600">3227932394</span>.
+                        Si tienes dudas o cambios escrbenos al WhatsApp <span className="text-emerald-600">3227932394</span>.
                       </p>
                       <div className="space-y-2 text-sm md:text-base text-gray-700 font-bold">
-                        <p className="text-emerald-700 font-black">Cómo prepararte para recibir al piojólogo certificado</p>
+                        <p className="text-emerald-700 font-black">Cmo prepararte para recibir al piojlogo certificado</p>
                         <ul className="list-disc list-inside space-y-1">
-                          <li>Cabello seco, limpio y sin productos; lávalo el día anterior y llega con el cabello totalmente seco.</li>
-                          <li>Cabello desenredado para facilitar la extracción.</li>
+                          <li>Cabello seco, limpio y sin productos; lvalo el da anterior y llega con el cabello totalmente seco.</li>
+                          <li>Cabello desenredado para facilitar la extraccin.</li>
                           <li>No aplicar tratamientos antipiojos antes del servicio.</li>
-                          <li>Ten un espacio cómodo y una toalla limpia para los hombros.</li>
-                          <li>Informa si hay condiciones dermatológicas o alergias.</li>
+                          <li>Ten un espacio cmodo y una toalla limpia para los hombros.</li>
+                          <li>Informa si hay condiciones dermatolgicas o alergias.</li>
                           <li>El procedimiento puede tomar entre 30 y 60 minutos.</li>
-                          <li>Menores de edad deben estar acompañados por un adulto responsable.</li>
+                          <li>Menores de edad deben estar acompaados por un adulto responsable.</li>
                         </ul>
                       </div>
                       <div className="space-y-2 text-sm md:text-base text-gray-700 font-bold">
-                        <p className="text-emerald-700 font-black">Cuidados después de la limpieza</p>
+                        <p className="text-emerald-700 font-black">Cuidados despus de la limpieza</p>
                         <ul className="list-disc list-inside space-y-1">
-                          <li>Lava el cabello después de la limpieza.</li>
-                          <li>Cambia ropa de cama y pijamas de los últimos 3 días (usa agua caliente si es posible).</li>
+                          <li>Lava el cabello despus de la limpieza.</li>
+                          <li>Cambia ropa de cama y pijamas de los ltimos 3 das (usa agua caliente si es posible).</li>
                           <li>Lava y desinfecta peines, cepillos, ligas, gorras y diademas.</li>
-                          <li>Evita compartir objetos de cabeza (peines, almohadas, audífonos, bufandas, gorras).</li>
-                          <li>Aspira sillones, almohadas, colchones y asientos del vehículo como medida adicional.</li>
+                          <li>Evita compartir objetos de cabeza (peines, almohadas, audfonos, bufandas, gorras).</li>
+                          <li>Aspira sillones, almohadas, colchones y asientos del vehculo como medida adicional.</li>
                           <li>Haz revisiones semanales en casa.</li>
-                          <li>Viste al niño con ropa limpia tras la limpieza.</li>
+                          <li>Viste al nio con ropa limpia tras la limpieza.</li>
                         </ul>
                       </div>
-                      <p className="text-sm md:text-base font-black text-emerald-700">Gracias por confiar en Chao Piojos 🧡</p>
+                      <p className="text-sm md:text-base font-black text-emerald-700">Gracias por confiar en Chao Piojos </p>
                     </div>
                   </div>
 
-                  {/* Botón para agendar otra cita */}
+                  {/* Botn para agendar otra cita */}
                   <Button
                     onClick={handleCloseConfirmation}
                     className="bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-white font-black text-base md:text-lg px-8 md:px-12 py-4 md:py-6 rounded-2xl shadow-lg border-b-4 border-orange-600 active:border-b-0 active:translate-y-1 transition-all"
@@ -647,16 +747,20 @@ const PublicBooking = () => {
           setSelectedSlot('');
         }
       }}>
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl md:rounded-[2rem] border-4 md:border-8 border-orange-100 p-0 text-[20px] md:text-xl leading-relaxed md:leading-normal">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl md:rounded-[2rem] border-4 border-orange-200 p-0 text-[20px] md:text-xl leading-relaxed md:leading-normal bg-gradient-to-b from-orange-50 to-white">
           <DialogHeader className="sr-only">
             <DialogTitle>{dialogTitleText}</DialogTitle>
             <DialogDescription>{dialogDescriptionText}</DialogDescription>
           </DialogHeader>
-          <div className="p-4 md:p-6 lg:p-8 space-y-4 md:space-y-5">
+          <div className="relative p-4 md:p-6 lg:p-8 space-y-4 md:space-y-5">
             {!showForm ? (
               /* Slot selection */
-              <div className="space-y-4">
+              <div className="space-y-4 pt-2">
                 <div className="text-center space-y-2">
+                  <div className="inline-flex items-center gap-2 bg-orange-100 px-3 py-1 rounded-full mb-2">
+                    <Clock className="w-4 h-4 text-orange-600" />
+                    <span className="text-xs font-black text-orange-600 uppercase">Selecciona tu Horario</span>
+                  </div>
                   <p className="text-xl md:text-2xl font-black text-gray-800">¿A qué hora prefieres?</p>
                   <p className="text-sm md:text-base text-gray-600 font-bold">Elige un horario disponible</p>
                 </div>
@@ -681,7 +785,7 @@ const PublicBooking = () => {
 
                             if (target.getTime() - now.getTime() < twelveHoursMs) {
                               toast({
-                                title: '⏳ Anticipación insuficiente',
+                                title: ' Anticipación insuficiente',
                                 description: 'Los servicios se solicitan con mínimo 12 horas de antelación.',
                                 duration: 4000,
                                 variant: 'destructive'
@@ -714,13 +818,21 @@ const PublicBooking = () => {
                   </div>
                 ) : (
                   <div className="p-6 md:p-8 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl text-center text-gray-600 font-bold text-sm md:text-base">
-                    No hay horarios disponibles en este día.
+                    No hay horarios disponibles en este da.
                   </div>
                 )}
               </div>
             ) : (
               /* Booking form */
-              <form className="space-y-5 md:space-y-6 text-[20px] md:text-xl" onSubmit={handleSubmit}>
+              <form className="space-y-5 md:space-y-6 text-[20px] md:text-xl pt-2" onSubmit={handleSubmit}>
+                {/* Encabezado del formulario */}
+                <div className="text-center">
+                  <div className="inline-flex items-center gap-2 bg-orange-100 px-3 py-1 rounded-full mb-2">
+                    <Check className="w-4 h-4 text-orange-600" />
+                    <span className="text-xs font-black text-orange-600 uppercase">Completa tu Reserva</span>
+                  </div>
+                </div>
+
                 {/* Hora seleccionada */}
                 <div className="bg-orange-50 border-4 border-orange-200 rounded-2xl p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -744,7 +856,7 @@ const PublicBooking = () => {
 
                 {/* Datos del Cliente */}
                 <div className="space-y-3">
-                  <p className="text-base md:text-lg font-black text-gray-700 uppercase tracking-wide">📝 Datos del Cliente</p>
+                  <p className="text-base md:text-lg font-black text-gray-700 uppercase tracking-wide"> Datos del Cliente</p>
                   <div className="space-y-1">
                     <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Nombre Completo *</label>
                     <input
@@ -753,7 +865,7 @@ const PublicBooking = () => {
                       className="w-full rounded-xl md:rounded-2xl border-2 border-orange-200 bg-orange-50 px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-orange-500 text-base md:text-lg"
                       value={form.name}
                       onChange={(e) => handleChange('name', e.target.value)}
-                      placeholder="Ej: Ana Pérez García"
+                      placeholder="Ej: Ana Prez Garca"
                     />
                   </div>
 
@@ -765,16 +877,18 @@ const PublicBooking = () => {
                       value={form.serviceType}
                       onChange={(e) => handleChange('serviceType', e.target.value)}
                     >
-                      {serviceCatalog.map((service) => (
-                        <option key={service.value} value={service.value}>{service.label}</option>
-                      ))}
-                    </select>
+                    {serviceOptions.map((service) => (
+                      <option key={service.value} value={service.value}>
+                        {service.label}  {formatCurrency(service.amount)}
+                      </option>
+                    ))}
+                  </select>
                   </div>
                 </div>
 
                 {/* Contacto del Cliente */}
                 <div className="bg-blue-50 p-4 rounded-2xl border-2 border-blue-200 space-y-3">
-                  <p className="text-base md:text-lg font-black text-blue-600 uppercase">📱 Contacto</p>
+                  <p className="text-base md:text-lg font-black text-blue-600 uppercase">Contacto</p>
                   <div className="space-y-1">
                     <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">WhatsApp *</label>
                     <input
@@ -785,7 +899,7 @@ const PublicBooking = () => {
                       className="w-full rounded-xl md:rounded-2xl border-2 border-blue-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-blue-400 text-base md:text-lg"
                       value={form.whatsapp}
                       onChange={(e) => {
-                        // Solo permitir números
+                        // Solo permitir nmeros
                         const value = e.target.value.replace(/\D/g, '');
                         handleChange('whatsapp', value);
                       }}
@@ -810,7 +924,7 @@ const PublicBooking = () => {
                       onSelect={(suggestion) => {
                         handleChange('direccion', suggestion.fullName);
                         toast({
-                          title: '📍 Dirección seleccionada',
+                          title: 'Dirección seleccionada',
                           description: suggestion.name,
                           className: 'bg-blue-50 border-2 border-blue-200 text-blue-700 rounded-2xl'
                         });
@@ -829,7 +943,7 @@ const PublicBooking = () => {
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Nº de Personas</label>
+                      <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Número de Personas</label>
                       <input
                         type="number"
                         min="1"
@@ -844,7 +958,7 @@ const PublicBooking = () => {
 
                 {/* Datos de Salud */}
                 <div className="bg-red-50 p-4 rounded-2xl border-2 border-red-200 space-y-3">
-                  <p className="text-base md:text-lg font-bold text-red-600 uppercase">⚠️ Datos de Salud</p>
+                  <p className="text-base md:text-lg font-bold text-red-600 uppercase"> Datos de Salud</p>
                   <div className="flex items-center gap-3">
                     <input
                       type="checkbox"
@@ -854,7 +968,7 @@ const PublicBooking = () => {
                       className="w-5 h-5 rounded border-2 border-red-300"
                     />
                     <label htmlFor="hasAlergias" className="font-bold text-gray-700 cursor-pointer text-base md:text-lg">
-                      ¿Tiene alergias o afectaciones de salud?
+                      Tiene alergias o afectaciones de salud?
                     </label>
                   </div>
                   {form.hasAlergias && (
@@ -870,7 +984,7 @@ const PublicBooking = () => {
 
                 {/* Referencias */}
                 <div className="bg-purple-50 p-4 rounded-2xl border-2 border-purple-200 space-y-3">
-                  <p className="text-base md:text-lg font-bold text-purple-600 uppercase">📌 Referencias</p>
+                  <p className="text-base md:text-lg font-bold text-purple-600 uppercase"> Referencias</p>
                   <div className="space-y-1">
                     <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Referido Por (opcional)</label>
                     <input
@@ -885,21 +999,24 @@ const PublicBooking = () => {
 
                 {/* Pago */}
                 <div className="bg-amber-50 p-4 rounded-2xl border-2 border-amber-200 space-y-3">
-                  <p className="text-xs md:text-sm font-bold text-amber-600 uppercase">💳 Método de Pago</p>
+                  <p className="text-xs md:text-sm font-bold text-amber-600 uppercase"> Método de Pago</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <button
                       type="button"
                       onClick={() => selectPaymentMethod('pay_now')}
+                      disabled={!isPayNowAvailable}
                       className={`w-full text-left rounded-xl md:rounded-2xl border-2 p-3 md:p-4 font-black transition-all flex items-center gap-3 ${
                         form.paymentMethod === 'pay_now'
                           ? 'bg-orange-100 border-orange-300 shadow-md'
                           : 'bg-white border-amber-200 hover:border-orange-300'
-                      }`}
+                      } ${!isPayNowAvailable ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
-                      <span className="text-2xl">⚡</span>
+                      <span className="text-2xl"></span>
                       <div>
                         <p className="text-sm md:text-base text-gray-800">Pagar ahora</p>
-                        <p className="text-xs text-gray-600 font-bold">Puedes pagar en línea con Bold</p>
+                        <p className="text-xs text-gray-600 font-bold">
+                          {isPayNowAvailable ? 'Puedes pagar en lnea con Bold' : 'No disponible para este servicio'}
+                        </p>
                       </div>
                     </button>
 
@@ -912,9 +1029,9 @@ const PublicBooking = () => {
                           : 'bg-white border-amber-200 hover:border-green-300'
                       }`}
                     >
-                      <span className="text-2xl">⏳</span>
+                      <span className="text-2xl"></span>
                       <div>
-                        <p className="text-sm md:text-base text-gray-800">Pagar después</p>
+                        <p className="text-sm md:text-base text-gray-800">Pagar despues</p>
                         <p className="text-xs text-gray-600 font-bold">Cancelaremos al finalizar el servicio</p>
                       </div>
                     </button>
@@ -925,20 +1042,22 @@ const PublicBooking = () => {
                       <div className="space-y-1 flex-1">
                         <p className="text-[11px] uppercase tracking-wide text-amber-600 font-black">Paga seguro con Bold</p>
                         <p className="text-base md:text-lg font-black text-gray-800">
-                          {form.serviceType} <span className="text-amber-600">• {currentPaymentOption?.price}</span>
+                          {form.serviceType} <span className="text-amber-600"> {currentPaymentOption?.price || formatCurrency(currentServiceValue)}</span>
                         </p>
-                        {!payNowAcknowledged ? (
+                        {!isPayNowAvailable ? (
+                          <p className="text-xs text-red-600 font-black">Pago en línea no disponible para este servicio.</p>
+                        ) : !payNowAcknowledged ? (
                           <>
                             <p className="text-xs text-gray-600 font-bold">Se abrirá una pestaña nueva para completar el pago.</p>
                             <p className="text-xs text-orange-600 font-black">Debes abrir Bold para habilitar la confirmación.</p>
                           </>
                         ) : (
                           <div className="bg-green-50 border-2 border-green-200 rounded-lg p-2 text-green-700 text-xs font-black inline-flex items-center gap-2 mt-1">
-                            ✅ Redireccionado a Bold exitosamente
+                             Redireccionado a Bold exitósamente
                           </div>
                         )}
                       </div>
-                      {!payNowAcknowledged && (
+                      {isPayNowAvailable && !payNowAcknowledged && (
                         <a
                           href={currentPaymentOption?.link || '#'}
                           target="_blank"
@@ -953,7 +1072,7 @@ const PublicBooking = () => {
                   )}
                 </div>
 
-                {/* Términos */}
+                {/* Trminos */}
                 <div className="bg-green-50 p-4 rounded-2xl border-2 border-green-200">
                   <div className="flex items-start gap-3">
                     <input
@@ -964,7 +1083,7 @@ const PublicBooking = () => {
                       className="w-5 h-5 rounded border-2 border-green-300 mt-1"
                     />
                     <label htmlFor="terminosAceptados" className="font-bold text-gray-700 cursor-pointer text-xs md:text-sm">
-                      ✅ Acepto los terminos y condiciones del servicio junto con la politica de bioseguridad.
+                       Acepto los términos y condiciones del servicio junto con la política de bioseguridad.
                     </label>
                   </div>
                 </div>
@@ -992,3 +1111,5 @@ const PublicBooking = () => {
 };
 
 export default PublicBooking;
+
+
