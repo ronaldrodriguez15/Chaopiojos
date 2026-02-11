@@ -31,7 +31,7 @@ return new class extends Migration
             ],
             [
                 'name' => 'Muy Alto',
-                'value' => 120000,
+                'value' => 130000,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],

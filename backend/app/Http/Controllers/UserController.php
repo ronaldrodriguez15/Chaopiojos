@@ -51,6 +51,7 @@ class UserController extends Controller
                 'lat' => 'nullable|numeric',
                 'lng' => 'nullable|numeric',
                 'referral_code_used' => 'nullable|string|max:20', // Código de referido ingresado
+                'referral_code' => 'nullable|string|max:20|unique:users,referral_code', // Código único generado
             ]);
 
             $validated['password'] = Hash::make($validated['password']);
@@ -148,9 +149,11 @@ class UserController extends Controller
                 'specialty' => 'nullable|string|max:255',
                 'available' => 'nullable|boolean',
                 'earnings' => 'nullable|numeric',
+                'commission_rate' => 'nullable|numeric|min:0|max:100',
                 'address' => 'nullable|string|max:255',
                 'lat' => 'nullable|numeric',
                 'lng' => 'nullable|numeric',
+                'referral_code' => ['nullable', 'string', 'max:20', Rule::unique('users')->ignore($id)],
             ]);
 
             // Si se proporciona una nueva contraseña, hashearla

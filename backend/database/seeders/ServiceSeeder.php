@@ -12,7 +12,7 @@ class ServiceSeeder extends Seeder
         $defaults = [
             ['name' => 'Normal', 'value' => 70000],
             ['name' => 'Elevado', 'value' => 100000],
-            ['name' => 'Muy Alto', 'value' => 120000],
+            ['name' => 'Muy Alto', 'value' => 130000],
         ];
 
         foreach ($defaults as $data) {
