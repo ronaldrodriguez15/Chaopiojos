@@ -59,7 +59,7 @@ const piojologists = [
 const defaultServiceCatalog = [
   { name: 'Normal', value: 70000 },
   { name: 'Elevado', value: 100000 },
-  { name: 'Muy Alto', value: 120000 }
+  { name: 'Muy Alto', value: 130000 }
 ];
 
 const normalizeServiceCatalog = (input) => {
@@ -147,6 +147,8 @@ const PublicBooking = () => {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState(null);
   const [payNowAcknowledged, setPayNowAcknowledged] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -157,6 +159,8 @@ const PublicBooking = () => {
     whatsapp: '',
     direccion: '',
     barrio: '',
+    lat: null,
+    lng: null,
     numPersonas: '1',
     hasAlergias: false,
     detalleAlergias: '',
@@ -268,6 +272,14 @@ const PublicBooking = () => {
 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+    // Limpiar error del campo cuando el usuario empieza a escribir
+    if (fieldErrors[field]) {
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
   };
 
   const handleCloseConfirmation = () => {
@@ -287,6 +299,8 @@ const PublicBooking = () => {
       whatsapp: '',
       direccion: '',
       barrio: '',
+      lat: null,
+      lng: null,
       numPersonas: '1',
       hasAlergias: false,
       detalleAlergias: '',
@@ -316,11 +330,22 @@ const PublicBooking = () => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    
+    // Evitar múltiples envíos
+    if (isSubmitting) {
+      return;
+    }
+    
+    // Limpiar errores previos
+    setFieldErrors({});
+    
+    // Validar fecha y hora
     if (!selectedDate || !selectedSlot) {
       toast({
-        title: ' Selecciona dia y hora',
-        description: 'Escoge un da disponible y una hora libre',
-        duration: 3000
+        title: '⚠️ Campos requeridos',
+        description: 'Debes seleccionar una fecha y una hora para tu cita',
+        duration: 4000,
+        variant: 'destructive'
       });
       return;
     }
@@ -338,52 +363,65 @@ const PublicBooking = () => {
       return;
     }
 
-    // Validaciones especficas para cada campo
+    // Validaciones específicas para cada campo
+    const errors = {};
+    
     if (!form.name || form.name.trim() === '') {
-      toast({
-        title: ' Falta tu nombre',
-        description: 'Por favor ingresa tu nombre completo',
-        duration: 3000
-      });
-      return;
+      errors.name = 'Debes ingresar tu nombre completo';
     }
-
+    
     if (!form.whatsapp || form.whatsapp.trim() === '') {
-      toast({
-        title: ' Falta nmero de WhatsApp',
-        description: 'Necesitamos tu nmero para confirmar la cita',
-        duration: 3000
-      });
-      return;
-    }
-
-    // Validar formato de nmero de WhatsApp (Colombia: 10 dgitos, empieza con 3)
-    const whatsappClean = form.whatsapp.replace(/\D/g, '');
-    if (whatsappClean.length !== 10 || !whatsappClean.startsWith('3')) {
-      toast({
-        title: ' Nmero de WhatsApp invlido',
-        description: 'Debe ser un nmero de celular colombiano vlido (10 dgitos, inicia con 3)',
-        duration: 4000,
-        variant: 'destructive'
-      });
-      return;
+      errors.whatsapp = 'El número de WhatsApp es obligatorio';
+    } else {
+      // Validar formato de número de WhatsApp (Colombia: 10 dígitos, empieza con 3)
+      const whatsappClean = form.whatsapp.replace(/\D/g, '');
+      if (whatsappClean.length !== 10) {
+        errors.whatsapp = 'Debe tener exactamente 10 dígitos';
+      } else if (!whatsappClean.startsWith('3')) {
+        errors.whatsapp = 'El número debe iniciar con 3 (celular colombiano)';
+      }
     }
 
     if (!form.direccion || form.direccion.trim() === '') {
-      toast({
-        title: ' Falta la direccin',
-        description: 'Necesitamos saber dnde realizar el servicio',
-        duration: 3000
-      });
-      return;
+      errors.direccion = 'La dirección es obligatoria para realizar el servicio';
+    }
+    
+    if (!form.barrio || form.barrio.trim() === '') {
+      errors.barrio = 'El barrio nos ayuda a ubicar mejor tu dirección';
     }
 
     if (!form.terminosAceptados) {
+      errors.terminosAceptados = 'Debes aceptar los términos y condiciones';
+    }
+    
+    // Si hay errores, mostrarlos
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      
+      // Mostrar primer error en toast
+      const firstError = Object.entries(errors)[0];
+      const fieldNames = {
+        name: 'Nombre',
+        whatsapp: 'WhatsApp',
+        direccion: 'Dirección',
+        barrio: 'Barrio',
+        terminosAceptados: 'Términos'
+      };
+      
       toast({
-        title: ' Acepta los trminos',
-        description: 'Debes aceptar los trminos y condiciones',
-        duration: 3000
+        title: `❌ ${fieldNames[firstError[0]] || 'Error'}`,
+        description: firstError[1],
+        duration: 5000,
+        variant: 'destructive'
       });
+      
+      // Scroll al primer campo con error
+      const firstErrorField = document.querySelector(`[name="${firstError[0]}"]`);
+      if (firstErrorField) {
+        firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => firstErrorField.focus(), 300);
+      }
+      
       return;
     }
 
@@ -405,6 +443,9 @@ const PublicBooking = () => {
     }
 
     try {
+      // Activar estado de carga
+      setIsSubmitting(true);
+      
       // Formatear la fecha en formato YYYY-MM-DD
       const fecha = buildDateKey(selectedDate);
 
@@ -417,6 +458,8 @@ const PublicBooking = () => {
         email: form.email || null,
         direccion: form.direccion,
         barrio: form.barrio,
+        lat: form.lat,
+        lng: form.lng,
         numPersonas: parseInt(form.numPersonas),
         hasAlergias: form.hasAlergias,
         detalleAlergias: form.detalleAlergias || null,
@@ -426,7 +469,56 @@ const PublicBooking = () => {
 
       const result = await bookingService.create(bookingData);
       if (!result.success) {
-        throw new Error(result.message || 'Error al crear la reserva');
+        // Si hay errores de validación del backend, mostrarlos
+        if (result.errors) {
+          const backendErrors = {};
+          const fieldMapping = {
+            'clientName': 'name',
+            'whatsapp': 'whatsapp',
+            'direccion': 'direccion',
+            'barrio': 'barrio',
+            'numPersonas': 'numPersonas',
+            'email': 'email'
+          };
+          
+          // Mapear errores del backend a nombres de campos del frontend
+          Object.keys(result.errors).forEach(backendField => {
+            const frontendField = fieldMapping[backendField] || backendField;
+            backendErrors[frontendField] = result.errors[backendField][0]; // Primer error
+          });
+          
+          setFieldErrors(backendErrors);
+          
+          // Construir mensaje con todos los errores
+          const errorList = Object.entries(backendErrors)
+            .map(([field, msg]) => {
+              const fieldNames = {
+                name: 'Nombre',
+                whatsapp: 'WhatsApp',
+                direccion: 'Dirección',
+                barrio: 'Barrio',
+                numPersonas: 'Número de personas',
+                email: 'Email'
+              };
+              return `• ${fieldNames[field] || field}: ${msg}`;
+            })
+            .join('\n');
+          
+          toast({
+            title: '❌ Errores en el formulario',
+            description: errorList,
+            duration: 6000,
+            variant: 'destructive'
+          });
+        } else {
+          toast({
+            title: '❌ Error',
+            description: result.message || 'No se pudo crear la reserva. Verifica los datos.',
+            duration: 4000,
+            variant: 'destructive'
+          });
+        }
+        return;
       }
 
       // Guardar info de reserva confirmada y mostrar vista de confirmacion
@@ -451,11 +543,14 @@ const PublicBooking = () => {
     } catch (error) {
       console.error('Error al crear reserva:', error);
       toast({
-        title: ' Error al agendar',
-        description: error.message || 'No se pudo crear la reserva. Intenta nuevamente.',
+        title: '❌ Error inesperado',
+        description: 'Ocurrió un problema al procesar tu reserva. Inténtalo nuevamente.',
         duration: 4000,
         variant: 'destructive'
       });
+    } finally {
+      // Desactivar estado de carga
+      setIsSubmitting(false);
     }
   };
 
@@ -747,12 +842,18 @@ const PublicBooking = () => {
           setSelectedSlot('');
         }
       }}>
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl md:rounded-[2rem] border-4 border-orange-200 p-0 text-[20px] md:text-xl leading-relaxed md:leading-normal bg-gradient-to-b from-orange-50 to-white">
-          <DialogHeader className="sr-only">
-            <DialogTitle>{dialogTitleText}</DialogTitle>
-            <DialogDescription>{dialogDescriptionText}</DialogDescription>
+        <DialogContent className="sm:max-w-4xl rounded-2xl md:rounded-[3rem] border-4 border-orange-200 p-0 text-[20px] md:text-xl leading-relaxed md:leading-normal bg-gradient-to-b from-orange-50 to-white">
+          <DialogHeader className="pt-8 pb-6 text-center border-b-4 border-orange-200 bg-gradient-to-b from-orange-100 to-orange-50">
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <CalendarDays className="w-8 h-8 text-orange-600" strokeWidth={2.5} />
+              <DialogTitle className="text-2xl md:text-3xl font-black uppercase text-orange-600 tracking-wide" style={{ WebkitTextStroke: '1px rgba(249, 115, 22, 0.3)' }}>
+                Agenda tu Cita
+              </DialogTitle>
+            </div>
+            <DialogDescription className="sr-only">{dialogDescriptionText}</DialogDescription>
           </DialogHeader>
-          <div className="relative p-4 md:p-6 lg:p-8 space-y-4 md:space-y-5">
+          <div className="relative max-h-[calc(90vh-180px)] overflow-y-auto">
+            <div className="p-4 md:p-6 lg:p-8 space-y-4 md:space-y-5">
             {!showForm ? (
               /* Slot selection */
               <div className="space-y-4 pt-2">
@@ -825,14 +926,6 @@ const PublicBooking = () => {
             ) : (
               /* Booking form */
               <form className="space-y-5 md:space-y-6 text-[20px] md:text-xl pt-2" onSubmit={handleSubmit}>
-                {/* Encabezado del formulario */}
-                <div className="text-center">
-                  <div className="inline-flex items-center gap-2 bg-orange-100 px-3 py-1 rounded-full mb-2">
-                    <Check className="w-4 h-4 text-orange-600" />
-                    <span className="text-xs font-black text-orange-600 uppercase">Completa tu Reserva</span>
-                  </div>
-                </div>
-
                 {/* Hora seleccionada */}
                 <div className="bg-orange-50 border-4 border-orange-200 rounded-2xl p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -862,11 +955,17 @@ const PublicBooking = () => {
                     <input
                       required
                       type="text"
-                      className="w-full rounded-xl md:rounded-2xl border-2 border-orange-200 bg-orange-50 px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-orange-500 text-base md:text-lg"
+                      name="name"
+                      className={`w-full rounded-xl md:rounded-2xl border-2 ${fieldErrors.name ? 'border-red-400 bg-red-50' : 'border-orange-200 bg-orange-50'} px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none ${fieldErrors.name ? 'focus:border-red-500' : 'focus:border-orange-500'} text-base md:text-lg`}
                       value={form.name}
                       onChange={(e) => handleChange('name', e.target.value)}
-                      placeholder="Ej: Ana Prez Garca"
+                      placeholder="Ej: Ana Pérez García"
                     />
+                    {fieldErrors.name && (
+                      <p className="text-red-600 text-sm font-bold ml-2 mt-1 flex items-center gap-1">
+                        <span>❌</span> {fieldErrors.name}
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-1">
@@ -894,17 +993,23 @@ const PublicBooking = () => {
                     <input
                       required
                       type="tel"
+                      name="whatsapp"
                       pattern="[0-9]{10}"
                       maxLength="10"
-                      className="w-full rounded-xl md:rounded-2xl border-2 border-blue-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-blue-400 text-base md:text-lg"
+                      className={`w-full rounded-xl md:rounded-2xl border-2 ${fieldErrors.whatsapp ? 'border-red-400 bg-red-50' : 'border-blue-200 bg-white'} px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none ${fieldErrors.whatsapp ? 'focus:border-red-500' : 'focus:border-blue-400'} text-base md:text-lg`}
                       value={form.whatsapp}
                       onChange={(e) => {
-                        // Solo permitir nmeros
+                        // Solo permitir números
                         const value = e.target.value.replace(/\D/g, '');
                         handleChange('whatsapp', value);
                       }}
                       placeholder="3001234567"
                     />
+                    {fieldErrors.whatsapp && (
+                      <p className="text-red-600 text-sm font-bold ml-2 mt-1 flex items-center gap-1">
+                        <span>❌</span> {fieldErrors.whatsapp}
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Correo (opcional)</label>
@@ -921,26 +1026,47 @@ const PublicBooking = () => {
                     <AddressAutocomplete
                       value={form.direccion}
                       onChange={(value) => handleChange('direccion', value)}
+                      hasError={!!fieldErrors.direccion}
                       onSelect={(suggestion) => {
                         handleChange('direccion', suggestion.fullName);
+                        // Guardar coordenadas
+                        if (suggestion.lat && suggestion.lng) {
+                          setForm(prev => ({
+                            ...prev,
+                            direccion: suggestion.fullName,
+                            lat: suggestion.lat,
+                            lng: suggestion.lng
+                          }));
+                        }
                         toast({
-                          title: 'Dirección seleccionada',
+                          title: '📍 Dirección seleccionada',
                           description: suggestion.name,
                           className: 'bg-blue-50 border-2 border-blue-200 text-blue-700 rounded-2xl'
                         });
                       }}
                     />
+                    {fieldErrors.direccion && (
+                      <p className="text-red-600 text-sm font-bold ml-2 mt-1 flex items-center gap-1">
+                        <span>❌</span> {fieldErrors.direccion}
+                      </p>
+                    )}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Barrio</label>
                       <input
                         type="text"
-                        className="w-full rounded-xl md:rounded-2xl border-2 border-blue-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-blue-400 text-base md:text-lg"
+                        name="barrio"
+                        className={`w-full rounded-xl md:rounded-2xl border-2 ${fieldErrors.barrio ? 'border-red-400 bg-red-50' : 'border-blue-200 bg-white'} px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none ${fieldErrors.barrio ? 'focus:border-red-500' : 'focus:border-blue-400'} text-base md:text-lg`}
                         value={form.barrio}
                         onChange={(e) => handleChange('barrio', e.target.value)}
                         placeholder="Ej: Centro"
                       />
+                      {fieldErrors.barrio && (
+                        <p className="text-red-600 text-sm font-bold ml-2 mt-1 flex items-center gap-1">
+                          <span>❌</span> {fieldErrors.barrio}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-1">
                       <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Número de Personas</label>
@@ -1072,28 +1198,34 @@ const PublicBooking = () => {
                   )}
                 </div>
 
-                {/* Trminos */}
-                <div className="bg-green-50 p-4 rounded-2xl border-2 border-green-200">
+                {/* Términos */}
+                <div className={`p-4 rounded-2xl border-2 ${fieldErrors.terminosAceptados ? 'bg-red-50 border-red-300' : 'bg-green-50 border-green-200'}`}>
                   <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
                       id="terminosAceptados"
+                      name="terminosAceptados"
                       checked={form.terminosAceptados}
                       onChange={(e) => handleChange('terminosAceptados', e.target.checked)}
-                      className="w-5 h-5 rounded border-2 border-green-300 mt-1"
+                      className={`w-5 h-5 rounded border-2 ${fieldErrors.terminosAceptados ? 'border-red-400' : 'border-green-300'} mt-1`}
                     />
                     <label htmlFor="terminosAceptados" className="font-bold text-gray-700 cursor-pointer text-xs md:text-sm">
-                       Acepto los términos y condiciones del servicio junto con la política de bioseguridad.
+                      ✅ Acepto los términos y condiciones del servicio junto con la política de bioseguridad.
                     </label>
                   </div>
+                  {fieldErrors.terminosAceptados && (
+                    <p className="text-red-600 text-sm font-bold ml-8 mt-2 flex items-center gap-1">
+                      <span>❌</span> {fieldErrors.terminosAceptados}
+                    </p>
+                  )}
                 </div>
 
                 <Button
                   type="submit"
-                  disabled={form.paymentMethod === 'pay_now' && !payNowAcknowledged}
+                  disabled={isSubmitting || (form.paymentMethod === 'pay_now' && !payNowAcknowledged)}
                   className="w-full bg-orange-500 hover:bg-orange-600 disabled:hover:bg-orange-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-base md:text-lg py-4 md:py-5 rounded-xl md:rounded-2xl shadow-lg hover:shadow-xl border-b-4 border-orange-700 active:border-b-0 active:translate-y-0.5"
                 >
-                  <Check className="w-5 h-5 md:w-6 md:h-6 mr-2" /> Confirmar Reserva
+                  <Check className="w-5 h-5 md:w-6 md:h-6 mr-2" /> {isSubmitting ? 'Procesando...' : 'Confirmar Reserva'}
                 </Button>
 
                 <p className="text-sm md:text-base text-gray-500 font-bold text-center">
@@ -1101,6 +1233,7 @@ const PublicBooking = () => {
                 </p>
               </form>
             )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

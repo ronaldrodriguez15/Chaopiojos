@@ -203,14 +203,19 @@ const EarningsModule = React.memo(({
 
       {/* Diálogo: Pagar Servicios */}
       <Dialog open={!!openPayDialog} onOpenChange={(open) => !open && setOpenPayDialog(null)}>
-        <DialogContent className="rounded-[2.5rem] border-4 border-green-200 p-0 overflow-hidden sm:max-w-2xl bg-white max-h-[85vh] overflow-y-auto">
-          <DialogHeader className="bg-gradient-to-r from-green-100 to-emerald-100 p-6 border-b-4 border-green-200">
-            <DialogTitle className="text-2xl font-black text-gray-800 flex items-center gap-3">
-              <DollarSign className="w-8 h-8 text-green-600" />
-              Pagar Servicios Cobrados
-            </DialogTitle>
+        <DialogContent className="rounded-[3rem] border-4 border-green-400 p-0 overflow-hidden sm:max-w-2xl bg-green-50 shadow-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Pagar Servicios Cobrados</DialogTitle>
           </DialogHeader>
-          <div className="p-6 space-y-4">
+          <div className="text-center pt-8 pb-6">
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <DollarSign className="w-6 h-6 text-green-600" />
+              <h2 className="text-2xl font-black text-green-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
+                PAGAR SERVICIOS COBRADOS
+              </h2>
+            </div>
+          </div>
+          <div className="px-6 pb-6 space-y-4 overflow-y-auto">
             {openPayDialog && (() => {
               const piojologist = piojologists.find(p => p.id === openPayDialog);
               if (!piojologist) return <p className="text-gray-500">Piojóloga no encontrada</p>;

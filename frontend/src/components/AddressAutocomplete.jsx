@@ -41,7 +41,7 @@ function MapClickHandler({ onLocationSelect }) {
   return null;
 }
 
-const AddressAutocomplete = ({ value, onChange, onSelect }) => {
+const AddressAutocomplete = ({ value, onChange, onSelect, hasError = false }) => {
   const [city, setCity] = useState('Bogotá');
   const [address, setAddress] = useState(value || '');
   const [suggestions, setSuggestions] = useState([]);
@@ -590,7 +590,11 @@ const AddressAutocomplete = ({ value, onChange, onSelect }) => {
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onFocus={() => suggestions.length > 0 && setIsOpen(true)}
-          className="w-full pl-14 pr-10 py-3 bg-cyan-50 border-4 border-transparent rounded-2xl focus:border-cyan-300 focus:bg-white outline-none font-bold text-gray-700 placeholder-cyan-200 transition-all text-base"
+          className={`w-full pl-14 pr-10 py-3 rounded-2xl outline-none font-bold text-gray-700 transition-all text-base ${
+            hasError 
+              ? 'bg-red-50 border-4 border-red-400 focus:border-red-500 focus:bg-white placeholder-red-200' 
+              : 'bg-cyan-50 border-4 border-transparent focus:border-cyan-300 focus:bg-white placeholder-cyan-200'
+          }`}
           placeholder="Ingresa una nueva dirección"
           required
           ref={inputRef}

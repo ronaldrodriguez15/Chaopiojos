@@ -18,6 +18,8 @@ class Booking extends Model
         'email',
         'direccion',
         'barrio',
+        'lat',
+        'lng',
         'numPersonas',
         'hasAlergias',
         'detalleAlergias',
@@ -40,6 +42,8 @@ class Booking extends Model
         'piojologist_id' => 'integer',
         'price_confirmed' => 'decimal:2',
         'additional_costs' => 'decimal:2',
+        'lat' => 'decimal:7',
+        'lng' => 'decimal:7',
         'rejection_history' => 'array'
     ];
 }

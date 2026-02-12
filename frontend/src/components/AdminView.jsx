@@ -71,7 +71,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     address: '',
     commission_rate: 50,
     referral_code_used: '', // Código de referido ingresado
-    unique_referral_code: '' // Código único generado para la piojóloga
+    referral_code: '' // Código único generado para la piojóloga
   });
 
   // Service Creation State
@@ -233,6 +233,13 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     image: ''
   });
 
+  // Service Management State
+  const [editingService, setEditingService] = useState(null);
+  const [serviceCatalogFormData, setServiceCatalogFormData] = useState({
+    name: '',
+    value: ''
+  });
+
   const resetUserForm = () => {
     setUserFormData({
       name: '',
@@ -243,7 +250,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
       available: true,
       address: '',
       referral_code_used: '',
-      unique_referral_code: ''
+      referral_code: ''
     });
     setEditingUser(null);
     setReferralCodeValidation({ isValid: true, message: '' });
@@ -352,7 +359,9 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
   };
 
   const handleOpenUserDetail = (user) => {
-    setDetailUser(user);
+    // Buscar el usuario más reciente del array users para asegurar datos actualizados
+    const freshUser = users.find(u => u.id === user.id) || user;
+    setDetailUser(freshUser);
     setIsUserDetailOpen(true);
   };
 
@@ -411,6 +420,10 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
       if (editingUser) {
         result = await handleUpdateUser({ ...userToSave, id: editingUser.id });
         if (result.success) {
+          // Si el usuario editado es el que está en detailUser, actualizarlo con los datos frescos
+          if (detailUser && detailUser.id === editingUser.id) {
+            setDetailUser(result.user);
+          }
           toast({ title: "¡Usuario Actualizado! 🎉", className: "bg-green-100 text-green-800 rounded-2xl border-2 border-green-200" });
           setIsUserDialogOpen(false);
           resetUserForm();
@@ -432,7 +445,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
             const randomStr = Math.random().toString(36).substr(2, 5).toUpperCase();
             const uniqueCode = `${userToSave.name?.substring(0,3).toUpperCase() || 'REF'}${randomStr}${timestamp.substr(-2)}`;
             
-            userToSave.unique_referral_code = uniqueCode;
+            userToSave.referral_code = uniqueCode;
             toast({
               title: "🎯 Código generado",
               description: `Código único asignado: ${uniqueCode}`,
@@ -634,6 +647,82 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     updateProducts(products.filter(p => p.id !== prodId));
   };
 
+  // Service Catalog Logic
+  const handleOpenServiceDialog = (service = null) => {
+    if (service) {
+      setEditingService(service);
+      setServiceCatalogFormData({
+        name: service.name,
+        value: service.value.toString()
+      });
+    } else {
+      setEditingService(null);
+      setServiceCatalogFormData({
+        name: '',
+        value: ''
+      });
+    }
+    setIsServiceDialogOpen(true);
+  };
+
+  const handleServiceCatalogSubmit = async (e) => {
+    e.preventDefault();
+    
+    const serviceData = {
+      name: serviceCatalogFormData.name.trim(),
+      value: parseFloat(serviceCatalogFormData.value)
+    };
+
+    if (editingService) {
+      // Actualizar servicio existente
+      const result = await onUpdateService(editingService.id, serviceData);
+      if (result) {
+        toast({ 
+          title: "✨ Servicio Actualizado", 
+          description: `${serviceData.name} ahora vale ${toMoney(serviceData.value)}`,
+          className: "bg-emerald-100 text-emerald-800 rounded-2xl border-2 border-emerald-200" 
+        });
+      }
+    } else {
+      // Crear nuevo servicio
+      const result = await onCreateService(serviceData);
+      if (result) {
+        toast({ 
+          title: "🌟 Servicio Creado", 
+          description: `${serviceData.name} agregado al catálogo`,
+          className: "bg-emerald-100 text-emerald-800 rounded-2xl border-2 border-emerald-200" 
+        });
+      }
+    }
+    
+    setIsServiceDialogOpen(false);
+    setEditingService(null);
+    setServiceCatalogFormData({ name: '', value: '' });
+  };
+
+  const handleDeleteServiceWithConfirm = (serviceId) => {
+    const service = services.find(s => s.id === serviceId);
+    setItemToDelete(service);
+    setDeleteType('service');
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteService = async () => {
+    if (itemToDelete && deleteType === 'service') {
+      const result = await onDeleteService(itemToDelete.id);
+      if (result) {
+        toast({ 
+          title: "🗑️ Servicio Eliminado", 
+          description: "El servicio ha sido removido del catálogo",
+          className: "bg-red-100 text-red-800 rounded-2xl border-2 border-red-200" 
+        });
+      }
+    }
+    setDeleteConfirmOpen(false);
+    setItemToDelete(null);
+    setDeleteType(null);
+  };
+
   // Appointment Logic
   const handleAssignPiojologist = async (appointmentId, piojologistId, appointmentArg = null) => {
     const piojologist = piojologists.find(p => p.id === parseInt(piojologistId));
@@ -762,6 +851,9 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
           </TabsTrigger>
           <TabsTrigger value="products" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-pink-400 data-[state=active]:text-white transition-all">
             🛍️ Productos
+          </TabsTrigger>
+          <TabsTrigger value="services" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-emerald-400 data-[state=active]:text-white transition-all">
+            💼 Servicios
           </TabsTrigger>
           <TabsTrigger value="earnings" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-green-400 data-[state=active]:text-white transition-all">
             💰 Ganancias
@@ -1097,6 +1189,17 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
           </Suspense>
         </TabsContent>
 
+        <TabsContent value="services" className="space-y-6">
+          <Suspense fallback={<LoadingModule />}>
+            <ServicesModule
+              services={services}
+              toMoney={toMoney}
+              onOpenServiceDialog={handleOpenServiceDialog}
+              onDeleteService={handleDeleteServiceWithConfirm}
+            />
+          </Suspense>
+        </TabsContent>
+
         <TabsContent value="earnings" className="space-y-6">
           <Suspense fallback={<div>Cargando...</div>}>
             <EarningsModule
@@ -1293,7 +1396,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                       <div className="flex-1">
                         <input 
                           className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 font-mono text-lg font-bold text-gray-700 outline-none focus:border-blue-500 transition-all h-14"
-                          value={userFormData.unique_referral_code || ''}
+                          value={userFormData.referral_code || ''}
                           readOnly
                           placeholder="Se genera automáticamente"
                         />
@@ -1307,7 +1410,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                             const randomStr = Math.random().toString(36).substr(2, 5).toUpperCase();
                             const newCode = `${userFormData.name?.substring(0,3).toUpperCase() || 'REF'}${randomStr}${timestamp.substr(-2)}`;
                             
-                            setUserFormData({...userFormData, unique_referral_code: newCode});
+                            setUserFormData({...userFormData, referral_code: newCode});
                             
                             toast({
                               title: "🎯 Código Regenerado",
@@ -1452,6 +1555,46 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
           formatDate12H={formatDate12H}
           earningsHistory={earningsHistory}
           loadingEarnings={loadingEarnings}
+        />
+      </Suspense>
+
+      {/* Service Catalog Dialog */}
+      <Suspense fallback={<div>Cargando...</div>}>
+        <ServiceCatalogDialog
+          isOpen={isServiceDialogOpen}
+          onClose={() => {
+            setIsServiceDialogOpen(false);
+            setEditingService(null);
+            setServiceCatalogFormData({ name: '', value: '' });
+          }}
+          editingService={editingService}
+          formData={serviceCatalogFormData}
+          setFormData={setServiceCatalogFormData}
+          onSubmit={handleServiceCatalogSubmit}
+        />
+      </Suspense>
+
+      {/* Delete Confirmation Dialog */}
+      <Suspense fallback={<div>Cargando...</div>}>
+        <DeleteConfirmDialog
+          isOpen={deleteConfirmOpen}
+          onClose={() => {
+            setDeleteConfirmOpen(false);
+            setItemToDelete(null);
+            setDeleteType(null);
+          }}
+          onConfirm={() => {
+            if (deleteType === 'service') {
+              confirmDeleteService();
+            } else if (deleteType === 'product') {
+              handleDeleteProduct(itemToDelete?.id || itemToDelete);
+              setDeleteConfirmOpen(false);
+              setItemToDelete(null);
+              setDeleteType(null);
+            }
+          }}
+          item={itemToDelete}
+          itemType={deleteType === 'service' ? 'servicio' : 'producto'}
         />
       </Suspense>
     </div>

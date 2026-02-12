@@ -3,37 +3,41 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 
-const DeleteConfirmDialog = ({ isOpen, onClose, item, deleteType, onConfirm }) => {
+const DeleteConfirmDialog = ({ isOpen, onClose, item, itemType = 'producto', deleteType, onConfirm }) => {
+  const typeLabel = itemType || (deleteType === 'service' ? 'servicio' : 'producto');
+  
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="rounded-[2.5rem] border-4 border-red-200 p-0 overflow-hidden sm:max-w-md bg-gradient-to-b from-red-50 to-white">
+      <DialogContent className="rounded-[3rem] border-4 border-red-400 p-0 overflow-hidden sm:max-w-md bg-red-50 shadow-2xl">
         <DialogHeader className="sr-only">
           <DialogTitle>Confirmar Eliminación</DialogTitle>
         </DialogHeader>
-        <div className="relative p-6 md:p-8 space-y-6">
-          <div className="text-center mb-2">
-            <div className="inline-flex items-center gap-2 bg-red-100 px-3 py-1 rounded-full">
-              <Trash2 className="w-4 h-4 text-red-600" />
-              <span className="text-xs font-black text-red-600 uppercase">Confirmar Eliminación</span>
-            </div>
+        <div className="text-center pt-8 pb-6">
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <Trash2 className="w-6 h-6 text-red-600" />
+            <h2 className="text-2xl font-black text-red-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
+              CONFIRMAR ELIMINACIÓN
+            </h2>
           </div>
+        </div>
+        <div className="px-6 md:px-8 pb-8 space-y-6">
           
-          <div className="text-center space-y-4">
-            <div className="mx-auto w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
-              <Trash2 className="w-8 h-8 text-red-600" />
-            </div>
-            
+          <div className="text-center space-y-4">  
             <div className="space-y-2">
               <h3 className="text-xl font-black text-gray-800">
                 ¿Estás seguro?
               </h3>
-              {deleteType === 'product' && (
-                <p className="text-base text-gray-600 font-bold">
-                  El producto{' '}
-                  <span className="text-red-600 font-black">"{item?.name}"</span>{' '}
-                  será eliminado permanentemente.
-                </p>
-              )}
+              <p className="text-base text-gray-600 font-bold">
+                {item?.name ? (
+                  <>
+                    El {typeLabel}{' '}
+                    <span className="text-red-600 font-black">"{item?.name}"</span>{' '}
+                    será eliminado permanentemente.
+                  </>
+                ) : (
+                  `Este ${typeLabel} será eliminado permanentemente.`
+                )}
+              </p>
             </div>
           </div>
 

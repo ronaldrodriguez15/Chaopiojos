@@ -1,5 +1,5 @@
 ﻿import React, { useState } from 'react';
-import { Calendar, Trash2, Edit } from 'lucide-react';
+import { Calendar, Trash2, Edit, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -77,7 +77,7 @@ const ScheduleManagement = ({
     });
   };
 
-  const handleServiceSubmit = (e) => {
+  const handleServiceSubmit = (e, closeDialog = true) => {
     e.preventDefault();
     const piojologist = piojologists.find(p => p.id === parseInt(serviceFormData.piojologistId));
     const servicePrice = serviceCatalog[serviceFormData.serviceType] || 0;
@@ -106,16 +106,30 @@ const ScheduleManagement = ({
     };
 
     updateAppointments([...appointments, newService]);
-    setIsServiceDialogOpen(false);
+    
+    // Cerrar diálogo solo si se solicita
+    if (closeDialog) {
+      setIsServiceDialogOpen(false);
+    }
+    
     resetServiceForm();
     toast({ 
-      title: "Servicio Creado!", 
+      title: closeDialog ? "Servicio Creado!" : "¡Servicio Creado! Puedes agregar otro", 
       className: "bg-yellow-100 text-yellow-800 rounded-2xl border-2 border-yellow-200" 
     });
   };
 
   const handleAssignService = async () => {
-    if (!selectedService || selectedService.status !== 'pending') return;
+    // Permitir asignar/reasignar si está en pending, assigned o accepted
+    if (!selectedService || !['pending', 'assigned', 'accepted'].includes(selectedService.status)) {
+      toast({
+        title: 'No se puede reasignar',
+        description: 'Solo se pueden asignar/reasignar servicios pendientes, asignados o aceptados.',
+        className: 'rounded-2xl border-2 border-red-200 bg-red-50 text-red-700 font-bold'
+      });
+      return;
+    }
+    
     if (!assignPiojologistId) {
       toast({
         title: 'Selecciona una piojóloga',
@@ -126,6 +140,7 @@ const ScheduleManagement = ({
     }
 
     const selectedPio = piojologists.find(p => String(p.id) === String(assignPiojologistId));
+    const wasReassignment = selectedService.piojologistId !== null && selectedService.piojologistId !== undefined;
 
     // Usar callback para persistir en backend y refrescar estado global
     if (onAssignFromCalendar) {
@@ -140,8 +155,8 @@ const ScheduleManagement = ({
 
     setIsServiceDetailOpen(false);
     toast({
-      title: 'Asignado con xito',
-      description: selectedPio ? `Asignado a ${selectedPio.name}` : 'Asignacin guardada',
+      title: wasReassignment ? '🔄 Reasignado con éxito' : '✓ Asignado con éxito',
+      description: selectedPio ? `${wasReassignment ? 'Reasignado' : 'Asignado'} a ${selectedPio.name}` : 'Asignación guardada',
       className: 'rounded-2xl border-2 border-green-200 bg-green-50 text-green-700 font-bold'
     });
   };
@@ -163,17 +178,19 @@ const ScheduleManagement = ({
                 Crear Servicio
               </Button>
             </DialogTrigger>
-            <DialogContent className="rounded-[2.5rem] border-4 border-yellow-200 p-0 overflow-hidden sm:max-w-md bg-gradient-to-b from-yellow-50 to-white max-h-[90vh] flex flex-col">
+            <DialogContent className="rounded-[3rem] border-4 border-yellow-400 p-0 overflow-hidden sm:max-w-md bg-yellow-50 shadow-2xl">
               <DialogHeader className="sr-only">
                 <DialogTitle>Nuevo Servicio</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleServiceSubmit} className="relative p-6 md:p-8 space-y-4 flex-1 overflow-y-auto">
-                <div className="text-center mb-2">
-                  <div className="inline-flex items-center gap-2 bg-yellow-100 px-3 py-1 rounded-full">
-                    <Calendar className="w-4 h-4 text-yellow-600" />
-                    <span className="text-xs font-black text-yellow-600 uppercase">Nuevo Servicio</span>
-                  </div>
+              <div className="text-center pt-8 pb-6">
+                <div className="flex items-center justify-center gap-3 mb-2">
+                  <Calendar className="w-6 h-6 text-yellow-600" />
+                  <h2 className="text-2xl font-black text-yellow-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
+                    NUEVO SERVICIO
+                  </h2>
                 </div>
+              </div>
+              <form onSubmit={handleServiceSubmit} className="relative px-6 md:px-8 pb-8 space-y-4 flex-1 overflow-y-auto">
                 <div>
                   <Label className="font-bold text-gray-500 ml-2 mb-1 block">Nombre del Cliente</Label>
                   <input 
@@ -236,9 +253,21 @@ const ScheduleManagement = ({
                     ))}
                   </select>
                 </div>
-                <Button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-2xl py-6 font-bold mt-4 shadow-md border-b-4 border-yellow-700">
-                  Crear y Asignar Servicio
-                </Button>
+                <div className="space-y-3 mt-4">
+                  <Button 
+                    type="button"
+                    onClick={(e) => handleServiceSubmit(e, false)}
+                    className="w-full bg-green-500 hover:bg-green-600 text-white rounded-2xl py-6 font-bold shadow-md border-b-4 border-green-700"
+                  >
+                    ➕ Crear y Agregar Otro
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-2xl py-6 font-bold shadow-md border-b-4 border-yellow-700"
+                  >
+                    ✓ Crear y Cerrar
+                  </Button>
+                </div>
               </form>
             </DialogContent>
           </Dialog>
@@ -507,27 +536,29 @@ const ScheduleManagement = ({
           if (!open) setSelectedService(null);
         }}
       >
-        <DialogContent className="rounded-[2.5rem] border-4 border-yellow-200 p-0 overflow-hidden bg-gradient-to-b from-yellow-50 to-white max-w-xl">
+        <DialogContent className="rounded-[3rem] border-4 border-yellow-400 p-0 overflow-hidden bg-yellow-50 max-w-xl shadow-2xl">
           {selectedService && (
             <div className="bg-transparent">
               <DialogHeader className="sr-only">
                 <DialogTitle>Detalle del Servicio: {selectedService.clientName}</DialogTitle>
               </DialogHeader>
-
-              <div className="p-6 md:p-8">
-                <div className="text-center mb-6">
-                  <div className="inline-flex items-center gap-2 bg-yellow-100 px-3 py-1 rounded-full mb-3">
-                    <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                    <span className="text-xs font-black text-yellow-600 uppercase">Detalle del Servicio</span>
-                  </div>
-                  <h2 className="text-2xl md:text-3xl font-black text-gray-800">{selectedService.clientName}</h2>
-                  <p className="text-sm font-bold text-gray-600 mt-1">{selectedService.serviceType}</p>
+              <div className="text-center pt-8 pb-6">
+                <div className="flex items-center justify-center gap-3 mb-2">
+                  <ClipboardList className="w-6 h-6 text-yellow-600" />
+                  <h2 className="text-2xl font-black text-yellow-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
+                    DETALLE DEL SERVICIO
+                  </h2>
                 </div>
+              </div>
 
-                <div className="max-h-[60vh] overflow-y-auto">
-                  <div className="space-y-4 pr-2">
+              <div className="max-h-[60vh] overflow-y-auto">
+                <div className="px-6 md:px-8 pb-8 space-y-6">
+                  <div className="text-center">
+                    <h3 className="text-2xl md:text-3xl font-black text-gray-800">{selectedService.clientName}</h3>
+                    <p className="text-sm font-bold text-gray-600 mt-1">{selectedService.serviceType}</p>
+                  </div>
+
+                  <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3 text-sm font-bold text-gray-700">
                      {selectedService.date} - {selectedService.time}
@@ -539,7 +570,7 @@ const ScheduleManagement = ({
 
                 <div className="bg-white border-2 border-amber-200 rounded-xl p-3 text-sm font-bold text-amber-700 flex items-center justify-between">
                   <div>
-                     Mtodo de pago<br />
+                     Método de pago<br />
                     <span className="text-gray-800">
                       {(() => {
                         const payment = selectedService.paymentMethod || selectedService.payment_method;
@@ -617,9 +648,11 @@ const ScheduleManagement = ({
                   })()
                 )}
 
-                {selectedService.status === 'pending' && (
+                {(selectedService.status === 'pending' || selectedService.status === 'assigned' || selectedService.status === 'accepted') && (
                   <div className="bg-white border-2 border-gray-200 rounded-xl p-3 space-y-2">
-                    <p className="text-xs font-black text-gray-600 uppercase">Asignar a piojóloga</p>
+                    <p className="text-xs font-black text-gray-600 uppercase">
+                      {selectedService.piojologistName ? '🔄 Reasignar a otra piojóloga' : 'Asignar a piojóloga'}
+                    </p>
                     <div className="flex flex-col gap-2">
                       <select
                         value={assignPiojologistId}
@@ -636,12 +669,12 @@ const ScheduleManagement = ({
                         onClick={handleAssignService}
                         className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-xl px-4 py-2 font-bold border-b-4 border-yellow-600 active:border-b-0 active:translate-y-1"
                       >
-                        Asignar
+                        {selectedService.piojologistName ? '🔄 Reasignar' : 'Asignar'}
                       </Button>
                     </div>
                   </div>
                 )}
-                </div>
+                  </div>
                 </div>
               </div>
             </div>

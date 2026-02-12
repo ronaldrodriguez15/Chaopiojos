@@ -53,96 +53,100 @@ const ProductsModule = React.memo(({
               Crear Producto
             </Button>
           </DialogTrigger>
-          <DialogContent className="rounded-[2.5rem] border-4 border-pink-200 p-0 overflow-hidden sm:max-w-md bg-gradient-to-b from-pink-50 to-white">
+          <DialogContent className="rounded-[3rem] border-4 border-pink-400 p-0 sm:max-w-md bg-pink-50 overflow-hidden shadow-2xl">
             <DialogHeader className="sr-only">
-              <DialogTitle>Nuevo Artilugio</DialogTitle>
+              <DialogTitle>Nuevo Producto</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleProductSubmit} className="relative p-6 md:p-8 space-y-4">
-              <div className="text-center mb-2">
-                <div className="inline-flex items-center gap-2 bg-pink-100 px-3 py-1 rounded-full">
-                  <PackagePlus className="w-4 h-4 text-pink-600" />
-                  <span className="text-xs font-black text-pink-600 uppercase">Nuevo Artilugio</span>
-                </div>
+            <div className="text-center pt-8 pb-6">
+              <div className="flex items-center justify-center gap-3 mb-2">
+                <PackagePlus className="w-6 h-6 text-pink-600" />
+                <h2 className="text-2xl font-black text-pink-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
+                  NUEVO PRODUCTO
+                </h2>
               </div>
-              <div>
-                <Label className="font-bold text-gray-500 ml-2 mb-1 block">Nombre del Producto</Label>
-                <input 
-                  required
-                  value={productFormData.name}
-                  onChange={e => setProductFormData({...productFormData, name: e.target.value})}
-                  className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-pink-400"
-                  placeholder="Ej. Spray Mágico"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto">
+              <form onSubmit={handleProductSubmit} className="relative p-6 md:p-8 space-y-4">
                 <div>
-                  <Label className="font-bold text-gray-500 ml-2 mb-1 block">Precio ($)</Label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">$</span>
-                    <input 
-                      required
-                      type="text"
-                      value={formatPriceInput(productFormData.price)}
-                      onChange={handlePriceChange}
-                      className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 pl-8 font-bold outline-none focus:border-pink-400"
-                      placeholder="15.000"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label className="font-bold text-gray-500 ml-2 mb-1 block">Stock</Label>
+                  <Label className="font-bold text-gray-500 ml-2 mb-1 block">Nombre del Producto</Label>
                   <input 
                     required
-                    type="number"
-                    value={productFormData.stock}
-                    onChange={e => setProductFormData({...productFormData, stock: e.target.value})}
+                    value={productFormData.name}
+                    onChange={e => setProductFormData({...productFormData, name: e.target.value})}
                     className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-pink-400"
-                    placeholder="50"
+                    placeholder="Ej. Spray Mágico"
                   />
                 </div>
-              </div>
-              <div>
-                <Label className="font-bold text-gray-500 ml-2 mb-1 block">📸 Imagen del Producto</Label>
-                {productFormData.image && (
-                  <div className="mb-3 relative group">
-                    <img 
-                      src={getImageUrl(productFormData.image)} 
-                      alt="Preview" 
-                      className="w-full h-48 object-contain object-center rounded-2xl border-4 border-pink-100"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleRemoveImage}
-                      className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-2 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="font-bold text-gray-500 ml-2 mb-1 block">Precio ($)</Label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">$</span>
+                      <input 
+                        required
+                        type="text"
+                        value={formatPriceInput(productFormData.price)}
+                        onChange={handlePriceChange}
+                        className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 pl-8 font-bold outline-none focus:border-pink-400"
+                        placeholder="15.000"
+                      />
+                    </div>
                   </div>
-                )}
-                <div className="relative">
-                  <input 
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    id="product-image-upload"
-                  />
-                  <label 
-                    htmlFor="product-image-upload"
-                    className="w-full bg-pink-50 border-2 border-dashed border-pink-300 rounded-2xl p-6 font-bold outline-none hover:bg-pink-100 hover:border-pink-400 transition-all cursor-pointer flex flex-col items-center justify-center gap-2 text-pink-600"
-                  >
-                    <PackagePlus className="w-8 h-8" />
-                    <span className="text-sm">
-                      {productFormData.image ? 'Cambiar imagen' : 'Seleccionar imagen'}
-                    </span>
-                    <span className="text-xs text-gray-500">JPG, PNG o WEBP</span>
-                  </label>
+                  <div>
+                    <Label className="font-bold text-gray-500 ml-2 mb-1 block">Stock</Label>
+                    <input 
+                      required
+                      type="number"
+                      value={productFormData.stock}
+                      onChange={e => setProductFormData({...productFormData, stock: e.target.value})}
+                      className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-pink-400"
+                      placeholder="50"
+                    />
+                  </div>
                 </div>
-              </div>
-              <Button type="submit" className="w-full bg-pink-500 hover:bg-pink-600 text-white rounded-2xl py-6 font-bold mt-4 shadow-md border-b-4 border-pink-700">
-                Guardar en Inventario
-              </Button>
-            </form>
+                <div>
+                  <Label className="font-bold text-gray-500 ml-2 mb-1 block">📸 Imagen del Producto</Label>
+                  {productFormData.image && (
+                    <div className="mb-3 relative group">
+                      <img 
+                        src={getImageUrl(productFormData.image)} 
+                        alt="Preview" 
+                        className="w-full h-48 object-contain object-center rounded-2xl border-4 border-pink-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRemoveImage}
+                        className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-2 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                  )}
+                  <div className="relative">
+                    <input 
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      id="product-image-upload"
+                    />
+                    <label 
+                      htmlFor="product-image-upload"
+                      className="w-full bg-pink-50 border-2 border-dashed border-pink-300 rounded-2xl p-6 font-bold outline-none hover:bg-pink-100 hover:border-pink-400 transition-all cursor-pointer flex flex-col items-center justify-center gap-2 text-pink-600"
+                    >
+                      <PackagePlus className="w-8 h-8" />
+                      <span className="text-sm">
+                        {productFormData.image ? 'Cambiar imagen' : 'Seleccionar imagen'}
+                      </span>
+                      <span className="text-xs text-gray-500">JPG, PNG o WEBP</span>
+                    </label>
+                  </div>
+                </div>
+                <Button type="submit" className="w-full bg-pink-500 hover:bg-pink-600 text-white rounded-2xl py-6 font-bold mt-4 shadow-md border-b-4 border-pink-700">
+                  Guardar en Inventario
+                </Button>
+              </form>
+            </div>
           </DialogContent>
         </Dialog>
       </div>

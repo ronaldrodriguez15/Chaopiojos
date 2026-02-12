@@ -2,6 +2,7 @@ import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { PackagePlus, Edit } from 'lucide-react';
 
 const ServiceCatalogDialog = ({ 
   isOpen, 
@@ -20,18 +21,24 @@ const ServiceCatalogDialog = ({
     <Dialog open={isOpen} onOpenChange={(open) => {
       if (!open) onClose();
     }}>
-      <DialogContent className="rounded-[2.5rem] border-4 border-emerald-200 p-0 sm:max-w-md bg-gradient-to-b from-emerald-50 to-white max-h-[85vh] overflow-y-auto">
+      <DialogContent className="rounded-[3rem] border-4 border-emerald-400 p-0 overflow-hidden sm:max-w-md bg-emerald-50 shadow-2xl max-h-[85vh] flex flex-col">
         <DialogHeader className="sr-only">
           <DialogTitle>{editingService ? 'Editar Servicio' : 'Nuevo Servicio'}</DialogTitle>
         </DialogHeader>
-
-        <form onSubmit={handleFormSubmit} className="relative p-6 md:p-8 space-y-4">
-          <div className="text-center mb-2">
-            <div className="inline-flex items-center gap-2 bg-emerald-100 px-3 py-1 rounded-full">
-              <span className="text-lg">{editingService ? '✏️' : '🌟'}</span>
-              <span className="text-xs font-black text-emerald-600 uppercase">{editingService ? 'Editar Servicio' : 'Nuevo Servicio'}</span>
-            </div>
+        <div className="text-center pt-8 pb-6">
+          <div className="flex items-center justify-center gap-3 mb-2">
+            {editingService ? (
+              <Edit className="w-6 h-6 text-emerald-600" />
+            ) : (
+              <PackagePlus className="w-6 h-6 text-emerald-600" />
+            )}
+            <h2 className="text-2xl font-black text-emerald-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
+              {editingService ? 'EDITAR SERVICIO' : 'NUEVO SERVICIO'}
+            </h2>
           </div>
+        </div>
+
+        <form onSubmit={handleFormSubmit} className="px-6 md:px-8 pb-8 space-y-4 overflow-y-auto">
           <div>
             <Label className="font-bold text-gray-500 ml-2 mb-1 block">Nombre del Servicio</Label>
             <input
@@ -49,7 +56,7 @@ const ServiceCatalogDialog = ({
               required
               type="number"
               min="1"
-              step="1000"
+              step="1"
               className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 font-bold outline-none focus:border-emerald-400 focus:bg-white transition-all"
               value={formData.value}
               onChange={e => setFormData({ ...formData, value: e.target.value })}

@@ -37,6 +37,20 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend,
 
 const PiojologistView = ({ currentUser, appointments, updateAppointments, bookings = [], updateBookings, products, handleCompleteService, serviceCatalog = {}, formatCurrency, productRequests, onCreateProductRequest, onNotify }) => {
   const { toast } = useToast();
+  
+  // Función para convertir hora 24h a 12h con AM/PM
+  const formatTime12Hour = (time24) => {
+    if (!time24) return '';
+    try {
+      const [hours, minutes] = time24.split(':').map(Number);
+      const period = hours >= 12 ? 'PM' : 'AM';
+      const hours12 = hours % 12 || 12;
+      return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+    } catch (e) {
+      return time24; // Retorna el formato original si hay error
+    }
+  };
+
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [finishingAppointmentId, setFinishingAppointmentId] = useState(null);
   const [finishingPlan, setFinishingPlan] = useState('');
@@ -49,6 +63,10 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   const [nowTs, setNowTs] = useState(Date.now());
   const releaseRequestsRef = useRef(new Set());
   const assignedAtFallbackRef = useRef(loadAssignedAtFromStorage());
+  
+  // Estados para diálogo de confirmación de rechazo
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [appointmentToReject, setAppointmentToReject] = useState(null);
 
   // Referral state
   const [referralCommissions, setReferralCommissions] = useState([]);
@@ -276,18 +294,29 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     }
   };
 
-  const handleReject = async (appointmentId) => {
+  const handleReject = (appointmentId) => {
     const appointment = appointments.find(apt => apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId);
-    const backendId = appointment?.backendId || appointment?.bookingId || appointmentId;
+    setAppointmentToReject(appointment);
+    setRejectDialogOpen(true);
+  };
+  
+  const handleConfirmReject = async () => {
+    if (!appointmentToReject) return;
+    
+    const appointmentId = appointmentToReject.id;
+    const backendId = appointmentToReject.backendId || appointmentToReject.bookingId || appointmentId;
     const addRejectionHistory = (apt) => {
       const history = Array.isArray(apt.rejectionHistory) ? apt.rejectionHistory : [];
       return [...history, currentUser.name];
     };
     
+    // Cerrar diálogo
+    setRejectDialogOpen(false);
+    
     try {
       // Actualizar en el backend devolviendo a pendiente
-      if (appointment?.isPublicBooking || appointment?.backendId || appointmentId?.toString().startsWith('booking-')) {
-        const rejectionHistory = addRejectionHistory(appointment);
+      if (appointmentToReject?.isPublicBooking || appointmentToReject?.backendId || appointmentId?.toString().startsWith('booking-')) {
+        const rejectionHistory = addRejectionHistory(appointmentToReject);
         const result = await bookingService.update(backendId, {
           status: 'pending',
           piojologistId: null,
@@ -306,8 +335,8 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
       }
 
       // Actualizar estado local
-      if (appointment?.isPublicBooking) {
-        const rejectionHistory = addRejectionHistory(appointment);
+      if (appointmentToReject?.isPublicBooking) {
+        const rejectionHistory = addRejectionHistory(appointmentToReject);
         const updatedBookings = bookings.map(apt => 
           (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId) 
             ? { ...apt, status: 'pending', piojologistId: null, piojologistName: null, rejectionHistory } 
@@ -315,7 +344,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
         );
         updateBookings && updateBookings(updatedBookings);
       } else {
-        const rejectionHistory = addRejectionHistory(appointment);
+        const rejectionHistory = addRejectionHistory(appointmentToReject);
         const updatedAppointments = appointments
           .filter(a => !a.isPublicBooking)
           .map(apt => (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId) 
@@ -331,8 +360,8 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
           appointmentId: appointmentId,
           piojologistId: currentUser.id,
           piojologistName: currentUser.name,
-          message: `${currentUser.name} rechazó el agendamiento de ${appointment?.clientName}. Necesita reasignación.`,
-          appointment: appointment
+          message: `${currentUser.name} rechazó el agendamiento de ${appointmentToReject?.clientName}. Necesita reasignación.`,
+          appointment: appointmentToReject
         });
       }
       
@@ -350,7 +379,29 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
         variant: "destructive",
         className: "bg-red-100 text-red-800 rounded-2xl border-2 border-red-200"
       });
+    } finally {
+      setAppointmentToReject(null);
     }
+  };
+  
+  const openGoogleMaps = (direccion, barrio, lat, lng) => {
+    // Si hay coordenadas, abrir con ubicación exacta
+    if (lat && lng) {
+      const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+      window.open(url, '_blank');
+      return;
+    }
+    
+    // Fallback: usar dirección como texto si no hay coordenadas
+    if (!direccion && !barrio) return;
+    const query = encodeURIComponent(`${direccion || ''} ${barrio || ''} Bogotá Colombia`.trim());
+    const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+    window.open(url, '_blank');
+  };
+  
+  const handleCancelReject = () => {
+    setRejectDialogOpen(false);
+    setAppointmentToReject(null);
   };
 
   const handleProductToggle = (productId) => {
@@ -595,13 +646,37 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                     <span>⏰ Hora:</span>
-                    <span className="text-emerald-700">{apt.time}</span>
+                    <span className="text-emerald-700">{formatTime12Hour(apt.time)}</span>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                     <span>📍 Dirección:</span>
                     <span className="text-gray-800 text-xs">{apt.direccion || apt.address || apt.addressLine || 'Sin dirección registrada'}</span>
                   </div>
+                  {apt.barrio && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
+                      <span>🏘️ Barrio:</span>
+                      <span className="text-amber-700 text-xs font-black">{apt.barrio}</span>
+                    </div>
+                  )}
+                  {apt.whatsapp && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
+                      <span>📱 WhatsApp:</span>
+                      <span className="text-green-700 text-xs font-black">{apt.whatsapp}</span>
+                    </div>
+                  )}
                 </div>
+
+                {/* Botón Google Maps */}
+                {(apt.direccion || apt.barrio) && (
+                  <button
+                    type="button"
+                    onClick={() => openGoogleMaps(apt.direccion || apt.address, apt.barrio, apt.lat, apt.lng)}
+                    className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-bold py-2.5 px-4 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 text-sm border-b-4 border-blue-700 active:border-b-0 active:translate-y-1 mb-4"
+                  >
+                    <span>🗺️</span>
+                    <span>Ver en Google Maps</span>
+                  </button>
+                )}
 
                 {/* Botones Aceptar/Rechazar */}
                 <div className="flex gap-3 mt-4">
@@ -814,7 +889,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                       </div>
                       <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                         <span>⏰ Hora:</span>
-                        <span className="text-green-600">{apt.time}</span>
+                        <span className="text-green-600">{formatTime12Hour(apt.time)}</span>
                       </div>
                    </div>
 
@@ -847,6 +922,43 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                              <p className="text-purple-700 font-black">{apt.age} años</p>
                            </div>
                          )}
+                       </div>
+                     </div>
+                   )}
+                   
+                   {/* Información de Ubicación */}
+                   {(apt.direccion || apt.barrio) && (
+                     <div className="bg-blue-50 p-3 rounded-xl mb-4 border border-blue-200">
+                       <p className="text-xs font-bold text-blue-600 uppercase mb-2 flex items-center gap-1">
+                         <span>📍</span> Ubicación
+                       </p>
+                       <div className="space-y-2">
+                         {apt.direccion && (
+                           <div className="text-xs font-semibold text-gray-700">
+                             <span className="text-gray-500">Dirección:</span>
+                             <p className="text-gray-800 break-words mt-0.5">{apt.direccion || apt.address || apt.addressLine}</p>
+                           </div>
+                         )}
+                         {apt.barrio && (
+                           <div className="text-xs font-semibold text-gray-700">
+                             <span className="text-gray-500">Barrio:</span>
+                             <p className="text-amber-700 font-black mt-0.5">{apt.barrio}</p>
+                           </div>
+                         )}
+                         {apt.whatsapp && (
+                           <div className="text-xs font-semibold text-gray-700">
+                             <span className="text-gray-500">📱 WhatsApp:</span>
+                             <p className="text-green-700 font-black mt-0.5">{apt.whatsapp}</p>
+                           </div>
+                         )}
+                         <button
+                           type="button"
+                           onClick={() => openGoogleMaps(apt.direccion || apt.address, apt.barrio, apt.lat, apt.lng)}
+                           className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-bold py-2 px-3 rounded-lg shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2 text-xs border-b-2 border-blue-700 active:border-b-0 active:translate-y-0.5 mt-2"
+                         >
+                           <span>🗺️</span>
+                           <span>Ver en Maps</span>
+                         </button>
                        </div>
                      </div>
                    )}
@@ -893,17 +1005,19 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                              <Check className="mr-2" /> Completar Servicio
                            </Button>
                          </DialogTrigger>
-                         <DialogContent className="rounded-[2.5rem] border-4 border-blue-200 p-0 overflow-hidden sm:max-w-md w-[95vw] max-h-[90vh] bg-gradient-to-b from-blue-50 to-white">
+                         <DialogContent className="rounded-[3rem] border-4 border-blue-400 p-0 overflow-hidden sm:max-w-md w-[95vw] max-h-[90vh] bg-blue-50 shadow-2xl">
                           <DialogHeader className="sr-only">
                             <DialogTitle>Reporte de Misión</DialogTitle>
                           </DialogHeader>
-                          <div className="relative p-6 space-y-6">
-                            <div className="text-center mb-2">
-                              <div className="inline-flex items-center gap-2 bg-blue-100 px-3 py-1 rounded-full">
-                                <span className="text-lg">📋</span>
-                                <span className="text-xs font-black text-blue-600 uppercase">Reporte de Misión</span>
-                              </div>
+                          <div className="text-center pt-8 pb-6">
+                            <div className="flex items-center justify-center gap-3 mb-2">
+                              <Check className="w-6 h-6 text-blue-600" />
+                              <h2 className="text-2xl font-black text-blue-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
+                                REPORTE DE MISIÓN
+                              </h2>
                             </div>
+                          </div>
+                          <div className="relative px-6 space-y-6 pb-8 overflow-y-auto max-h-[70vh]">
                             <div className="rounded-2xl border-2 border-blue-100 bg-white p-4 shadow-inner space-y-2 relative overflow-hidden">
                               <div className="absolute -top-6 -right-6 w-24 h-24 bg-blue-100 rounded-full opacity-40 blur-2xl"></div>
                               <p className="text-xs font-black text-blue-600 uppercase flex items-center gap-2">
@@ -924,12 +1038,18 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                                 </div>
                                 <div className="bg-purple-50 border border-purple-100 rounded-xl p-3">
                                   <p className="text-purple-600 text-[11px] font-black uppercase">Hora</p>
-                                  <p className="text-base">{apt.time}</p>
+                                  <p className="text-base">{formatTime12Hour(apt.time)}</p>
                                 </div>
                                 <div className="col-span-2 bg-pink-50 border border-pink-100 rounded-xl p-3">
                                   <p className="text-pink-600 text-[11px] font-black uppercase">Dirección</p>
                                   <p className="text-xs text-gray-800 font-black">{apt.direccion || apt.address || apt.addressLine || 'Sin dirección registrada'}</p>
                                 </div>
+                                {apt.whatsapp && (
+                                  <div className="col-span-2 bg-green-50 border border-green-100 rounded-xl p-3">
+                                    <p className="text-green-600 text-[11px] font-black uppercase">📱 WhatsApp</p>
+                                    <p className="text-base font-black text-green-700">{apt.whatsapp}</p>
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -1412,6 +1532,128 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
           </div>
         </TabsContent>
       </Tabs>
+      
+      {/* Diálogo de Confirmación de Rechazo */}
+      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+        <DialogContent className="rounded-[3rem] border-4 border-red-400 p-0 overflow-hidden bg-red-50 max-w-lg shadow-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Confirmar Rechazo</DialogTitle>
+          </DialogHeader>
+          
+          {appointmentToReject && (
+            <div className="bg-transparent">
+              <div className="text-center pt-8 pb-6 bg-gradient-to-b from-red-100 to-red-50">
+                <div className="flex items-center justify-center gap-3 mb-2">
+                  <span className="text-4xl">⚠️</span>
+                  <h2 className="text-2xl md:text-3xl font-black text-red-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
+                    ¿RECHAZAR SERVICIO?
+                  </h2>
+                </div>
+                <p className="text-sm font-bold text-red-700 mt-2 px-6">
+                  Esta acción enviará el servicio de vuelta a pendientes
+                </p>
+              </div>
+
+              <div className="max-h-[60vh] overflow-y-auto px-4 sm:px-6 md:px-8 pb-8 space-y-4">
+                {/* Info del Cliente */}
+                <div className="bg-white border-3 border-red-200 rounded-2xl p-4 shadow-sm">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-2xl">
+                      👤
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-red-500 uppercase">Cliente</p>
+                      <p className="text-lg font-black text-gray-800">{appointmentToReject.clientName}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-purple-50 border-2 border-purple-200 rounded-xl p-3 mb-3">
+                    <p className="text-xs font-bold text-purple-600 uppercase mb-1">Servicio</p>
+                    <p className="text-base font-black text-purple-700">{appointmentToReject.serviceType}</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-2">
+                      <p className="text-[10px] font-bold text-gray-500 uppercase">Fecha</p>
+                      <p className="text-sm font-bold text-gray-800">{new Date(appointmentToReject.date).toLocaleDateString()}</p>
+                    </div>
+                    <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-2">
+                      <p className="text-[10px] font-bold text-gray-500 uppercase">Hora</p>
+                      <p className="text-sm font-bold text-gray-800">{formatTime12Hour(appointmentToReject.time)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Información de Ubicación */}
+                <div className="bg-white border-3 border-blue-200 rounded-2xl p-4 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-2xl">📍</span>
+                    <p className="text-sm font-black text-blue-600 uppercase">Ubicación del Servicio</p>
+                  </div>
+                  
+                  {appointmentToReject.direccion && (
+                    <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-3 mb-2">
+                      <p className="text-[10px] font-bold text-blue-500 uppercase mb-1">Dirección</p>
+                      <p className="text-sm font-bold text-gray-800 break-words">
+                        {appointmentToReject.direccion || appointmentToReject.address || appointmentToReject.addressLine}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {appointmentToReject.barrio && (
+                    <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-3 mb-3">
+                      <p className="text-[10px] font-bold text-amber-600 uppercase mb-1">Barrio</p>
+                      <p className="text-sm font-black text-amber-700">{appointmentToReject.barrio}</p>
+                    </div>
+                  )}
+                  
+                  {appointmentToReject.whatsapp && (
+                    <div className="bg-green-50 border-2 border-green-200 rounded-xl p-3 mb-3">
+                      <p className="text-[10px] font-bold text-green-600 uppercase mb-1">📱 WhatsApp</p>
+                      <p className="text-sm font-black text-green-700">{appointmentToReject.whatsapp}</p>
+                    </div>
+                  )}
+                  
+                  {/* Botón Google Maps */}
+                  {(appointmentToReject.direccion || appointmentToReject.barrio) && (
+                    <button
+                      type="button"
+                      onClick={() => openGoogleMaps(
+                        appointmentToReject.direccion || appointmentToReject.address, 
+                        appointmentToReject.barrio,
+                        appointmentToReject.lat,
+                        appointmentToReject.lng
+                      )}
+                      className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-bold py-3 px-4 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 border-b-4 border-blue-700 active:border-b-0 active:translate-y-1"
+                    >
+                      <span className="text-xl">🗺️</span>
+                      <span>Ver en Google Maps</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Botones de Acción */}
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleCancelReject}
+                    className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-black py-4 px-6 rounded-2xl transition-all shadow-md hover:shadow-lg border-b-4 border-gray-500 active:border-b-0 active:translate-y-1"
+                  >
+                    <span className="text-lg">↩️</span> Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmReject}
+                    className="flex-1 bg-red-500 hover:bg-red-600 text-white font-black py-4 px-6 rounded-2xl transition-all shadow-md hover:shadow-lg border-b-4 border-red-700 active:border-b-0 active:translate-y-1"
+                  >
+                    <span className="text-lg">✗</span> Sí, Rechazar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -174,7 +174,6 @@ const UsersModule = React.memo(({
           </div>
           
           <div className="px-8 pb-8 text-center space-y-6">
-            <div className="text-6xl mb-4">⚠️</div>
             <h3 className="text-lg font-medium text-gray-700 mb-4">
               ¿Estás seguro de eliminar a este usuario?
             </h3>

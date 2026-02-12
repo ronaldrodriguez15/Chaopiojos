@@ -165,7 +165,7 @@ function App() {
   const defaultServices = [
     { id: 1, name: 'Normal', value: 70000 },
     { id: 2, name: 'Elevado', value: 100000 },
-    { id: 3, name: 'Muy Alto', value: 120000 }
+    { id: 3, name: 'Muy Alto', value: 130000 }
   ];
 
   const normalizeServices = (input) => {
@@ -257,6 +257,18 @@ function App() {
     }
   }, [currentUser]);
 
+  // Actualización automática cada 30 segundos
+  useEffect(() => {
+    if (!currentUser || !authService.isAuthenticated()) return;
+    
+    const intervalId = setInterval(() => {
+      loadBookings();
+      loadUsers();
+    }, 30000); // 30 segundos
+
+    return () => clearInterval(intervalId);
+  }, [currentUser]);
+
   const loadUsers = async () => {
     setIsLoadingUsers(true);
     const result = await userService.getAll();
@@ -312,6 +324,8 @@ function App() {
               email: booking.email,
               direccion: booking.direccion,
               barrio: booking.barrio,
+              lat: booking.lat,
+              lng: booking.lng,
               numPersonas: booking.numPersonas,
               hasAlergias: booking.hasAlergias,
               detalleAlergias: booking.detalleAlergias,
@@ -903,7 +917,13 @@ function App() {
                   {/* Notification Bell */}
                   <div className="relative notification-container" id="notification-bell">
                     <Button
-                      onClick={() => setShowNotifications(!showNotifications)}
+                      onClick={() => {
+                        setShowNotifications(!showNotifications);
+                        // Marcar todas como leídas al abrir
+                        if (!showNotifications) {
+                          markAllAsRead();
+                        }
+                      }}
                       className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-2xl px-5 py-6 font-bold text-lg shadow-md hover:shadow-lg transition-all border-b-4 border-yellow-600 hover:border-yellow-700 active:border-b-0 active:translate-y-1 relative"
                     >
                       <Bell className="w-6 h-6" />

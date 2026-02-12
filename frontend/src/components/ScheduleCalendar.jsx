@@ -660,9 +660,11 @@ const ScheduleCalendar = ({
                     {assignedPiojologist ? `Asignado a ${assignedPiojologist.name}` : 'Sin piojóloga asignada'}
                   </div>
 
-                  {statusKey === 'pending' && onAssign && (
+                  {(statusKey === 'pending' || statusKey === 'assigned' || statusKey === 'accepted') && onAssign && (
                     <div className="mt-4 bg-white border-2 border-gray-200 rounded-xl p-3 space-y-2">
-                      <p className="text-xs font-black text-gray-600 uppercase">Asignar a piojóloga</p>
+                      <p className="text-xs font-black text-gray-600 uppercase">
+                        {assignedPiojologist ? '🔄 Reasignar a otra piojóloga' : 'Asignar a piojóloga'}
+                      </p>
                       <div className="flex flex-col sm:flex-row gap-2">
                         <select
                           value={assignValue}
@@ -681,9 +683,9 @@ const ScheduleCalendar = ({
                             handleDialogChange(false);
                           }}
                           disabled={!assignValue}
-                          className="bg-orange-400 hover:bg-orange-500 text-white rounded-xl px-4 py-2 font-bold border-b-4 border-orange-600 active:border-b-0 active:translate-y-1"
+                          className="bg-orange-400 hover:bg-orange-500 text-white rounded-xl px-4 py-2 font-bold border-b-4 border-orange-600 active:border-b-0 active:translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          Asignar
+                          {assignedPiojologist ? '🔄 Reasignar' : 'Asignar'}
                         </button>
                       </div>
                     </div>
