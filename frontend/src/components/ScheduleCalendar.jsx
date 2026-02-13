@@ -84,8 +84,22 @@ const ScheduleCalendar = ({
   piojologists = [],
   enablePiojologistFilter = false,
   title = 'Calendario de Servicios',
-  onAssign
+  onAssign,
+  serviceCatalog = {},
+  formatCurrency = (val) => `$${val || 0}`
 }) => {
+  // Función auxiliar para calcular el total del servicio
+  const calculateServiceTotal = (appointment) => {
+    // Si tiene services_per_person, sumar todos los servicios
+    if (appointment.services_per_person && Array.isArray(appointment.services_per_person)) {
+      return appointment.services_per_person.reduce((total, serviceType) => {
+        return total + (serviceCatalog[serviceType] || 0);
+      }, 0);
+    }
+    // Si no, usar el serviceType simple
+    return serviceCatalog[appointment.serviceType] || 0;
+  };
+
   const [currentMonth, setCurrentMonth] = useState(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -628,6 +642,10 @@ const ScheduleCalendar = ({
                       <p className="text-sm font-bold text-gray-500 uppercase tracking-wide mt-1">
                         {appointment.serviceType}
                       </p>
+                      {/* Valor del servicio */}
+                      <div className="mt-2 inline-block bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl px-3 py-1.5 shadow-md">
+                        <span className="text-white font-black text-sm">💰 {formatCurrency(calculateServiceTotal(appointment))}</span>
+                      </div>
                       {appointment.isExternal && (
                         <p className="text-xs font-bold text-blue-600 mt-2">
                           🌐 Vinculado desde: {appointment.piojologistName}

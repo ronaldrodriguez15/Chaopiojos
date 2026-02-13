@@ -220,11 +220,22 @@ const EarningsModule = React.memo(({
               const piojologist = piojologists.find(p => p.id === openPayDialog);
               if (!piojologist) return <p className="text-gray-500">Piojóloga no encontrada</p>;
               
-              const pendingServices = appointments.filter(apt => 
+              // Filtrar servicios pendientes y eliminar duplicados por ID
+              const pendingServicesRaw = appointments.filter(apt => 
                 apt.piojologistId === openPayDialog && 
                 apt.status === 'completed' && 
                 (apt.payment_status_to_piojologist || apt.paymentStatusToPiojologist || 'pending') === 'pending'
               );
+              
+              // Eliminar duplicados basándose en el ID (tomar el último en caso de duplicados)
+              const uniqueIds = new Set();
+              const pendingServices = pendingServicesRaw.filter(apt => {
+                if (uniqueIds.has(apt.id)) {
+                  return false; // Ya existe, saltar
+                }
+                uniqueIds.add(apt.id);
+                return true;
+              });
               
               if (pendingServices.length === 0) {
                 return <p className="text-center text-gray-500 py-8 font-bold">No hay servicios pendientes de pago</p>;
@@ -451,9 +462,9 @@ const EarningsModule = React.memo(({
                 Cancelar
               </Button>
               <Button 
-                onClick={() => {
+                onClick={async () => {
                   if (confirmPayment) {
-                    handleMarkServiceAsPaid(
+                    await handleMarkServiceAsPaid(
                       confirmPayment.serviceId,
                       confirmPayment.piojologistId,
                       confirmPayment.piojologistName,
@@ -463,13 +474,8 @@ const EarningsModule = React.memo(({
                       confirmPayment.date,
                       confirmPayment.time
                     );
-                    toast({
-                      title: "✅ Servicio Pagado",
-                      description: `Se pagaron ${formatCurrency(confirmPayment.amount)} a ${confirmPayment.piojologistName}`,
-                      className: "bg-green-100 text-green-800 rounded-2xl border-2 border-green-200"
-                    });
                     setConfirmPayment(null);
-                    setOpenPayDialog(null);
+                    // No cerrar el modal principal para que el usuario vea la lista actualizada
                   }
                 }}
                 className="flex-1 bg-green-500 hover:bg-green-600 text-white rounded-2xl py-3 px-6 font-bold shadow-lg transition-all"

@@ -41,7 +41,7 @@ function MapClickHandler({ onLocationSelect }) {
   return null;
 }
 
-const AddressAutocomplete = ({ value, onChange, onSelect, hasError = false }) => {
+const AddressAutocomplete = ({ value, onChange, onSelect, hasError = false, forceRedStyle = false }) => {
   const [city, setCity] = useState('Bogotá');
   const [address, setAddress] = useState(value || '');
   const [suggestions, setSuggestions] = useState([]);
@@ -532,18 +532,28 @@ const AddressAutocomplete = ({ value, onChange, onSelect, hasError = false }) =>
       {/* Campo de Ciudad - Custom Select */}
       <div className="relative" ref={cityDropdownRef}>
         <div className="relative group">
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 bg-blue-100 p-2 rounded-xl group-focus-within:bg-blue-500 transition-colors z-10 pointer-events-none">
-            <MapPin className="w-4 h-4 text-blue-500 group-focus-within:text-white transition-colors" />
+          <div className={`absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-xl group-focus-within:bg-blue-500 transition-colors z-10 pointer-events-none ${
+            forceRedStyle ? 'bg-red-100 group-focus-within:bg-red-500' : 'bg-blue-100 group-focus-within:bg-blue-500'
+          }`}>
+            <MapPin className={`w-4 h-4 group-focus-within:text-white transition-colors ${
+              forceRedStyle ? 'text-red-500' : 'text-blue-500'
+            }`} />
           </div>
           <button
             type="button"
             onClick={() => setIsCityDropdownOpen(!isCityDropdownOpen)}
-            className="w-full pl-14 pr-12 py-3 bg-blue-50 border-4 border-transparent rounded-2xl hover:border-blue-300 focus:border-blue-300 focus:bg-white outline-none font-bold text-gray-700 transition-all text-base text-left"
+            className={`w-full pl-14 pr-12 py-3 rounded-2xl outline-none font-bold text-gray-700 transition-all text-base text-left ${
+              forceRedStyle 
+                ? 'bg-red-50 border-4 border-transparent hover:border-red-300 focus:border-red-300 focus:bg-white'
+                : 'bg-blue-50 border-4 border-transparent hover:border-blue-300 focus:border-blue-300 focus:bg-white'
+            }`}
           >
             {city || 'Selecciona tu ciudad'}
           </button>
           <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-            <ChevronDown className={`w-5 h-5 text-blue-500 transition-transform duration-300 ${isCityDropdownOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${isCityDropdownOpen ? 'rotate-180' : ''} ${
+              forceRedStyle ? 'text-red-500' : 'text-blue-500'
+            }`} />
           </div>
         </div>
 
@@ -555,7 +565,9 @@ const AddressAutocomplete = ({ value, onChange, onSelect, hasError = false }) =>
               animate={{ opacity: 1, y: 0, scaleY: 1 }}
               exit={{ opacity: 0, y: -10, scaleY: 0.95 }}
               transition={{ duration: 0.2 }}
-              className="absolute top-full mt-2 w-full bg-white rounded-2xl border-4 border-blue-200 shadow-2xl z-50 overflow-hidden"
+              className={`absolute top-full mt-2 w-full bg-white rounded-2xl border-4 shadow-2xl z-50 overflow-hidden ${
+                forceRedStyle ? 'border-red-200' : 'border-blue-200'
+              }`}
             >
               <div className="max-h-64 overflow-y-auto custom-scrollbar">
                 {cities.map((cityOption, index) => (
@@ -563,8 +575,10 @@ const AddressAutocomplete = ({ value, onChange, onSelect, hasError = false }) =>
                     key={cityOption}
                     type="button"
                     onClick={() => handleCitySelect(cityOption)}
-                    className={`w-full text-left px-4 py-3 font-bold transition-all border-b border-blue-100 hover:bg-blue-50 ${
-                      city === cityOption ? 'bg-blue-100 text-blue-700 border-l-4 border-l-blue-500' : 'text-gray-700'
+                    className={`w-full text-left px-4 py-3 font-bold transition-all border-b ${
+                      forceRedStyle 
+                        ? `border-red-100 hover:bg-red-50 ${city === cityOption ? 'bg-red-100 text-red-700 border-l-4 border-l-red-500' : 'text-gray-700'}`
+                        : `border-blue-100 hover:bg-blue-50 ${city === cityOption ? 'bg-blue-100 text-blue-700 border-l-4 border-l-blue-500' : 'text-gray-700'}`
                     }`}
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -593,6 +607,8 @@ const AddressAutocomplete = ({ value, onChange, onSelect, hasError = false }) =>
           className={`w-full pl-14 pr-10 py-3 rounded-2xl outline-none font-bold text-gray-700 transition-all text-base ${
             hasError 
               ? 'bg-red-50 border-4 border-red-400 focus:border-red-500 focus:bg-white placeholder-red-200' 
+              : forceRedStyle
+              ? 'bg-red-50 border-4 border-red-400 focus:border-red-500 focus:bg-white placeholder-red-300'
               : 'bg-cyan-50 border-4 border-transparent focus:border-cyan-300 focus:bg-white placeholder-cyan-200'
           }`}
           placeholder="Ingresa una nueva dirección"
@@ -602,7 +618,7 @@ const AddressAutocomplete = ({ value, onChange, onSelect, hasError = false }) =>
         
         {isLoading && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            <Loader className="w-4 h-4 animate-spin text-cyan-500" />
+            <Loader className={`w-4 h-4 animate-spin ${forceRedStyle || hasError ? 'text-red-500' : 'text-cyan-500'}`} />
           </div>
         )}
       </div>
@@ -623,7 +639,7 @@ const AddressAutocomplete = ({ value, onChange, onSelect, hasError = false }) =>
                 width: `${inputPosition.width}px`,
                 marginTop: '8px'
               }}
-              className="bg-white rounded-2xl border-4 border-cyan-200 shadow-2xl z-[9999] overflow-hidden pointer-events-auto"
+              className={`bg-white rounded-2xl border-4 ${forceRedStyle || hasError ? 'border-red-200' : 'border-cyan-200'} shadow-2xl z-[9999] overflow-hidden pointer-events-auto`}
               ref={dropdownRef}
             >
               <div
@@ -639,8 +655,8 @@ const AddressAutocomplete = ({ value, onChange, onSelect, hasError = false }) =>
                     key={suggestion.id}
                     type="button"
                     onClick={(e) => handleSuggestionClick(e, suggestion)}
-                    className={`w-full text-left px-4 py-3 transition-all border-b border-cyan-100 hover:bg-cyan-50 ${
-                      index === selectedIndex ? 'bg-cyan-100 border-l-4 border-l-cyan-500' : ''
+                    className={`w-full text-left px-4 py-3 transition-all border-b ${forceRedStyle || hasError ? 'border-red-100 hover:bg-red-50' : 'border-cyan-100 hover:bg-cyan-50'} ${
+                      index === selectedIndex ? (forceRedStyle || hasError ? 'bg-red-100 border-l-4 border-l-red-500' : 'bg-cyan-100 border-l-4 border-l-cyan-500') : ''
                     } ${suggestion.isExactInput ? 'bg-green-50 border-l-4 border-l-green-500' : ''}`}
                     onMouseEnter={() => setSelectedIndex(index)}
                     initial={{ opacity: 0, x: -10 }}

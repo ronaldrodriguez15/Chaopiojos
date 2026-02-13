@@ -21,6 +21,18 @@ const ScheduleManagement = ({
   updateAppointments,
   onAssignFromCalendar
 }) => {
+  // Función auxiliar para calcular el total del servicio
+  const calculateServiceTotal = (appointment) => {
+    // Si tiene services_per_person, sumar todos los servicios
+    if (appointment.services_per_person && Array.isArray(appointment.services_per_person)) {
+      return appointment.services_per_person.reduce((total, serviceType) => {
+        return total + (serviceCatalog[serviceType] || 0);
+      }, 0);
+    }
+    // Si no, usar el serviceType simple
+    return serviceCatalog[appointment.serviceType] || 0;
+  };
+
   const { toast } = useToast();
   const [isServiceDialogOpen, setIsServiceDialogOpen] = useState(false);
   const [isServiceDetailOpen, setIsServiceDetailOpen] = useState(false);
@@ -451,8 +463,15 @@ const ScheduleManagement = ({
                         {config.label}
                       </span>
                     </div>
-                    <p className="text-sm mb-1 font-bold text-gray-700 opacity-80">{apt.serviceType}</p>
-                    <p className="text-lg text-purple-600 mb-2 font-black">{formatCurrency(serviceCatalog[apt.serviceType] || 0)}</p>
+                    <p className="text-sm mb-1 font-bold text-gray-700 opacity-80">
+                      {apt.serviceType}
+                      {apt.numPersonas && parseInt(apt.numPersonas) > 1 && (
+                        <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                          {apt.numPersonas} personas
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-lg text-purple-600 mb-2 font-black">{formatCurrency(calculateServiceTotal(apt))}</p>
                     <p className="text-sm text-gray-500 mb-3 font-medium"> {apt.date} - {apt.time}</p>
                     <div className="bg-green-50 p-2 rounded-xl border border-green-200">
                       <p className="text-xs font-bold text-green-700">
@@ -524,6 +543,8 @@ const ScheduleManagement = ({
             enablePiojologistFilter
             title="Agenda General"
             onAssign={onAssignFromCalendar}
+            serviceCatalog={serviceCatalog}
+            formatCurrency={formatCurrency}
           />
         </div>
       </div>
@@ -556,15 +577,20 @@ const ScheduleManagement = ({
                   <div className="text-center">
                     <h3 className="text-2xl md:text-3xl font-black text-gray-800">{selectedService.clientName}</h3>
                     <p className="text-sm font-bold text-gray-600 mt-1">{selectedService.serviceType}</p>
+                    
+                    {/* Valor del servicio destacado */}
+                    <div className="mt-4 bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl p-4 shadow-lg border-2 border-green-400">
+                      <div className="flex items-center justify-center gap-3">
+                        <span className="text-white font-black text-base uppercase">💰 Valor del Servicio:</span>
+                        <span className="text-white font-black text-2xl">{formatCurrency(calculateServiceTotal(selectedService))}</span>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3 text-sm font-bold text-gray-700">
-                     {selectedService.date} - {selectedService.time}
-                  </div>
-                  <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3 text-sm font-black text-purple-700">
-                     {formatCurrency(serviceCatalog[selectedService.serviceType] || 0)}
+                    🕐 {selectedService.date} - {selectedService.time}
                   </div>
                 </div>
 
@@ -598,6 +624,12 @@ const ScheduleManagement = ({
                      Barrio:<br />
                     <span className="font-bold text-gray-800">{selectedService.barrio || 'No registrado'}</span>
                   </div>
+                  {selectedService.descripcionUbicacion && (
+                    <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3 col-span-1 md:col-span-2">
+                       Detalles de ubicación:<br />
+                      <span className="font-bold text-gray-800">{selectedService.descripcionUbicacion}</span>
+                    </div>
+                  )}
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
                      WhatsApp:<br />
                     <span className="font-bold text-gray-800">{selectedService.whatsapp || 'No registrado'}</span>
@@ -609,6 +641,15 @@ const ScheduleManagement = ({
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
                      Personas:<br />
                     <span className="font-bold text-gray-800">{selectedService.numPersonas || 'No informado'}</span>
+                    {selectedService.services_per_person && Array.isArray(selectedService.services_per_person) && selectedService.services_per_person.length > 0 && (
+                      <div className="mt-2 space-y-1 text-xs">
+                        {selectedService.services_per_person.map((service, idx) => (
+                          <div key={idx} className="text-gray-600">
+                            {idx + 1}. {service} - {formatCurrency(serviceCatalog[service] || 0)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
                      Referido por:<br />

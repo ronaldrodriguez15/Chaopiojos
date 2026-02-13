@@ -37,6 +37,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend,
 
 const PiojologistView = ({ currentUser, appointments, updateAppointments, bookings = [], updateBookings, products, handleCompleteService, serviceCatalog = {}, formatCurrency, productRequests, onCreateProductRequest, onNotify }) => {
   const { toast } = useToast();
+  const [forceUpdate, setForceUpdate] = useState(0);
   
   // Función para convertir hora 24h a 12h con AM/PM
   const formatTime12Hour = (time24) => {
@@ -67,6 +68,10 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   // Estados para diálogo de confirmación de rechazo
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [appointmentToReject, setAppointmentToReject] = useState(null);
+  
+  // Estado para modal de desglose de servicios
+  const [serviceBreakdownOpen, setServiceBreakdownOpen] = useState(false);
+  const [selectedServiceBreakdown, setSelectedServiceBreakdown] = useState(null);
 
   // Referral state
   const [referralCommissions, setReferralCommissions] = useState([]);
@@ -88,6 +93,73 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     const id = setInterval(() => setNowTs(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Escuchar eventos de asignación de servicios para actualización en tiempo real
+  useEffect(() => {
+    const handleServiceAssigned = async (event) => {
+      const { piojologistId, appointment } = event.detail;
+      
+      // Solo procesar si el servicio fue asignado a esta piojóloga
+      if (piojologistId === currentUser.id) {
+        // Forzar re-render para que se actualicen las listas
+        setForceUpdate(prev => prev + 1);
+        
+        // Mostrar notificación visual
+        toast({
+          title: "🎉 ¡Nuevo Servicio Asignado!",
+          description: `${appointment?.clientName || 'Cliente'} - ${appointment?.serviceType || 'Servicio'}`,
+          className: "bg-green-100 border-2 border-green-200 text-green-800 rounded-2xl font-bold"
+        });
+      }
+    };
+
+    // Escuchar cambios en localStorage desde otros tabs/ventanas
+    const handleStorageChange = (event) => {
+      // Detectar cambios en appointments o bookings desde otro tab
+      if (event.key === 'appointments' || event.key === 'bookings') {
+        try {
+          // Recargar datos desde localStorage
+          if (event.key === 'appointments' && event.newValue) {
+            const newAppointments = JSON.parse(event.newValue);
+            // Verificar si hay nuevas asignaciones para esta piojóloga
+            const myNewAssignments = newAppointments.filter(
+              apt => apt.piojologistId === currentUser.id && 
+              (apt.status === 'assigned' || apt.status === 'pending')
+            );
+            if (myNewAssignments.length > 0 && updateAppointments) {
+              updateAppointments(newAppointments);
+            }
+          } else if (event.key === 'bookings' && event.newValue) {
+            const newBookings = JSON.parse(event.newValue);
+            // Verificar si hay nuevas asignaciones para esta piojóloga
+            const myNewAssignments = newBookings.filter(
+              apt => apt.piojologistId === currentUser.id && 
+              (apt.status === 'assigned' || apt.status === 'pending')
+            );
+            if (myNewAssignments.length > 0 && updateBookings) {
+              updateBookings(newBookings);
+            }
+          }
+          
+          // Forzar re-render
+          setForceUpdate(prev => prev + 1);
+        } catch (e) {
+          console.error('Error al procesar cambios de storage:', e);
+        }
+      }
+    };
+
+    // Escuchar el evento personalizado (misma ventana)
+    window.addEventListener('serviceAssigned', handleServiceAssigned);
+    
+    // Escuchar cambios en localStorage (otros tabs)
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('serviceAssigned', handleServiceAssigned);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [currentUser.id, toast, updateAppointments, updateBookings]);
 
   useEffect(() => {
     localStorage.setItem('piojoServicesView', servicesView);
@@ -190,6 +262,15 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   };
 
   const getServicePrice = (apt = {}) => {
+    // Si tiene services_per_person, calcular el total sumando todos
+    if (apt.services_per_person && Array.isArray(apt.services_per_person)) {
+      const total = apt.services_per_person.reduce((sum, serviceType) => {
+        return sum + (serviceCatalog[serviceType] || 0);
+      }, 0);
+      return total;
+    }
+    
+    // Fallback al comportamiento anterior
     const raw = apt.price ?? apt.price_confirmed ?? apt.estimatedPrice ?? serviceCatalog[apt.serviceType] ?? 0;
     const num = Number(raw);
     return Number.isFinite(num) ? num : 0;
@@ -465,11 +546,11 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   const visibleServices = servicesView === 'rejected' ? myRejectedServices : assignedToMe;
   const commissionRate = (currentUser.commission_rate || 50) / 100;
   
-  // Calcular ganancias solo de los servicios pagados
+  // Calcular ganancias pendientes por cobrar (servicios completados pero no pagados por el admin)
   const totalEarnings = completedHistory
     .filter(apt => {
       const paymentStatus = apt.payment_status_to_piojologist || apt.paymentStatusToPiojologist || 'pending';
-      return paymentStatus === 'paid';
+      return paymentStatus === 'pending';
     })
     .reduce((acc, apt) => acc + (getServicePrice(apt) * commissionRate - (Number(apt.deductions) || 0)), 0);
   
@@ -589,7 +670,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
            <div className="flex flex-wrap justify-center md:justify-end gap-3 sm:gap-4 w-full md:w-auto">
             <div className="bg-white/20 p-3 sm:p-4 rounded-3xl backdrop-blur-md text-center min-w-[120px] sm:min-w-[150px]">
               <span className="block text-2xl sm:text-3xl md:text-4xl font-black">{formatCurrency(totalEarnings)}</span>
-              <span className="text-xs sm:text-sm font-bold opacity-90">Mis Ganancias</span>
+              <span className="text-xs sm:text-sm font-bold opacity-90">Mis Ganancias por Cobrar</span>
             </div>
             <div className="bg-white/20 p-3 sm:p-4 rounded-3xl backdrop-blur-md text-center min-w-[120px] sm:min-w-[150px]">
               <span className="block text-2xl sm:text-3xl md:text-4xl font-black">{assignedToMe.length}</span>
@@ -637,9 +718,21 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
 
                 <div className="bg-emerald-50 p-4 rounded-2xl space-y-2 mb-4">
                   <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
-                    <span>💰 Valor:</span>
-                    <span className="text-purple-600">{formatCurrency(apt.estimatedPrice || 0)}</span>
+                    <span>💰 Valor Total:</span>
+                    <span className="text-purple-600">{formatCurrency(getServicePrice(apt))}</span>
                   </div>
+                  {apt.numPersonas && parseInt(apt.numPersonas) > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedServiceBreakdown(apt);
+                        setServiceBreakdownOpen(true);
+                      }}
+                      className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-2 px-3 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 text-xs border-b-2 border-purple-700 active:border-b-0 active:translate-y-0.5"
+                    >
+                      👥 Ver desglose de {apt.numPersonas} personas
+                    </button>
+                  )}
                   <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                     <span>📅 Fecha:</span>
                     <span className="text-emerald-700">{new Date(apt.date).toLocaleDateString()}</span>
@@ -656,6 +749,12 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                     <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                       <span>🏘️ Barrio:</span>
                       <span className="text-amber-700 text-xs font-black">{apt.barrio}</span>
+                    </div>
+                  )}
+                  {apt.descripcionUbicacion && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
+                      <span>🏢 Detalles:</span>
+                      <span className="text-blue-700 text-xs font-black">{apt.descripcionUbicacion}</span>
                     </div>
                   )}
                   {apt.whatsapp && (
@@ -696,6 +795,287 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
               </div>
               );
             })}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Sección de Servicios Confirmados/Aceptados */}
+      {assignedToMe.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gradient-to-br from-green-200 via-lime-100 to-emerald-100 rounded-[2.5rem] sm:rounded-[3rem] p-4 sm:p-6 md:p-8 shadow-2xl border-4 border-green-300 mb-8"
+        >
+          <h2 className="text-2xl sm:text-3xl font-black text-green-900 mb-6 flex items-center gap-3">
+            ✅ Mis Servicios Confirmados ({assignedToMe.length})
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {assignedToMe.map(apt => (
+              <div
+                key={apt.id}
+                className="bg-white rounded-[2rem] p-4 sm:p-6 shadow-lg border-4 border-green-200 relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 bg-green-500 text-white px-4 py-1 rounded-bl-2xl font-black text-xs uppercase tracking-wider">
+                  Confirmado
+                </div>
+
+                <div className="flex items-center gap-3 mb-3 mt-2">
+                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-2xl">
+                    😊
+                  </div>
+                  <div className="flex-grow min-w-0">
+                    <h3 className="font-black text-gray-800 text-lg leading-tight truncate">{apt.clientName}</h3>
+                    <p className="text-xs text-green-700 font-bold uppercase">{apt.serviceType}</p>
+                  </div>
+                </div>
+
+                <div className="bg-green-50 p-4 rounded-2xl space-y-2 mb-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
+                    <span>💰 Valor Total:</span>
+                    <span className="text-purple-600">{formatCurrency(getServicePrice(apt))}</span>
+                  </div>
+                  {apt.numPersonas && parseInt(apt.numPersonas) > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedServiceBreakdown(apt);
+                        setServiceBreakdownOpen(true);
+                      }}
+                      className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-2 px-3 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 text-xs border-b-2 border-purple-700 active:border-b-0 active:translate-y-0.5"
+                    >
+                      👥 Ver desglose de {apt.numPersonas} personas
+                    </button>
+                  )}
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
+                    <span>📅 Fecha:</span>
+                    <span className="text-green-700">{new Date(apt.date).toLocaleDateString()}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
+                    <span>⏰ Hora:</span>
+                    <span className="text-green-700">{formatTime12Hour(apt.time)}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
+                    <span>📍 Dirección:</span>
+                    <span className="text-gray-800 text-xs">{apt.direccion || apt.address || apt.addressLine || 'Sin dirección registrada'}</span>
+                  </div>
+                  {apt.barrio && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
+                      <span>🏘️ Barrio:</span>
+                      <span className="text-amber-700 text-xs font-black">{apt.barrio}</span>
+                    </div>
+                  )}
+                  {apt.descripcionUbicacion && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
+                      <span>🏢 Detalles:</span>
+                      <span className="text-blue-700 text-xs font-black">{apt.descripcionUbicacion}</span>
+                    </div>
+                  )}
+                  {apt.whatsapp && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
+                      <span>📱 WhatsApp:</span>
+                      <span className="text-green-700 text-xs font-black">{apt.whatsapp}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Datos Críticos del Vendedor */}
+                {(apt.yourLoss || apt.ourPayment || apt.total || apt.age) && (
+                  <div className="bg-yellow-50 p-3 rounded-xl mb-4 border border-yellow-200">
+                    <p className="text-xs font-bold text-yellow-600 uppercase mb-2">📊 Datos del Vendedor</p>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {apt.yourLoss && (
+                        <div className="bg-red-100 p-2 rounded-lg">
+                          <p className="text-red-600 font-bold">Tu Pierdes</p>
+                          <p className="text-red-700 font-black">{formatCurrency(parseFloat(apt.yourLoss) || 0)}</p>
+                        </div>
+                      )}
+                      {apt.ourPayment && (
+                        <div className="bg-green-100 p-2 rounded-lg">
+                          <p className="text-green-600 font-bold">Te Pagamos</p>
+                          <p className="text-green-700 font-black">{formatCurrency(parseFloat(apt.ourPayment) || 0)}</p>
+                        </div>
+                      )}
+                      {apt.total && (
+                        <div className="bg-blue-100 p-2 rounded-lg">
+                          <p className="text-blue-600 font-bold">Total</p>
+                          <p className="text-blue-700 font-black">{formatCurrency(parseFloat(apt.total) || 0)}</p>
+                        </div>
+                      )}
+                      {apt.age && (
+                        <div className="bg-purple-100 p-2 rounded-lg">
+                          <p className="text-purple-600 font-bold">Edad</p>
+                          <p className="text-purple-700 font-black">{apt.age} años</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Información de personas y alergias */}
+                {apt.numPersonas && (
+                  <div className="bg-blue-50 p-3 rounded-xl mb-4 border border-blue-200">
+                    <p className="text-xs font-bold text-blue-600 mb-2">👥 Personas: <span className="text-blue-800 font-black">{apt.numPersonas}</span></p>
+                    {apt.services_per_person && Array.isArray(apt.services_per_person) && apt.services_per_person.length > 0 && (
+                      <div className="mt-2 space-y-1 text-xs">
+                        <p className="font-bold text-blue-600 mb-1">Servicios por persona:</p>
+                        {apt.services_per_person.map((service, idx) => (
+                          <div key={idx} className="flex justify-between items-center text-gray-700 bg-white p-1.5 rounded">
+                            <span>{idx + 1}. {service}</span>
+                            <span className="font-black text-emerald-600">{formatCurrency(serviceCatalog[service] || 0)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {apt.hasAlergias && apt.detalleAlergias && (
+                  <div className="bg-red-50 p-3 rounded-xl mb-4 border border-red-200">
+                    <p className="text-xs font-bold text-red-600 mb-1">⚠️ ALERGIAS:</p>
+                    <p className="text-xs text-red-800 font-black">{apt.detalleAlergias}</p>
+                  </div>
+                )}
+
+                {/* Botón Google Maps */}
+                {(apt.direccion || apt.barrio) && (
+                  <button
+                    type="button"
+                    onClick={() => openGoogleMaps(apt.direccion || apt.address, apt.barrio, apt.lat, apt.lng)}
+                    className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-bold py-2.5 px-4 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 text-sm border-b-4 border-blue-700 active:border-b-0 active:translate-y-1 mb-3"
+                  >
+                    <span>🗺️</span>
+                    <span>Ver en Google Maps</span>
+                  </button>
+                )}
+
+                {/* Botón Completar Servicio - Solo para servicios aceptados */}
+                {apt.status === 'accepted' && (
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <button
+                        onClick={() => {
+                          setFinishingAppointmentId(apt.id);
+                          setSelectedProducts([]);
+                          const basePrice = getServicePrice(apt);
+                          setFinishingPlan(apt.planType || apt.serviceType || 'Normal');
+                          setFinishingPrice(basePrice);
+                          setFinishingNotes(apt.serviceNotes || '');
+                          setFinishingAdditionalCosts('');
+                        }}
+                        className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-black py-3 px-4 rounded-2xl transition-all shadow-lg hover:shadow-xl active:scale-95 flex items-center justify-center gap-2"
+                      >
+                        <span>✓</span>
+                        <span>Completar Servicio</span>
+                      </button>
+                    </DialogTrigger>
+                    <DialogContent className="rounded-[3rem] border-4 border-blue-400 p-0 overflow-hidden sm:max-w-md w-[95vw] max-h-[90vh] bg-blue-50 shadow-2xl">
+                      <DialogHeader className="sr-only">
+                        <DialogTitle>Reporte de Misión</DialogTitle>
+                      </DialogHeader>
+                      <div className="text-center pt-8 pb-6">
+                        <div className="flex items-center justify-center gap-3 mb-2">
+                          <Check className="w-6 h-6 text-blue-600" />
+                          <h2 className="text-2xl font-black text-blue-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
+                            REPORTE DE MISIÓN
+                          </h2>
+                        </div>
+                      </div>
+                      <div className="relative px-6 space-y-6 pb-8 overflow-y-auto max-h-[70vh]">
+                        <div className="rounded-2xl border-2 border-blue-100 bg-white p-4 shadow-inner space-y-2 relative overflow-hidden">
+                          <div className="absolute -top-6 -right-6 w-24 h-24 bg-blue-100 rounded-full opacity-40 blur-2xl"></div>
+                          <p className="text-xs font-black text-blue-600 uppercase flex items-center gap-2">
+                            🧭 Detalles del servicio
+                          </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm font-semibold text-gray-700">
+                            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                              <p className="text-gray-500 text-[11px] font-black uppercase">Cliente</p>
+                              <p className="text-base">{apt.clientName}</p>
+                            </div>
+                            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+                              <p className="text-emerald-600 text-[11px] font-black uppercase">Servicio</p>
+                              <p className="text-base">{apt.serviceType}</p>
+                            </div>
+                            <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                              <p className="text-amber-600 text-[11px] font-black uppercase">Fecha</p>
+                              <p className="text-base">{new Date(apt.date).toLocaleDateString()}</p>
+                            </div>
+                            <div className="bg-purple-50 border border-purple-100 rounded-xl p-3">
+                              <p className="text-purple-600 text-[11px] font-black uppercase">Hora</p>
+                              <p className="text-base">{formatTime12Hour(apt.time)}</p>
+                            </div>
+                            <div className="col-span-2 bg-pink-50 border border-pink-100 rounded-xl p-3">
+                              <p className="text-pink-600 text-[11px] font-black uppercase">Dirección</p>
+                              <p className="text-xs text-gray-800 font-black">{apt.direccion || apt.address || apt.addressLine || 'Sin dirección registrada'}</p>
+                            </div>
+                            {apt.whatsapp && (
+                              <div className="col-span-2 bg-green-50 border border-green-100 rounded-xl p-3">
+                                <p className="text-green-600 text-[11px] font-black uppercase">📱 WhatsApp</p>
+                                <p className="text-base font-black text-green-700">{apt.whatsapp}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          {/* Valor del Servicio - Informativo */}
+                          <div className="bg-gradient-to-r from-blue-50 to-blue-100 border-2 border-blue-300 rounded-2xl p-4 shadow-sm">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-black text-blue-700 text-sm flex items-center gap-2">
+                                  💰 Valor del Servicio
+                                </p>
+                                <p className="text-xs text-blue-600 font-semibold mt-1">
+                                  {apt.numPersonas > 1 ? `${apt.numPersonas} personas` : apt.serviceType}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-2xl font-black text-blue-700">
+                                  {formatCurrency(getServicePrice(apt))}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-white border-2 border-purple-100 rounded-2xl p-3 shadow-sm">
+                            <Label className="font-black text-gray-700 text-sm mb-1 block flex items-center gap-2">
+                              💵 Costos adicionales <span className="text-xs text-gray-500 font-normal">(opcional)</span>
+                            </Label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1000"
+                              value={finishingAdditionalCosts}
+                              onChange={(e) => setFinishingAdditionalCosts(e.target.value)}
+                              className="w-full bg-gradient-to-r from-white to-purple-50 border-2 border-purple-200 rounded-xl p-3 text-sm font-semibold text-gray-700 focus:border-purple-400 outline-none"
+                              placeholder="Ej: transporte, materiales extras"
+                            />
+                          </div>
+
+                          <div className="bg-white border-2 border-green-100 rounded-2xl p-3 shadow-sm">
+                            <Label className="font-black text-gray-700 text-sm mb-1 block flex items-center gap-2">
+                              ✏️ Descripción / Notas
+                            </Label>
+                            <textarea
+                              value={finishingNotes}
+                              onChange={(e) => setFinishingNotes(e.target.value)}
+                              className="w-full bg-gradient-to-r from-white to-green-50 border-2 border-green-200 rounded-xl p-3 text-sm font-semibold text-gray-700 focus:border-green-400 outline-none"
+                              rows={3}
+                              placeholder="Notas divertidas o detalles importantes"
+                            />
+                          </div>
+                        </div>
+                        <Button 
+                          onClick={onCompleteService}
+                          className="w-full bg-green-500 hover:bg-green-600 text-white rounded-2xl py-6 font-bold mt-6 shadow-md border-b-4 border-green-700"
+                        >
+                          Confirmar y Cobrar 💰
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </div>
+            ))}
           </div>
         </motion.div>
       )}
@@ -768,7 +1148,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                 <DollarSign className="w-8 h-8" />
               </div>
               <div>
-                <p className="text-sm font-black text-purple-700">Ingresos Totales</p>
+                <p className="text-sm font-black text-purple-700">Ingresos por Cobrar</p>
                 <p className="text-3xl sm:text-4xl font-black text-purple-800 leading-tight">{formatCurrency(totalEarnings)}</p>
               </div>
             </div>
@@ -881,7 +1261,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                    <div className={`${servicesView === 'rejected' ? 'bg-red-50 border-red-100' : 'bg-green-50 border-green-100'} p-4 rounded-2xl space-y-2 mb-4 border`}>
                       <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                         <span>💰 Valor:</span>
-                        <span className="text-purple-600">{formatCurrency(apt.estimatedPrice || 0)}</span>
+                        <span className="text-purple-600">{formatCurrency(getServicePrice(apt))}</span>
                       </div>
                       <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                         <span>📅 Fecha:</span>
@@ -891,6 +1271,20 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                         <span>⏰ Hora:</span>
                         <span className="text-green-600">{formatTime12Hour(apt.time)}</span>
                       </div>
+                      
+                      {/* Botón Ver Desglose */}
+                      {apt.numPersonas > 1 && apt.services_per_person && apt.services_per_person.length > 0 && (
+                        <button
+                          onClick={() => {
+                            setSelectedServiceBreakdown(apt);
+                            setServiceBreakdownOpen(true);
+                          }}
+                          className="w-full mt-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-2 px-3 rounded-xl shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2 text-xs border-b-2 border-purple-700 active:border-b-0 active:translate-y-0.5"
+                        >
+                          <span>👥</span>
+                          <span>Ver desglose de {apt.numPersonas} personas</span>
+                        </button>
+                      )}
                    </div>
 
                    {/* Datos Críticos */}
@@ -943,6 +1337,12 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                            <div className="text-xs font-semibold text-gray-700">
                              <span className="text-gray-500">Barrio:</span>
                              <p className="text-amber-700 font-black mt-0.5">{apt.barrio}</p>
+                           </div>
+                         )}
+                         {apt.descripcionUbicacion && (
+                           <div className="text-xs font-semibold text-gray-700">
+                             <span className="text-gray-500">🏢 Detalles:</span>
+                             <p className="text-blue-700 font-black mt-0.5">{apt.descripcionUbicacion}</p>
                            </div>
                          )}
                          {apt.whatsapp && (
@@ -1054,29 +1454,23 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                             </div>
 
                             <div className="space-y-3">
-                            <div className="bg-white border-2 border-blue-100 rounded-2xl p-3 shadow-sm">
-                              <Label className="font-black text-gray-700 text-sm mb-1 block flex items-center gap-2">
-                                🎯 Servicio ejecutado
-                              </Label>
-                              <select
-                                value={finishingPlan}
-                                onChange={(e) => {
-                                  const selectedService = e.target.value;
-                                  setFinishingPlan(selectedService);
-                                  // Actualizar precio automáticamente
-                                  if (selectedService && serviceCatalog[selectedService]) {
-                                    setFinishingPrice(serviceCatalog[selectedService]);
-                                  }
-                                }}
-                                className="w-full bg-gradient-to-r from-white to-blue-50 border-2 border-blue-200 rounded-xl p-3 text-sm font-semibold text-gray-700 focus:border-blue-400 outline-none"
-                              >
-                                <option value="">Selecciona el servicio</option>
-                                {Object.entries(serviceCatalog).map(([serviceName, servicePrice]) => (
-                                  <option key={serviceName} value={serviceName}>
-                                    {serviceName} - {formatCurrency(servicePrice)}
-                                  </option>
-                                ))}
-                              </select>
+                            {/* Valor del Servicio - Informativo */}
+                            <div className="bg-gradient-to-r from-blue-50 to-blue-100 border-2 border-blue-300 rounded-2xl p-4 shadow-sm">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-black text-blue-700 text-sm flex items-center gap-2">
+                                    💰 Valor del Servicio
+                                  </p>
+                                  <p className="text-xs text-blue-600 font-semibold mt-1">
+                                    {apt.numPersonas > 1 ? `${apt.numPersonas} personas` : apt.serviceType}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-2xl font-black text-blue-700">
+                                    {formatCurrency(getServicePrice(apt))}
+                                  </p>
+                                </div>
+                              </div>
                             </div>
 
                             <div className="bg-white border-2 border-purple-100 rounded-2xl p-3 shadow-sm">
@@ -1138,6 +1532,8 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                 appointments={myCalendarAppointments}
                 piojologists={[currentUser]}
                 title="Mi Agenda"
+                serviceCatalog={serviceCatalog}
+                formatCurrency={formatCurrency}
               />
             </div>
           </div>
@@ -1649,6 +2045,79 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                     <span className="text-lg">✗</span> Sí, Rechazar
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Desglose de Servicios */}
+      <Dialog open={serviceBreakdownOpen} onOpenChange={setServiceBreakdownOpen}>
+        <DialogContent className="rounded-[3rem] border-4 border-purple-400 p-0 overflow-hidden sm:max-w-md bg-gradient-to-br from-purple-50 to-pink-50 shadow-2xl">
+          {selectedServiceBreakdown && (
+            <div className="relative">
+              {/* Header con gradiente */}
+              <div className="bg-gradient-to-r from-purple-500 to-pink-500 p-6 text-center relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/20 rounded-full -mr-16 -mt-16"></div>
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/20 rounded-full -ml-12 -mb-12"></div>
+                <DialogHeader className="relative z-10">
+                  <DialogTitle className="text-white font-black text-2xl uppercase tracking-wide mb-2">
+                    💰 Desglose del Servicio
+                  </DialogTitle>
+                </DialogHeader>
+                <p className="text-white/90 font-bold text-sm">
+                  {selectedServiceBreakdown.clientName}
+                </p>
+              </div>
+
+              {/* Contenido */}
+              <div className="max-h-[60vh] overflow-y-auto p-6 space-y-4">
+                {/* Número de personas */}
+                <div className="bg-white rounded-2xl p-4 shadow-md border-2 border-purple-200">
+                  <p className="text-sm font-bold text-purple-600 mb-2">👥 Total de personas:</p>
+                  <p className="text-3xl font-black text-purple-800">{selectedServiceBreakdown.numPersonas}</p>
+                </div>
+
+                {/* Lista de servicios */}
+                {selectedServiceBreakdown.services_per_person && Array.isArray(selectedServiceBreakdown.services_per_person) && (
+                  <div className="bg-white rounded-2xl p-4 shadow-md border-2 border-purple-200">
+                    <p className="text-sm font-bold text-purple-600 mb-3">📋 Servicios por persona:</p>
+                    <div className="space-y-2">
+                      {selectedServiceBreakdown.services_per_person.map((service, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-gradient-to-r from-purple-50 to-pink-50 p-3 rounded-xl border border-purple-200">
+                          <div className="flex items-center gap-2">
+                            <span className="bg-purple-500 text-white w-7 h-7 rounded-full flex items-center justify-center text-xs font-black">
+                              {idx + 1}
+                            </span>
+                            <span className="font-bold text-gray-700">{service}</span>
+                          </div>
+                          <span className="font-black text-emerald-600 text-lg">
+                            {formatCurrency(serviceCatalog[service] || 0)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Total */}
+                <div className="bg-gradient-to-r from-emerald-500 to-green-500 rounded-2xl p-5 shadow-lg border-2 border-emerald-400">
+                  <div className="flex items-center justify-between">
+                    <span className="text-white font-black text-lg uppercase">💎 Total del Servicio:</span>
+                    <span className="text-white font-black text-3xl">
+                      {formatCurrency(getServicePrice(selectedServiceBreakdown))}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Botón cerrar */}
+                <button
+                  type="button"
+                  onClick={() => setServiceBreakdownOpen(false)}
+                  className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-black py-4 px-6 rounded-2xl shadow-lg border-b-4 border-purple-700 active:border-b-0 active:translate-y-1 transition-all"
+                >
+                  ✓ Entendido
+                </button>
               </div>
             </div>
           )}

@@ -14,10 +14,12 @@ class Booking extends Model
         'hora',
         'clientName',
         'serviceType',
+        'services_per_person',
         'whatsapp',
         'email',
         'direccion',
         'barrio',
+        'descripcion_ubicacion',
         'lat',
         'lng',
         'numPersonas',
@@ -44,6 +46,7 @@ class Booking extends Model
         'additional_costs' => 'decimal:2',
         'lat' => 'decimal:7',
         'lng' => 'decimal:7',
-        'rejection_history' => 'array'
+        'rejection_history' => 'array',
+        'services_per_person' => 'array'
     ];
 }

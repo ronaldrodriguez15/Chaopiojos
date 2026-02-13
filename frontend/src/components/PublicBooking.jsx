@@ -159,9 +159,12 @@ const PublicBooking = () => {
     whatsapp: '',
     direccion: '',
     barrio: '',
+    descripcionUbicacion: '',
     lat: null,
     lng: null,
     numPersonas: '1',
+    servicesPerPerson: [serviceOptions[0]?.value || 'Normal'],
+    servicesPerPerson: [serviceOptions[0]?.value || 'Normal'], // Array de servicios por persona
     hasAlergias: false,
     detalleAlergias: '',
     referidoPor: '',
@@ -170,6 +173,11 @@ const PublicBooking = () => {
   });
 
   const shareLink = `${window.location.origin}/agenda`;
+  // Calcular total sumando todos los servicios de las personas
+  const totalServiceValue = form.servicesPerPerson.reduce((total, serviceType) => {
+    const serviceValue = serviceOptions.find((service) => service.value === serviceType)?.amount || 0;
+    return total + serviceValue;
+  }, 0);
   const currentPaymentOption = boldPaymentOptions[form.serviceType];
   const currentServiceValue = serviceOptions.find((service) => service.value === form.serviceType)?.amount || 0;
   const isPayNowAvailable = Boolean(currentPaymentOption?.link);
@@ -195,7 +203,11 @@ const PublicBooking = () => {
         const normalized = normalizeServiceCatalog(result.services);
         if (isMounted && normalized.length) {
           setServiceOptions(normalized);
-          setForm(prev => ({ ...prev, serviceType: normalized[0]?.value || prev.serviceType }));
+          setForm(prev => ({ 
+            ...prev, 
+            serviceType: normalized[0]?.value || prev.serviceType,
+            servicesPerPerson: [normalized[0]?.value || 'Normal']
+          }));
         }
       }
     };
@@ -299,6 +311,7 @@ const PublicBooking = () => {
       whatsapp: '',
       direccion: '',
       barrio: '',
+      descripcionUbicacion: '',
       lat: null,
       lng: null,
       numPersonas: '1',
@@ -453,11 +466,13 @@ const PublicBooking = () => {
         fecha: fecha,
         hora: selectedSlot,
         clientName: form.name,
-        serviceType: form.serviceType,
+        serviceType: form.servicesPerPerson[0], // Primer servicio como principal
+        servicesPerPerson: form.servicesPerPerson, // Array completo de servicios
         whatsapp: form.whatsapp,
         email: form.email || null,
         direccion: form.direccion,
         barrio: form.barrio,
+        descripcionUbicacion: form.descripcionUbicacion || null,
         lat: form.lat,
         lng: form.lng,
         numPersonas: parseInt(form.numPersonas),
@@ -526,10 +541,14 @@ const PublicBooking = () => {
         clientName: form.name,
         fecha: formatLongDate(selectedDate),
         hora: selectedSlot,
-        serviceType: form.serviceType,
+        serviceType: form.servicesPerPerson[0],
+        servicesPerPerson: form.servicesPerPerson,
+        numPersonas: form.numPersonas,
+        totalValue: totalServiceValue,
         whatsapp: form.whatsapp,
         direccion: form.direccion,
-        barrio: form.barrio
+        barrio: form.barrio,
+        descripcionUbicacion: form.descripcionUbicacion
       };
 
       setConfirmedBooking(confirmedData);
@@ -743,8 +762,11 @@ const PublicBooking = () => {
                       <div className="flex items-center justify-center gap-3">
                         <Sparkles className="w-6 h-6 md:w-8 md:h-8 text-green-600" />
                         <div className="text-left">
-                          <p className="text-xs font-bold text-green-500 uppercase">Servicio</p>
-                          <p className="text-sm md:text-base font-black text-gray-800">{confirmedBooking?.serviceType}</p>
+                          <p className="text-xs font-bold text-green-500 uppercase">{confirmedBooking?.numPersonas > 1 ? 'Servicio para' : 'Servicio'}</p>
+                          <p className="text-sm md:text-base font-black text-gray-800">
+                            {confirmedBooking?.numPersonas > 1 ? `${confirmedBooking.numPersonas} personas` : confirmedBooking?.serviceType}
+                          </p>
+                          <p className="text-xs font-bold text-green-600">Total: {formatCurrency(confirmedBooking?.totalValue || 0)}</p>
                         </div>
                       </div>
                     </div>
@@ -760,16 +782,43 @@ const PublicBooking = () => {
                     {/* Botón para enviar confirmación por WhatsApp */}
                     <a
                       href={`https://wa.me/573227932394?text=${encodeURIComponent(
-                        `✅ *Confirmación de Reserva - Chao Piojos*\n\n` +
-                        `Hola! Acabo de agendar mi cita:\n\n` +
-                        `👤 *Nombre:* ${confirmedBooking?.clientName}\n` +
-                        `📅 *Fecha:* ${confirmedBooking?.fecha}\n` +
-                        `🕐 *Hora:* ${confirmedBooking?.hora}\n` +
-                        `💆 *Servicio:* ${confirmedBooking?.serviceType}\n` +
-                        `📍 *Dirección:* ${confirmedBooking?.direccion}\n` +
-                        `🏘️ *Barrio:* ${confirmedBooking?.barrio || 'No especificado'}\n` +
-                        `📱 *WhatsApp:* ${confirmedBooking?.whatsapp}\n\n` +
-                        `Confirmo mi asistencia y espero su contacto. ¡Gracias!`
+                        `*RESERVA CONFIRMADA* ✅\n\n` +
+                        `*Chao Piojos* 🦸\n\n` +
+                        `Nombre: ${confirmedBooking?.clientName}\n` +
+                        `Fecha: ${confirmedBooking?.fecha}\n` +
+                        `Hora: ${confirmedBooking?.hora}\n` +
+                        `Direccion: ${confirmedBooking?.direccion}\n` +
+                        (confirmedBooking?.descripcionUbicacion ? `Detalles: ${confirmedBooking.descripcionUbicacion}\n` : '') +
+                        `Barrio: ${confirmedBooking?.barrio || 'No especificado'}\n\n` +
+                        `Personas: ${confirmedBooking?.numPersonas}\n` +
+                        (confirmedBooking?.servicesPerPerson?.map((service, idx) => 
+                          `   ${idx + 1}. ${service}`
+                        ).join('\n') || '') + '\n\n' +
+                        `*Total: ${formatCurrency(confirmedBooking?.totalValue || 0)}* 💰\n\n` +
+                        `-------------------\n\n` +
+                        `*Dudas o cambios?* 📱\n` +
+                        `Escribenos al WhatsApp 3227932394\n\n` +
+                        `-------------------\n\n` +
+                        `*Como prepararte:* ✨\n\n` +
+                        `- Cabello seco, limpio y sin productos\n` +
+                        `- Cabello desenredado\n` +
+                        `- No aplicar tratamientos antipiojos antes\n` +
+                        `- Ten un espacio comodo y una toalla limpia\n` +
+                        `- Informa si hay alergias\n` +
+                        `- El procedimiento toma entre 30 y 60 minutos\n` +
+                        `- Menores deben estar acompañados por un adulto\n\n` +
+                        `-------------------\n\n` +
+                        `*Cuidados despues:* 🏡\n\n` +
+                        `- Lava el cabello despues de la limpieza\n` +
+                        `- Cambia ropa de cama y pijamas de los ultimos 3 dias\n` +
+                        `- Lava y desinfecta peines, cepillos, ligas, gorras\n` +
+                        `- Evita compartir objetos de cabeza\n` +
+                        `- Aspira sillones, almohadas, colchones\n` +
+                        `- Haz revisiones semanales en casa\n` +
+                        `- Viste al niño con ropa limpia tras la limpieza\n\n` +
+                        `-------------------\n\n` +
+                        `Confirmo mi asistencia ✅\n` +
+                        `Gracias por confiar en Chao Piojos! 💚`
                       )}`}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -789,30 +838,30 @@ const PublicBooking = () => {
                         <span aria-hidden="true"></span> Recomendaciones para tu visita
                       </p>
                       <p className="text-sm md:text-base font-black text-gray-800">
-                        Si tienes dudas o cambios escrbenos al WhatsApp <span className="text-emerald-600">3227932394</span>.
+                        Si tienes dudas o cambios escríbenos al WhatsApp <span className="text-emerald-600">3227932394</span>.
                       </p>
                       <div className="space-y-2 text-sm md:text-base text-gray-700 font-bold">
-                        <p className="text-emerald-700 font-black">Cmo prepararte para recibir al piojlogo certificado</p>
+                        <p className="text-emerald-700 font-black">Cómo prepararte para recibir al piojólogo certificado</p>
                         <ul className="list-disc list-inside space-y-1">
-                          <li>Cabello seco, limpio y sin productos; lvalo el da anterior y llega con el cabello totalmente seco.</li>
-                          <li>Cabello desenredado para facilitar la extraccin.</li>
+                          <li>Cabello seco, limpio y sin productos; lávalo el día anterior y llega con el cabello totalmente seco.</li>
+                          <li>Cabello desenredado para facilitar la extracción.</li>
                           <li>No aplicar tratamientos antipiojos antes del servicio.</li>
-                          <li>Ten un espacio cmodo y una toalla limpia para los hombros.</li>
-                          <li>Informa si hay condiciones dermatolgicas o alergias.</li>
+                          <li>Ten un espacio cómodo y una toalla limpia para los hombros.</li>
+                          <li>Informa si hay condiciones dermatológicas o alergias.</li>
                           <li>El procedimiento puede tomar entre 30 y 60 minutos.</li>
-                          <li>Menores de edad deben estar acompaados por un adulto responsable.</li>
+                          <li>Menores de edad deben estar acompañados por un adulto responsable.</li>
                         </ul>
                       </div>
                       <div className="space-y-2 text-sm md:text-base text-gray-700 font-bold">
-                        <p className="text-emerald-700 font-black">Cuidados despus de la limpieza</p>
+                        <p className="text-emerald-700 font-black">Cuidados después de la limpieza</p>
                         <ul className="list-disc list-inside space-y-1">
-                          <li>Lava el cabello despus de la limpieza.</li>
-                          <li>Cambia ropa de cama y pijamas de los ltimos 3 das (usa agua caliente si es posible).</li>
+                          <li>Lava el cabello después de la limpieza.</li>
+                          <li>Cambia ropa de cama y pijamas de los últimos 3 días (usa agua caliente si es posible).</li>
                           <li>Lava y desinfecta peines, cepillos, ligas, gorras y diademas.</li>
-                          <li>Evita compartir objetos de cabeza (peines, almohadas, audfonos, bufandas, gorras).</li>
-                          <li>Aspira sillones, almohadas, colchones y asientos del vehculo como medida adicional.</li>
+                          <li>Evita compartir objetos de cabeza (peines, almohadas, audífonos, bufandas, gorras).</li>
+                          <li>Aspira sillones, almohadas, colchones y asientos del vehículo como medida adicional.</li>
                           <li>Haz revisiones semanales en casa.</li>
-                          <li>Viste al nio con ropa limpia tras la limpieza.</li>
+                          <li>Viste al niño con ropa limpia tras la limpieza.</li>
                         </ul>
                       </div>
                       <p className="text-sm md:text-base font-black text-emerald-700">Gracias por confiar en Chao Piojos </p>
@@ -949,7 +998,7 @@ const PublicBooking = () => {
 
                 {/* Datos del Cliente */}
                 <div className="space-y-3">
-                  <p className="text-base md:text-lg font-black text-gray-700 uppercase tracking-wide"> Datos del Cliente</p>
+                  <p className="text-base md:text-lg font-black text-gray-700 uppercase tracking-wide">👤 Datos del Cliente</p>
                   <div className="space-y-1">
                     <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Nombre Completo *</label>
                     <input
@@ -969,19 +1018,65 @@ const PublicBooking = () => {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Nivel de Infestación *</label>
-                    <select
+                    <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">👥 Número de Personas *</label>
+                    <input
                       required
-                      className="w-full rounded-xl md:rounded-2xl border-2 border-orange-200 bg-orange-50 px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-orange-500 text-base md:text-lg cursor-pointer"
-                      value={form.serviceType}
-                      onChange={(e) => handleChange('serviceType', e.target.value)}
-                    >
-                    {serviceOptions.map((service) => (
-                      <option key={service.value} value={service.value}>
-                        {service.label}  {formatCurrency(service.amount)}
-                      </option>
+                      type="number"
+                      min="1"
+                      max="10"
+                      className="w-full rounded-xl md:rounded-2xl border-2 border-orange-200 bg-orange-50 px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-orange-500 text-base md:text-lg"
+                      value={form.numPersonas}
+                      onChange={(e) => {
+                        const numPersonas = parseInt(e.target.value) || 1;
+                        const newServicesPerPerson = Array(numPersonas).fill(null).map((_, idx) => 
+                          form.servicesPerPerson[idx] || serviceOptions[0]?.value || 'Normal'
+                        );
+                        setForm({
+                          ...form,
+                          numPersonas: e.target.value,
+                          servicesPerPerson: newServicesPerPerson
+                        });
+                      }}
+                      placeholder="1"
+                    />
+                  </div>
+
+                  {/* Niveles de Infestación por Persona */}
+                  <div className="space-y-3 bg-purple-50 p-4 rounded-2xl border-2 border-purple-200">
+                    <p className="text-base md:text-lg font-black text-purple-700 uppercase tracking-wide">💆 Nivel de Infestación por Persona</p>
+                    {Array(parseInt(form.numPersonas) || 1).fill(null).map((_, idx) => (
+                      <div key={idx} className="space-y-1">
+                        <label className="text-sm md:text-base font-bold text-gray-700 ml-2 mb-1 block">
+                          {parseInt(form.numPersonas) === 1 
+                            ? 'Nivel de Infestación *' 
+                            : `Nivel de Infestación para la ${idx === 0 ? 'primera' : idx === 1 ? 'segunda' : idx === 2 ? 'tercera' : idx === 3 ? 'cuarta' : idx === 4 ? 'quinta' : `persona ${idx + 1}`} *`
+                          }
+                        </label>
+                        <select
+                          required
+                          className="w-full rounded-xl md:rounded-2xl border-2 border-purple-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-purple-500 text-base md:text-lg cursor-pointer"
+                          value={form.servicesPerPerson[idx] || serviceOptions[0]?.value}
+                          onChange={(e) => {
+                            const newServices = [...form.servicesPerPerson];
+                            newServices[idx] = e.target.value;
+                            setForm({ ...form, servicesPerPerson: newServices });
+                          }}
+                        >
+                          {serviceOptions.map((service) => (
+                            <option key={service.value} value={service.value}>
+                              {service.label} · {formatCurrency(service.amount)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     ))}
-                  </select>
+                    {/* Mostrar Total */}
+                    <div className="bg-gradient-to-r from-green-500 to-emerald-500 p-4 rounded-xl shadow-lg border-2 border-green-400">
+                      <div className="flex items-center justify-between">
+                        <span className="text-white font-black text-base md:text-lg uppercase">💰 Total del Servicio:</span>
+                        <span className="text-white font-black text-xl md:text-2xl">{formatCurrency(totalServiceValue)}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -1022,11 +1117,12 @@ const PublicBooking = () => {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Dirección *</label>
+                    <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">📍 Dirección *</label>
                     <AddressAutocomplete
                       value={form.direccion}
                       onChange={(value) => handleChange('direccion', value)}
                       hasError={!!fieldErrors.direccion}
+                      forceRedStyle={true}
                       onSelect={(suggestion) => {
                         handleChange('direccion', suggestion.fullName);
                         // Guardar coordenadas
@@ -1041,7 +1137,7 @@ const PublicBooking = () => {
                         toast({
                           title: '📍 Dirección seleccionada',
                           description: suggestion.name,
-                          className: 'bg-blue-50 border-2 border-blue-200 text-blue-700 rounded-2xl'
+                          className: 'bg-red-50 border-2 border-red-200 text-red-700 rounded-2xl font-bold'
                         });
                       }}
                     />
@@ -1051,34 +1147,37 @@ const PublicBooking = () => {
                       </p>
                     )}
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Barrio</label>
-                      <input
-                        type="text"
-                        name="barrio"
-                        className={`w-full rounded-xl md:rounded-2xl border-2 ${fieldErrors.barrio ? 'border-red-400 bg-red-50' : 'border-blue-200 bg-white'} px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none ${fieldErrors.barrio ? 'focus:border-red-500' : 'focus:border-blue-400'} text-base md:text-lg`}
-                        value={form.barrio}
-                        onChange={(e) => handleChange('barrio', e.target.value)}
-                        placeholder="Ej: Centro"
-                      />
-                      {fieldErrors.barrio && (
-                        <p className="text-red-600 text-sm font-bold ml-2 mt-1 flex items-center gap-1">
-                          <span>❌</span> {fieldErrors.barrio}
-                        </p>
-                      )}
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Número de Personas</label>
-                      <input
-                        type="number"
-                        min="1"
-                        className="w-full rounded-xl md:rounded-2xl border-2 border-blue-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-blue-400 text-base md:text-lg"
-                        value={form.numPersonas}
-                        onChange={(e) => handleChange('numPersonas', e.target.value)}
-                        placeholder="1"
-                      />
-                    </div>
+                  <div className="space-y-1">
+                    <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">🏘️ Barrio</label>
+                    <input
+                      type="text"
+                      name="barrio"
+                      className={`w-full rounded-xl md:rounded-2xl border-2 ${fieldErrors.barrio ? 'border-red-400 bg-red-50' : 'border-blue-200 bg-white'} px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none ${fieldErrors.barrio ? 'focus:border-red-500' : 'focus:border-blue-400'} text-base md:text-lg`}
+                      value={form.barrio}
+                      onChange={(e) => handleChange('barrio', e.target.value)}
+                      placeholder="Ej: Centro"
+                    />
+                    {fieldErrors.barrio && (
+                      <p className="text-red-600 text-sm font-bold ml-2 mt-1 flex items-center gap-1">
+                        <span>❌</span> {fieldErrors.barrio}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">🏢 Descripción de la ubicación</label>
+                    <input
+                      type="text"
+                      name="descripcionUbicacion"
+                      className={`w-full rounded-xl md:rounded-2xl border-2 ${fieldErrors.descripcionUbicacion ? 'border-red-400 bg-red-50' : 'border-blue-200 bg-white'} px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none ${fieldErrors.descripcionUbicacion ? 'focus:border-red-500' : 'focus:border-blue-400'} text-base md:text-lg`}
+                      value={form.descripcionUbicacion}
+                      onChange={(e) => handleChange('descripcionUbicacion', e.target.value)}
+                      placeholder="Ej: Conjunto La Esperanza, Apto 302, Torre 3"
+                    />
+                    {fieldErrors.descripcionUbicacion && (
+                      <p className="text-red-600 text-sm font-bold ml-2 mt-1 flex items-center gap-1">
+                        <span>❌</span> {fieldErrors.descripcionUbicacion}
+                      </p>
+                    )}
                   </div>
                 </div>
 

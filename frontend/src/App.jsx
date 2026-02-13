@@ -257,14 +257,14 @@ function App() {
     }
   }, [currentUser]);
 
-  // Actualización automática cada 30 segundos
+  // Actualización automática cada 10 segundos para reflejar cambios rápidamente
   useEffect(() => {
     if (!currentUser || !authService.isAuthenticated()) return;
     
     const intervalId = setInterval(() => {
       loadBookings();
       loadUsers();
-    }, 30000); // 30 segundos
+    }, 10000); // 10 segundos para actualizaciones más rápidas
 
     return () => clearInterval(intervalId);
   }, [currentUser]);
@@ -318,18 +318,21 @@ function App() {
               backendId: booking.id,
               clientName: booking.clientName,
               serviceType: booking.serviceType,
+              services_per_person: booking.services_per_person,
               date: fechaISO,
               time: booking.hora,
               whatsapp: booking.whatsapp,
               email: booking.email,
               direccion: booking.direccion,
               barrio: booking.barrio,
+              descripcionUbicacion: booking.descripcion_ubicacion,
               lat: booking.lat,
               lng: booking.lng,
               numPersonas: booking.numPersonas,
               hasAlergias: booking.hasAlergias,
               detalleAlergias: booking.detalleAlergias,
               referidoPor: booking.referidoPor,
+              payment_method: booking.payment_method,
               price_confirmed: booking.price_confirmed,
               estimatedPrice: serviceCatalog[booking.serviceType] || 0,
               status: normalizedStatus,
@@ -534,10 +537,22 @@ function App() {
 
   const updateAppointments = (newAppointments) => {
     setAppointments(newAppointments);
+    // Persistir en localStorage para sincronización entre tabs
+    try {
+      localStorage.setItem('appointments', JSON.stringify(newAppointments));
+    } catch (e) {
+      console.error('Error al guardar appointments en localStorage:', e);
+    }
   };
 
   const updateBookingsState = (newBookings) => {
     setBookings(newBookings);
+    // Persistir en localStorage para sincronización entre tabs
+    try {
+      localStorage.setItem('bookings', JSON.stringify(newBookings));
+    } catch (e) {
+      console.error('Error al guardar bookings en localStorage:', e);
+    }
     // Persist rejection history cache for cross-role visibility
     const cache = loadRejectionCache();
     newBookings.forEach(b => {
@@ -803,6 +818,9 @@ function App() {
     if (currentUser.id === appointment.piojologistId) {
       setCurrentUser(prev => ({ ...prev, earnings: (prev.earnings || 0) + netEarnings }));
     }
+
+    // Recargar bookings desde el backend para actualizar en tiempo real
+    await loadBookings();
 
     // Notificar al admin que se completó un servicio
     pushNotification({

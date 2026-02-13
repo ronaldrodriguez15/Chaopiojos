@@ -202,6 +202,15 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
   });
 
   const getServicePrice = (apt = {}) => {
+    // Si tiene services_per_person, calcular el total sumando todos
+    if (apt.services_per_person && Array.isArray(apt.services_per_person)) {
+      const total = apt.services_per_person.reduce((sum, serviceType) => {
+        return sum + (serviceCatalog[serviceType] || 0);
+      }, 0);
+      return total;
+    }
+    
+    // Fallback al comportamiento anterior
     const raw = apt.price ?? apt.price_confirmed ?? apt.estimatedPrice ?? serviceCatalog[apt.serviceType] ?? 0;
     const num = Number(raw);
     return Number.isFinite(num) ? num : 0;
@@ -727,7 +736,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
   const handleAssignPiojologist = async (appointmentId, piojologistId, appointmentArg = null) => {
     const piojologist = piojologists.find(p => p.id === parseInt(piojologistId));
     const appointment = appointmentArg || appointments.find(a => a.id === appointmentId || a.backendId === appointmentId || a.bookingId === appointmentId);
-    const servicePrice = serviceCatalog[appointment?.serviceType] || 0;
+    const servicePrice = getServicePrice(appointment);
     const backendId = appointment?.backendId || appointment?.bookingId || appointmentId;
     
     // Actualizar en el backend (solo si viene de bookings públicos o tiene backendId)
@@ -793,6 +802,16 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
           appointment: assignedSnapshot
         });
       }
+
+      // Disparar evento personalizado para actualización en tiempo real
+      window.dispatchEvent(new CustomEvent('serviceAssigned', {
+        detail: {
+          appointmentId: appointmentId,
+          piojologistId: parseInt(piojologistId),
+          appointment: assignedSnapshot,
+          timestamp: Date.now()
+        }
+      }));
       
       toast({
         title: "¡Asignación Mágica! ✨",
