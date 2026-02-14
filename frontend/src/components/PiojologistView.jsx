@@ -915,6 +915,9 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                 {apt.numPersonas && (
                   <div className="bg-blue-50 p-3 rounded-xl mb-4 border border-blue-200">
                     <p className="text-xs font-bold text-blue-600 mb-2">👥 Personas: <span className="text-blue-800 font-black">{apt.numPersonas}</span></p>
+                    {apt.edad && (
+                      <p className="text-xs font-bold text-blue-600 mb-2">🎂 Edad: <span className="text-blue-800 font-black">{apt.edad}</span></p>
+                    )}
                     {apt.services_per_person && Array.isArray(apt.services_per_person) && apt.services_per_person.length > 0 && (
                       <div className="mt-2 space-y-1 text-xs">
                         <p className="font-bold text-blue-600 mb-1">Servicios por persona:</p>
@@ -1003,6 +1006,12 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                               <p className="text-purple-600 text-[11px] font-black uppercase">Hora</p>
                               <p className="text-base">{formatTime12Hour(apt.time)}</p>
                             </div>
+                            {apt.edad && (
+                              <div className="col-span-2 bg-orange-50 border border-orange-100 rounded-xl p-3">
+                                <p className="text-orange-600 text-[11px] font-black uppercase">🎂 Edad</p>
+                                <p className="text-base font-black text-orange-700">{apt.edad}</p>
+                              </div>
+                            )}
                             <div className="col-span-2 bg-pink-50 border border-pink-100 rounded-xl p-3">
                               <p className="text-pink-600 text-[11px] font-black uppercase">Dirección</p>
                               <p className="text-xs text-gray-800 font-black">{apt.direccion || apt.address || apt.addressLine || 'Sin dirección registrada'}</p>
@@ -1440,6 +1449,12 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                                   <p className="text-purple-600 text-[11px] font-black uppercase">Hora</p>
                                   <p className="text-base">{formatTime12Hour(apt.time)}</p>
                                 </div>
+                                {apt.edad && (
+                                  <div className="col-span-2 bg-orange-50 border border-orange-100 rounded-xl p-3">
+                                    <p className="text-orange-600 text-[11px] font-black uppercase">🎂 Edad</p>
+                                    <p className="text-base font-black text-orange-700">{apt.edad}</p>
+                                  </div>
+                                )}
                                 <div className="col-span-2 bg-pink-50 border border-pink-100 rounded-xl p-3">
                                   <p className="text-pink-600 text-[11px] font-black uppercase">Dirección</p>
                                   <p className="text-xs text-gray-800 font-black">{apt.direccion || apt.address || apt.addressLine || 'Sin dirección registrada'}</p>

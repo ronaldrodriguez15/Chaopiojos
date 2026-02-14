@@ -163,7 +163,7 @@ const PublicBooking = () => {
     lat: null,
     lng: null,
     numPersonas: '1',
-    servicesPerPerson: [serviceOptions[0]?.value || 'Normal'],
+    edad: '',
     servicesPerPerson: [serviceOptions[0]?.value || 'Normal'], // Array de servicios por persona
     hasAlergias: false,
     detalleAlergias: '',
@@ -315,6 +315,7 @@ const PublicBooking = () => {
       lat: null,
       lng: null,
       numPersonas: '1',
+      edad: '',
       hasAlergias: false,
       detalleAlergias: '',
       referidoPor: '',
@@ -476,6 +477,7 @@ const PublicBooking = () => {
         lat: form.lat,
         lng: form.lng,
         numPersonas: parseInt(form.numPersonas),
+        edad: form.edad,
         hasAlergias: form.hasAlergias,
         detalleAlergias: form.detalleAlergias || null,
         referidoPor: form.referidoPor || null,
@@ -791,6 +793,7 @@ const PublicBooking = () => {
                         (confirmedBooking?.descripcionUbicacion ? `Detalles: ${confirmedBooking.descripcionUbicacion}\n` : '') +
                         `Barrio: ${confirmedBooking?.barrio || 'No especificado'}\n\n` +
                         `Personas: ${confirmedBooking?.numPersonas}\n` +
+                        `Edad: ${confirmedBooking?.edad}\n` +
                         (confirmedBooking?.servicesPerPerson?.map((service, idx) => 
                           `   ${idx + 1}. ${service}`
                         ).join('\n') || '') + '\n\n' +
@@ -1038,6 +1041,18 @@ const PublicBooking = () => {
                         });
                       }}
                       placeholder="1"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">🎂 Edad de la(s) Persona(s) que Recibirán el Servicio *</label>
+                    <input
+                      required
+                      type="text"
+                      className="w-full rounded-xl md:rounded-2xl border-2 border-orange-200 bg-orange-50 px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-orange-500 text-base md:text-lg"
+                      value={form.edad}
+                      onChange={(e) => handleChange('edad', e.target.value)}
+                      placeholder="Ej: 4 y 9, o 25"
                     />
                   </div>
 

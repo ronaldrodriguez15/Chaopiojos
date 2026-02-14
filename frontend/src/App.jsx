@@ -329,6 +329,7 @@ function App() {
               lat: booking.lat,
               lng: booking.lng,
               numPersonas: booking.numPersonas,
+              edad: booking.edad,
               hasAlergias: booking.hasAlergias,
               detalleAlergias: booking.detalleAlergias,
               referidoPor: booking.referidoPor,
@@ -778,7 +779,8 @@ function App() {
           plan_type: completionData.planType || appointment.serviceType,
           price_confirmed: completionData.priceConfirmed ?? servicePrice,
           service_notes: completionData.notes || null,
-          additional_costs: completionData.additionalCosts || 0
+          additional_costs: completionData.additionalCosts || 0,
+          payment_status_to_piojologist: 'pending' // Marcar como pendiente de pago
         });
       } catch (err) {
         console.error('Error actualizando booking a completed', err);
@@ -801,14 +803,14 @@ function App() {
     if (appointment.isPublicBooking || isBookingId || bookingMatch) {
       const updatedBookings = bookings.map(apt => 
         (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId || (isBookingId && apt.backendId === Number(appointmentId.replace('booking-',''))))
-          ? { ...apt, status: 'completed', price: completionData.priceConfirmed ?? servicePrice, price_confirmed: completionData.priceConfirmed ?? servicePrice, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions }
+          ? { ...apt, status: 'completed', price: completionData.priceConfirmed ?? servicePrice, price_confirmed: completionData.priceConfirmed ?? servicePrice, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions, payment_status_to_piojologist: 'pending', paymentStatusToPiojologist: 'pending' }
           : apt
       );
       setBookings(updatedBookings);
     } else {
       const updatedAppointments = appointments.map(apt => 
         (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId)
-          ? { ...apt, status: 'completed', price: completionData.priceConfirmed ?? servicePrice, price_confirmed: completionData.priceConfirmed ?? servicePrice, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions }
+          ? { ...apt, status: 'completed', price: completionData.priceConfirmed ?? servicePrice, price_confirmed: completionData.priceConfirmed ?? servicePrice, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions, payment_status_to_piojologist: 'pending', paymentStatusToPiojologist: 'pending' }
           : apt
       );
       setAppointments(updatedAppointments);

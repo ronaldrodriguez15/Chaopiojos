@@ -652,6 +652,10 @@ const ScheduleManagement = ({
                     )}
                   </div>
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
+                    🎂 Edad:<br />
+                    <span className="font-bold text-gray-800">{selectedService.edad || 'No informado'}</span>
+                  </div>
+                  <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
                      Referido por:<br />
                     <span className="font-bold text-gray-800">{selectedService.referidoPor || 'No informado'}</span>
                   </div>

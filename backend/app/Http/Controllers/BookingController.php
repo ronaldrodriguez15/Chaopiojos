@@ -47,6 +47,7 @@ class BookingController extends Controller
             'barrio' => 'required|string|max:255',
             'descripcionUbicacion' => 'nullable|string',
             'numPersonas' => 'required|integer|min:1',
+            'edad' => 'required|string|max:100',
             'hasAlergias' => 'required|boolean',
             'detalleAlergias' => 'nullable|string',
             'referidoPor' => 'nullable|string|max:255',
@@ -72,6 +73,7 @@ class BookingController extends Controller
             'barrio' => $request->barrio,
             'descripcion_ubicacion' => $request->descripcionUbicacion,
             'numPersonas' => $request->numPersonas,
+            'edad' => $request->edad,
             'hasAlergias' => $request->hasAlergias,
             'detalleAlergias' => $request->detalleAlergias,
             'referidoPor' => $request->referidoPor,
@@ -149,6 +151,10 @@ class BookingController extends Controller
         }
         if ($request->has('status')) {
             $booking->estado = $request->status;
+            // Si se marca como completado y no se especificó payment_status, establecerlo como pending
+            if ($request->status === 'completed' && !$request->has('payment_status_to_piojologist')) {
+                $booking->payment_status_to_piojologist = 'pending';
+            }
         }
 
         if ($request->has('plan_type')) {

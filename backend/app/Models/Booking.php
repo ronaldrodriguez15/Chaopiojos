@@ -23,6 +23,7 @@ class Booking extends Model
         'lat',
         'lng',
         'numPersonas',
+        'edad',
         'hasAlergias',
         'detalleAlergias',
         'referidoPor',
