@@ -499,7 +499,10 @@ const AddressAutocomplete = ({ value, onChange, onSelect, hasError = false, forc
   // Cerrar cuando se hace click fuera
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
+      const clickedInsideInput = containerRef.current?.contains(e.target);
+      const clickedInsideSuggestions = dropdownRef.current?.contains(e.target);
+
+      if (!clickedInsideInput && !clickedInsideSuggestions) {
         setIsOpen(false);
       }
       if (cityDropdownRef.current && !cityDropdownRef.current.contains(e.target)) {
@@ -508,7 +511,11 @@ const AddressAutocomplete = ({ value, onChange, onSelect, hasError = false, forc
     };
 
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
   const getDropdownPlacement = () => {
@@ -654,7 +661,7 @@ const AddressAutocomplete = ({ value, onChange, onSelect, hasError = false, forc
                   <motion.button
                     key={suggestion.id}
                     type="button"
-                    onClick={(e) => handleSuggestionClick(e, suggestion)}
+                    onPointerDown={(e) => handleSuggestionClick(e, suggestion)}
                     className={`w-full text-left px-4 py-3 transition-all border-b ${forceRedStyle || hasError ? 'border-red-100 hover:bg-red-50' : 'border-cyan-100 hover:bg-cyan-50'} ${
                       index === selectedIndex ? (forceRedStyle || hasError ? 'bg-red-100 border-l-4 border-l-red-500' : 'bg-cyan-100 border-l-4 border-l-cyan-500') : ''
                     } ${suggestion.isExactInput ? 'bg-green-50 border-l-4 border-l-green-500' : ''}`}

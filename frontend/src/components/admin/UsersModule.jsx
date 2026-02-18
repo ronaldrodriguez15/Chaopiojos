@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { UserPlus, Eye, Edit, Trash2, DollarSign, X } from 'lucide-react';
+import { UserPlus, Eye, Edit, Trash2, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import Pagination from './Pagination';
 
@@ -16,14 +16,18 @@ const UsersModule = React.memo(({
   const [currentPage, setCurrentPage] = useState(1);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Reset page cuando cambia cantidad
   useEffect(() => {
     const maxPage = Math.ceil(users.length / itemsPerPage);
     if (currentPage > maxPage && maxPage > 0) setCurrentPage(maxPage);
     else if (currentPage > 1 && users.length === 0) setCurrentPage(1);
-  }, [users.length, currentPage]);
+  }, [users.length, currentPage, itemsPerPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [itemsPerPage]);
 
   const handleDelete = useCallback((user) => {
     setUserToDelete(user);
@@ -82,6 +86,19 @@ const UsersModule = React.memo(({
         </div>
       </div>
 
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <p className="text-xs font-bold text-gray-500 uppercase">Registros por página</p>
+        <select
+          value={itemsPerPage}
+          onChange={(e) => setItemsPerPage(Number(e.target.value))}
+          className="self-start sm:self-auto bg-blue-50 border-2 border-blue-200 rounded-xl px-3 py-2 text-sm font-bold text-blue-700 outline-none"
+        >
+          {[5, 10, 20, 50].map((option) => (
+            <option key={`users-page-size-${option}`} value={option}>{option}</option>
+          ))}
+        </select>
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full text-left">
           <thead>
@@ -98,9 +115,9 @@ const UsersModule = React.memo(({
                 <td className="p-4">
                   <div className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-sm
-                      ${user.role === 'admin' ? 'bg-purple-100' : user.role === 'piojologist' ? 'bg-green-100' : 'bg-orange-100'}
+                      ${user.role === 'admin' ? 'bg-purple-100' : user.role === 'piojologa' ? 'bg-green-100' : 'bg-orange-100'}
                     `}>
-                      {user.role === 'admin' ? '👑' : user.role === 'piojologist' ? '👩‍⚕️' : '👤'}
+                      {user.role === 'admin' ? '👑' : user.role === 'piojologa' ? '👩‍⚕️' : '👤'}
                     </div>
                     <span className="font-bold text-gray-700">{user.name}</span>
                   </div>
@@ -108,10 +125,10 @@ const UsersModule = React.memo(({
                 <td className="p-4">
                   <span className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider
                     ${user.role === 'admin' ? 'bg-purple-100 text-purple-600' : 
-                      user.role === 'piojologist' ? 'bg-green-100 text-green-600' : 
+                      user.role === 'piojologa' ? 'bg-green-100 text-green-600' : 
                       'bg-orange-100 text-orange-600'}
                   `}>
-                    {user.role}
+                    {user.role === 'admin' ? 'admin' : user.role === 'piojologa' ? 'piojóloga' : user.role}
                   </span>
                 </td>
                 <td className="p-4 font-medium text-gray-500">{user.email}</td>

@@ -257,6 +257,20 @@ export const bookingService = {
         errors: error.response?.data?.errors
       };
     }
+  },
+
+  async delete(bookingId) {
+    try {
+      const response = await api.delete(`/bookings/${bookingId}`);
+      return { success: true, message: response.data.message };
+    } catch (error) {
+      console.error('Error eliminando booking:', error.response?.data);
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Error al eliminar agendamiento',
+        error: error.response?.data?.error
+      };
+    }
   }
 };
 
@@ -358,6 +372,11 @@ export const referralService = {
     }
   },
 
+  // Alias for easier usage
+  async validateCode(code) {
+    return this.validateReferralCode(code);
+  },
+
   // Admin endpoints
   async getPaymentHistory() {
     try {
@@ -394,6 +413,19 @@ export const referralService = {
       return {
         success: false,
         message: error.response?.data?.message || 'Error al marcar todos como pagados'
+      };
+    }
+  },
+
+  async getAllCommissions() {
+    try {
+      const response = await api.get('/referral-commissions');
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error('Error obteniendo comisiones admin:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al obtener comisiones'
       };
     }
   }

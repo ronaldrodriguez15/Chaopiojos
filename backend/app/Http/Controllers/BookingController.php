@@ -19,9 +19,25 @@ class BookingController extends Controller
      */
     public function index()
     {
-        $bookings = Booking::orderBy('fecha', 'asc')
+        $bookings = Booking::with('referredBy:id,name')
+            ->orderBy('fecha', 'asc')
             ->orderBy('hora', 'asc')
-            ->get();
+            ->get()
+            ->map(function ($booking) {
+                $bookingArray = $booking->toArray();
+
+                // Si tiene referido pero no nombre, usar el nombre de la relación
+                if (empty($bookingArray['referidoPor']) && !empty($bookingArray['referred_by'])) {
+                    $bookingArray['referidoPor'] = $bookingArray['referred_by']['name'];
+                }
+
+                // Asegurar compatibilidad con snake_case
+                if (!isset($bookingArray['referidoPor']) && isset($bookingArray['referido_por'])) {
+                    $bookingArray['referidoPor'] = $bookingArray['referido_por'];
+                }
+
+                return $bookingArray;
+            });
 
         return response()->json($bookings);
     }
@@ -51,6 +67,7 @@ class BookingController extends Controller
             'hasAlergias' => 'required|boolean',
             'detalleAlergias' => 'nullable|string',
             'referidoPor' => 'nullable|string|max:255',
+            'referralCode' => 'nullable|string|max:20',
             'paymentMethod' => ['nullable', Rule::in(['pay_now', 'pay_later'])],
         ]);
 
@@ -59,6 +76,22 @@ class BookingController extends Controller
                 'message' => 'Error de validación',
                 'errors' => $validator->errors()
             ], 422);
+        }
+
+        // Validar código de referido si se proporciona
+        $referredByUserId = null;
+        $referidoPorName = $request->referidoPor;
+
+        if ($request->referralCode) {
+            $referrer = User::where('referral_code', $request->referralCode)
+                ->where('role', 'piojologa')
+                ->first();
+
+            if ($referrer) {
+                $referredByUserId = $referrer->id;
+                // Si hay código de referido válido, usar el nombre de la piojóloga
+                $referidoPorName = $referrer->name;
+            }
         }
 
         $booking = Booking::create([
@@ -76,7 +109,9 @@ class BookingController extends Controller
             'edad' => $request->edad,
             'hasAlergias' => $request->hasAlergias,
             'detalleAlergias' => $request->detalleAlergias,
-            'referidoPor' => $request->referidoPor,
+            'referidoPor' => $referidoPorName,
+            'referral_code' => $request->referralCode,
+            'referred_by_user_id' => $referredByUserId,
             'payment_method' => $request->paymentMethod ?? 'pay_later',
             'estado' => 'pendiente'
         ]);
@@ -268,22 +303,9 @@ class BookingController extends Controller
     private function processReferralCommission($booking)
     {
         try {
-            // Obtener la piojóloga que realizó el servicio
-            $piojologist = User::find($booking->piojologist_id);
-
-            if (!$piojologist || !$piojologist->referred_by_id) {
-                // No fue referida por nadie
-                return;
-            }
-
-            // Verificar si es el primer servicio completado de esta piojóloga
-            $previousCompletedBookings = Booking::where('piojologist_id', $piojologist->id)
-                ->where('estado', 'completed')
-                ->where('id', '!=', $booking->id)
-                ->count();
-
-            if ($previousCompletedBookings > 0) {
-                // No es su primer servicio
+            // Verificar si el cliente usó un código de referido
+            if (!$booking->referral_code || !$booking->referred_by_user_id) {
+                // No se usó código de referido
                 return;
             }
 
@@ -295,29 +317,51 @@ class BookingController extends Controller
                 return;
             }
 
-            // Calcular el monto del servicio y la comisión del 10%
-            $serviceAmount = $booking->price_confirmed ?? 0;
+            // Obtener la piojóloga que proporcionó el código de referido
+            $referrer = User::find($booking->referred_by_user_id);
 
-            if ($serviceAmount <= 0) {
-                // No hay precio confirmado, no se puede calcular comisión
+            if (!$referrer || $referrer->role !== 'piojologa') {
+                // El referrer no es válido o no es piojóloga
                 return;
             }
 
-            $commissionAmount = $serviceAmount * 0.10; // 10%
+            // Calcular el monto del servicio - usar price_confirmed si existe, sino intentar calcular
+            $serviceAmount = $booking->price_confirmed ?? 0;
 
-            // Crear la comisión
+            // Si no hay precio confirmado, intentar calcular desde services_per_person
+            if ($serviceAmount <= 0 && $booking->services_per_person) {
+                // Aquí podrías calcular el total basado en los servicios, pero por ahora lo dejamos en 0
+                // En producción, podrías obtener los precios del catálogo de servicios
+                $serviceAmount = 0;
+            }
+
+            // Comision configurable por piojologa referidora (fallback: 15,000)
+            $commissionAmount = (float) ($referrer->referral_value ?? 15000);
+
+            // Crear la comisión SIEMPRE que haya un referido válido, independientemente del monto del servicio
             ReferralCommission::create([
-                'referrer_id' => $piojologist->referred_by_id,
-                'referred_id' => $piojologist->id,
+                'referrer_id' => $referrer->id,
+                'referred_id' => null, // El referido es el cliente, no otra piojóloga
                 'booking_id' => $booking->id,
                 'service_amount' => $serviceAmount,
                 'commission_amount' => $commissionAmount,
                 'status' => 'pending',
             ]);
 
+            Log::info('Comisión por referido creada', [
+                'booking_id' => $booking->id,
+                'referrer_id' => $referrer->id,
+                'referrer_name' => $referrer->name,
+                'commission_amount' => $commissionAmount
+            ]);
+
         } catch (\Exception $e) {
             // Log error pero no fallar la actualización del booking
-            logger()->error('Error al procesar comisión por referido: ' . $e->getMessage());
+            Log::error('Error al procesar comisión por referido', [
+                'booking_id' => $booking->id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
         }
     }
 
@@ -329,6 +373,43 @@ class BookingController extends Controller
      */
     public function destroy($id)
     {
-        //
+        try {
+            $booking = Booking::findOrFail($id);
+
+            // Solo permitir eliminar bookings en estado 'pending' o 'assigned'
+            if (!in_array($booking->estado, ['pending', 'assigned', 'pendiente'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se puede eliminar este agendamiento. Solo se pueden eliminar agendamientos en estado "pendiente" o "asignado".',
+                    'error' => 'invalid_status'
+                ], 422);
+            }
+
+            // Eliminar comisiones relacionadas si existen
+            ReferralCommission::where('booking_id', $booking->id)->delete();
+
+            // Eliminar el booking
+            $booking->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Agendamiento eliminado exitosamente'
+            ]);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Agendamiento no encontrado'
+            ], 404);
+        } catch (\Exception $e) {
+            Log::error('Error eliminando booking', [
+                'id' => $id,
+                'error' => $e->getMessage()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al eliminar: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

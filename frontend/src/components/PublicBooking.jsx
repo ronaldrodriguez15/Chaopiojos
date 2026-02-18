@@ -1,10 +1,10 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, CalendarDays, Clock, Sparkles, Copy, Check, Bug } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CalendarDays, Clock, Sparkles, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 import { motion } from 'framer-motion';
-import { bookingService, serviceService } from '@/lib/api';
+import { bookingService, serviceService, referralService } from '@/lib/api';
 import {
   Dialog,
   DialogContent,
@@ -49,12 +49,6 @@ const getCalendarRange = (currentMonth) => {
 };
 
 const baseSlots = ['08:00', '10:00', '12:00', '14:00', '16:00'];
-
-const piojologists = [
-  { id: 101, name: 'Lola', zone: 'Norte', gradient: 'from-orange-400 to-amber-500' },
-  { id: 102, name: 'Mila', zone: 'Centro', gradient: 'from-sky-400 to-cyan-500' },
-  { id: 103, name: 'Vero', zone: 'Sur', gradient: 'from-lime-400 to-emerald-500' }
-];
 
 const defaultServiceCatalog = [
   { name: 'Normal', value: 70000 },
@@ -104,21 +98,6 @@ const loadServiceCatalog = () => {
   }));
 };
 
-const boldPaymentOptions = {
-  Normal: {
-    price: '$80.000',
-    link: 'https://checkout.bold.co/payment/LNK_89Z6PUUSRS'
-  },
-  Elevado: {
-    price: '$110.000',
-    link: 'https://checkout.bold.co/payment/LNK_Y2J2USYK3U'
-  },
-  'Muy Alto': {
-    price: '$130.000',
-    link: 'https://checkout.bold.co/payment/LNK_GXTCYS2BEN'
-  }
-};
-
 const PublicBooking = () => {
   const [serviceOptions, setServiceOptions] = useState(() => loadServiceCatalog());
   const formatCurrency = (amount) => {
@@ -128,11 +107,6 @@ const PublicBooking = () => {
       minimumFractionDigits: 0
     }).format(amount || 0);
   };
-
-  const [bookings, setBookings] = useState(() => {
-    const saved = localStorage.getItem('publicBookings');
-    return saved ? JSON.parse(saved) : [];
-  });
 
   const [currentMonth, setCurrentMonth] = useState(() => {
     const today = new Date();
@@ -146,9 +120,13 @@ const PublicBooking = () => {
   const [showForm, setShowForm] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState(null);
-  const [payNowAcknowledged, setPayNowAcknowledged] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
+  
+  // Estados para código de referido
+  const [referralCode, setReferralCode] = useState('');
+  const [referralValidation, setReferralValidation] = useState({ isValid: false, isValidating: false, message: '', referrerName: '' });
+  
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -172,28 +150,20 @@ const PublicBooking = () => {
     paymentMethod: 'pay_later'
   });
 
-  const shareLink = `${window.location.origin}/agenda`;
+  
   // Calcular total sumando todos los servicios de las personas
   const totalServiceValue = form.servicesPerPerson.reduce((total, serviceType) => {
     const serviceValue = serviceOptions.find((service) => service.value === serviceType)?.amount || 0;
     return total + serviceValue;
   }, 0);
-  const currentPaymentOption = boldPaymentOptions[form.serviceType];
-  const currentServiceValue = serviceOptions.find((service) => service.value === form.serviceType)?.amount || 0;
-  const isPayNowAvailable = Boolean(currentPaymentOption?.link);
+  
+  const finalTotal = totalServiceValue;
 
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     return d;
   }, []);
-
-  useEffect(() => {
-    if (!isPayNowAvailable && form.paymentMethod === 'pay_now') {
-      setForm(prev => ({ ...prev, paymentMethod: 'pay_later' }));
-      setPayNowAcknowledged(true);
-    }
-  }, [form.serviceType, isPayNowAvailable]);
 
   useEffect(() => {
     let isMounted = true;
@@ -215,17 +185,57 @@ const PublicBooking = () => {
     return () => { isMounted = false; };
   }, []);
 
-  const selectPaymentMethod = (method) => {
-    if (method === 'pay_now' && !isPayNowAvailable) {
-      toast({
-        title: 'Pago en lnea no disponible',
-        description: 'Este servicio solo permite pago al finalizar.',
-        duration: 3000
-      });
+  // Leer código de referido desde la URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get('ref');
+    if (refCode) {
+      const normalizedCode = refCode.trim().toUpperCase();
+      setReferralCode(normalizedCode);
+      validateReferralCode(normalizedCode);
+    }
+  }, []);
+
+  // Función para validar código de referido
+  const validateReferralCode = async (code) => {
+    if (!code || code.trim() === '') {
+      setReferralValidation({ isValid: false, isValidating: false, message: '', referrerName: '' });
       return;
     }
-    handleChange('paymentMethod', method);
-    setPayNowAcknowledged(method === 'pay_later');
+
+    setReferralValidation(prev => ({ ...prev, isValidating: true }));
+
+    try {
+      const result = await referralService.validateCode(code);
+      
+      if (result.success && result.data.valid) {
+        setReferralValidation({
+          isValid: true,
+          isValidating: false,
+          message: `¡Código válido! Referido por la piojóloga ${result.data.referrer.name}`,
+          referrerName: result.data.referrer.name
+        });
+        toast({
+          title: "✨ ¡Código aplicado!",
+          description: "Tu referido ha sido registrado correctamente.",
+          className: "bg-green-100 border-2 border-green-200 text-green-800 rounded-2xl font-bold"
+        });
+      } else {
+        setReferralValidation({
+          isValid: false,
+          isValidating: false,
+          message: 'Código no válido',
+          referrerName: ''
+        });
+      }
+    } catch (error) {
+      setReferralValidation({
+        isValid: false,
+        isValidating: false,
+        message: 'Error al validar código',
+        referrerName: ''
+      });
+    }
   };
 
   const monthLabel = useMemo(() => {
@@ -262,9 +272,6 @@ const PublicBooking = () => {
   );
   const selectedDaySlots = selectedDayInfo?.slots || [];
 
-  const dialogTitleText = selectedDate
-    ? `Reserva para ${formatLongDate(selectedDate)}`
-    : 'Selecciona fecha y hora';
   const dialogDescriptionText = showForm
     ? 'Completa tus datos para confirmar la visita'
     : 'Elige un horario disponible para tu visita';
@@ -300,7 +307,6 @@ const PublicBooking = () => {
     setSelectedSlot('');
     setSelectedDate(null);
     setIsModalOpen(false);
-    setPayNowAcknowledged(false);
     setForm({
       name: '',
       email: '',
@@ -322,24 +328,6 @@ const PublicBooking = () => {
       terminosAceptados: false,
       paymentMethod: 'pay_later'
     });
-  };
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(shareLink);
-      toast({
-        title: ' Enlace copiado',
-        description: 'Comparte este link con tus clientes',
-        duration: 2500
-      });
-    } catch (error) {
-      toast({
-        title: ' No se pudo copiar',
-        description: 'Copia manualmente el enlace',
-        duration: 2500,
-        variant: 'destructive'
-      });
-    }
   };
 
   const handleSubmit = async (event) => {
@@ -481,7 +469,8 @@ const PublicBooking = () => {
         hasAlergias: form.hasAlergias,
         detalleAlergias: form.detalleAlergias || null,
         referidoPor: form.referidoPor || null,
-        paymentMethod: form.paymentMethod
+        paymentMethod: form.paymentMethod,
+        referralCode: referralValidation.isValid ? referralCode : null // Enviar código si es válido
       };
 
       const result = await bookingService.create(bookingData);
@@ -547,6 +536,10 @@ const PublicBooking = () => {
         servicesPerPerson: form.servicesPerPerson,
         numPersonas: form.numPersonas,
         totalValue: totalServiceValue,
+        finalTotal: finalTotal,
+        hasReferral: referralValidation.isValid,
+        referrerName: referralValidation.referrerName,
+        referralCode: referralCode,
         whatsapp: form.whatsapp,
         direccion: form.direccion,
         barrio: form.barrio,
@@ -557,7 +550,6 @@ const PublicBooking = () => {
       setIsModalOpen(false); // Cerrar el modal
       setShowConfirmation(true); // Mostrar confirmacion en la pagina principal
       setShowForm(false);
-      setPayNowAcknowledged(false);
       
       // Scroll hacia arriba para ver el mensaje de confirmacion
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -768,11 +760,23 @@ const PublicBooking = () => {
                           <p className="text-sm md:text-base font-black text-gray-800">
                             {confirmedBooking?.numPersonas > 1 ? `${confirmedBooking.numPersonas} personas` : confirmedBooking?.serviceType}
                           </p>
-                          <p className="text-xs font-bold text-green-600">Total: {formatCurrency(confirmedBooking?.totalValue || 0)}</p>
+                          <p className="text-xs font-bold text-green-600">Total: {formatCurrency(confirmedBooking?.finalTotal || 0)}</p>
                         </div>
                       </div>
                     </div>
                   </div>
+
+                  {confirmedBooking?.hasReferral && (
+                    <div className="max-w-2xl mx-auto w-full bg-purple-50 p-4 md:p-5 rounded-2xl border-2 border-purple-200 shadow-md">
+                      <p className="text-xs font-black text-purple-500 uppercase">Referido aplicado</p>
+                      <p className="text-base md:text-lg font-black text-purple-700">
+                        Código: {confirmedBooking?.referralCode}
+                      </p>
+                      <p className="text-sm md:text-base font-bold text-purple-700">
+                        Referido por la piojóloga {confirmedBooking?.referrerName}
+                      </p>
+                    </div>
+                  )}
 
                   {/* Mensaje informativo */}
                   <div className="bg-blue-50 p-4 md:p-5 rounded-2xl border-2 border-blue-200 max-w-2xl mx-auto space-y-3">
@@ -797,7 +801,7 @@ const PublicBooking = () => {
                         (confirmedBooking?.servicesPerPerson?.map((service, idx) => 
                           `   ${idx + 1}. ${service}`
                         ).join('\n') || '') + '\n\n' +
-                        `*Total: ${formatCurrency(confirmedBooking?.totalValue || 0)}* 💰\n\n` +
+                        `*Total: ${formatCurrency(confirmedBooking?.finalTotal || 0)}* 💰\n\n` +
                         `-------------------\n\n` +
                         `*Dudas o cambios?* 📱\n` +
                         `Escribenos al WhatsApp 3227932394\n\n` +
@@ -1086,11 +1090,13 @@ const PublicBooking = () => {
                       </div>
                     ))}
                     {/* Mostrar Total */}
-                    <div className="bg-gradient-to-r from-green-500 to-emerald-500 p-4 rounded-xl shadow-lg border-2 border-green-400">
-                      <div className="flex items-center justify-between">
-                        <span className="text-white font-black text-base md:text-lg uppercase">💰 Total del Servicio:</span>
-                        <span className="text-white font-black text-xl md:text-2xl">{formatCurrency(totalServiceValue)}</span>
-                      </div>
+                    <div className="space-y-2">
+                      <div className="bg-gradient-to-r from-green-500 to-emerald-500 p-4 rounded-xl shadow-lg border-2 border-green-400">
+                        <div className="flex items-center justify-between">
+                            <span className="text-white font-black text-base md:text-lg uppercase">💰 Total del Servicio:</span>
+                            <span className="text-white font-black text-xl md:text-2xl">{formatCurrency(totalServiceValue)}</span>
+                          </div>
+                        </div>
                     </div>
                   </div>
                 </div>
@@ -1131,6 +1137,58 @@ const PublicBooking = () => {
                       placeholder="cliente@email.com"
                     />
                   </div>
+                  
+                  {/* Código de Referido */}
+                  <div className="space-y-1">
+                    <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">
+                      🎁 Código de Referido <span className="text-sm text-gray-500 font-normal">(opcional)</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        className={`w-full rounded-xl md:rounded-2xl border-2 ${
+                          referralValidation.isValid 
+                            ? 'border-green-400 bg-green-50' 
+                            : referralCode && !referralValidation.isValid && !referralValidation.isValidating
+                            ? 'border-red-400 bg-red-50'
+                            : 'border-purple-200 bg-purple-50'
+                        } px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none ${
+                          referralValidation.isValid 
+                            ? 'focus:border-green-500' 
+                            : 'focus:border-purple-400'
+                        } text-base md:text-lg uppercase`}
+                        value={referralCode}
+                        onChange={(e) => {
+                          const code = e.target.value.toUpperCase();
+                          setReferralCode(code);
+                          if (code.length >= 4) {
+                            validateReferralCode(code);
+                          } else {
+                            setReferralValidation({ isValid: false, isValidating: false, message: '', referrerName: '' });
+                          }
+                        }}
+                        placeholder="Ingresa el código de referido"
+                      />
+                      {referralValidation.isValidating && (
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                          <div className="animate-spin rounded-full h-5 w-5 border-2 border-purple-300 border-t-purple-600"></div>
+                        </div>
+                      )}
+                      {referralValidation.isValid && (
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-green-600">
+                          ✓
+                        </div>
+                      )}
+                    </div>
+                    {referralValidation.message && (
+                      <p className={`text-sm font-bold ml-2 mt-1 flex items-center gap-1 ${
+                        referralValidation.isValid ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        <span>{referralValidation.isValid ? '✨' : '❌'}</span> {referralValidation.message}
+                      </p>
+                    )}
+                  </div>
+                  
                   <div className="space-y-1">
                     <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">📍 Dirección *</label>
                     <AddressAutocomplete
@@ -1237,81 +1295,6 @@ const PublicBooking = () => {
                   </div>
                 </div>
 
-                {/* Pago */}
-                <div className="bg-amber-50 p-4 rounded-2xl border-2 border-amber-200 space-y-3">
-                  <p className="text-xs md:text-sm font-bold text-amber-600 uppercase"> Método de Pago</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => selectPaymentMethod('pay_now')}
-                      disabled={!isPayNowAvailable}
-                      className={`w-full text-left rounded-xl md:rounded-2xl border-2 p-3 md:p-4 font-black transition-all flex items-center gap-3 ${
-                        form.paymentMethod === 'pay_now'
-                          ? 'bg-orange-100 border-orange-300 shadow-md'
-                          : 'bg-white border-amber-200 hover:border-orange-300'
-                      } ${!isPayNowAvailable ? 'opacity-60 cursor-not-allowed' : ''}`}
-                    >
-                      <span className="text-2xl"></span>
-                      <div>
-                        <p className="text-sm md:text-base text-gray-800">Pagar ahora</p>
-                        <p className="text-xs text-gray-600 font-bold">
-                          {isPayNowAvailable ? 'Puedes pagar en lnea con Bold' : 'No disponible para este servicio'}
-                        </p>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => selectPaymentMethod('pay_later')}
-                      className={`w-full text-left rounded-xl md:rounded-2xl border-2 p-3 md:p-4 font-black transition-all flex items-center gap-3 ${
-                        form.paymentMethod === 'pay_later'
-                          ? 'bg-green-100 border-green-300 shadow-md'
-                          : 'bg-white border-amber-200 hover:border-green-300'
-                      }`}
-                    >
-                      <span className="text-2xl"></span>
-                      <div>
-                        <p className="text-sm md:text-base text-gray-800">Pagar despues</p>
-                        <p className="text-xs text-gray-600 font-bold">Cancelaremos al finalizar el servicio</p>
-                      </div>
-                    </button>
-                  </div>
-
-                  {form.paymentMethod === 'pay_now' && (
-                    <div className="bg-white border-2 border-amber-200 rounded-xl md:rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                      <div className="space-y-1 flex-1">
-                        <p className="text-[11px] uppercase tracking-wide text-amber-600 font-black">Paga seguro con Bold</p>
-                        <p className="text-base md:text-lg font-black text-gray-800">
-                          {form.serviceType} <span className="text-amber-600"> {currentPaymentOption?.price || formatCurrency(currentServiceValue)}</span>
-                        </p>
-                        {!isPayNowAvailable ? (
-                          <p className="text-xs text-red-600 font-black">Pago en línea no disponible para este servicio.</p>
-                        ) : !payNowAcknowledged ? (
-                          <>
-                            <p className="text-xs text-gray-600 font-bold">Se abrirá una pestaña nueva para completar el pago.</p>
-                            <p className="text-xs text-orange-600 font-black">Debes abrir Bold para habilitar la confirmación.</p>
-                          </>
-                        ) : (
-                          <div className="bg-green-50 border-2 border-green-200 rounded-lg p-2 text-green-700 text-xs font-black inline-flex items-center gap-2 mt-1">
-                             Redireccionado a Bold exitósamente
-                          </div>
-                        )}
-                      </div>
-                      {isPayNowAvailable && !payNowAcknowledged && (
-                        <a
-                          href={currentPaymentOption?.link || '#'}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={() => setPayNowAcknowledged(true)}
-                          className="inline-flex items-center justify-center bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-white font-black px-4 md:px-6 py-3 rounded-xl shadow-md border-b-4 border-orange-600 active:border-b-0 active:translate-y-0.5 transition"
-                        >
-                          Ir a Bold
-                        </a>
-                      )}
-                    </div>
-                  )}
-                </div>
-
                 {/* Términos */}
                 <div className={`p-4 rounded-2xl border-2 ${fieldErrors.terminosAceptados ? 'bg-red-50 border-red-300' : 'bg-green-50 border-green-200'}`}>
                   <div className="flex items-start gap-3">
@@ -1336,7 +1319,7 @@ const PublicBooking = () => {
 
                 <Button
                   type="submit"
-                  disabled={isSubmitting || (form.paymentMethod === 'pay_now' && !payNowAcknowledged)}
+                  disabled={isSubmitting}
                   className="w-full bg-orange-500 hover:bg-orange-600 disabled:hover:bg-orange-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-base md:text-lg py-4 md:py-5 rounded-xl md:rounded-2xl shadow-lg hover:shadow-xl border-b-4 border-orange-700 active:border-b-0 active:translate-y-0.5"
                 >
                   <Check className="w-5 h-5 md:w-6 md:h-6 mr-2" /> {isSubmitting ? 'Procesando...' : 'Confirmar Reserva'}

@@ -45,6 +45,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Bookings - Solo lectura para admin
     Route::get('/bookings', [BookingController::class, 'index']);
     Route::put('/bookings/{id}', [BookingController::class, 'update']);
+    Route::delete('/bookings/{id}', [BookingController::class, 'destroy']);
 
     // Productos
     Route::apiResource('products', ProductController::class);

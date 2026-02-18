@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -30,6 +29,7 @@ class User extends Authenticatable
         'lat',
         'lng',
         'commission_rate',
+        'referral_value',
         'referral_code',
         'referred_by_id',
     ];
@@ -51,6 +51,7 @@ class User extends Authenticatable
      */
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'referral_value' => 'decimal:2',
     ];
 
     /**
@@ -61,7 +62,7 @@ class User extends Authenticatable
         parent::boot();
 
         static::creating(function ($user) {
-            if ($user->role === 'piojologist' && empty($user->referral_code)) {
+            if ($user->role === 'piojologa' && empty($user->referral_code)) {
                 $user->referral_code = self::generateUniqueReferralCode();
             }
         });

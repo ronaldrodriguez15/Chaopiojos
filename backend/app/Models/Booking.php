@@ -27,6 +27,8 @@ class Booking extends Model
         'hasAlergias',
         'detalleAlergias',
         'referidoPor',
+        'referral_code',
+        'referred_by_user_id',
         'payment_method',
         'estado',
         'piojologist_id',
@@ -43,6 +45,7 @@ class Booking extends Model
         'hasAlergias' => 'boolean',
         'numPersonas' => 'integer',
         'piojologist_id' => 'integer',
+        'referred_by_user_id' => 'integer',
         'price_confirmed' => 'decimal:2',
         'additional_costs' => 'decimal:2',
         'lat' => 'decimal:7',
@@ -50,4 +53,19 @@ class Booking extends Model
         'rejection_history' => 'array',
         'services_per_person' => 'array'
     ];
+
+    /**
+     * The accessors to append to the model's array form.
+     *
+     * @var array
+     */
+    protected $appends = [];
+
+    /**
+     * Relación con el usuario que refirió (piojóloga)
+     */
+    public function referredBy()
+    {
+        return $this->belongsTo(User::class, 'referred_by_user_id');
+    }
 }

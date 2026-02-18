@@ -55,10 +55,30 @@ class ReferralController extends Controller
         try {
             $user = $request->user();
 
-            $referrals = User::where('referred_by_id', $user->id)
-                ->select('id', 'name', 'email', 'specialty', 'created_at')
-                ->withCount('commissionsGenerated')
+            $commissions = ReferralCommission::where('referrer_id', $user->id)
+                ->with('booking:id,clientName,email,serviceType,fecha')
+                ->orderBy('created_at', 'desc')
                 ->get();
+
+            $referrals = $commissions
+                ->filter(fn ($commission) => $commission->booking)
+                ->groupBy(function ($commission) {
+                    return mb_strtolower(trim($commission->booking->clientName ?? 'cliente'));
+                })
+                ->map(function ($group) {
+                    $first = $group->first();
+                    $booking = $first->booking;
+
+                    return [
+                        'id' => $first->booking_id,
+                        'name' => $booking->clientName ?? 'Cliente',
+                        'email' => $booking->email ?? null,
+                        'specialty' => $booking->serviceType ?? null,
+                        'created_at' => $first->created_at,
+                        'commissions_generated_count' => $group->count(),
+                    ];
+                })
+                ->values();
 
             return response()->json([
                 'success' => true,
@@ -200,7 +220,7 @@ class ReferralController extends Controller
     public function paymentHistory()
     {
         try {
-            $history = User::where('role', 'piojologist')
+            $history = User::where('role', 'piojologa')
                 ->withCount([
                     'commissionsEarned as total_commissions_count',
                     'commissionsEarned as pending_count' => function($query) {
@@ -229,7 +249,7 @@ class ReferralController extends Controller
 
             return response()->json([
                 'success' => true,
-                'history' => $history,
+                'piojologists' => $history,
                 'summary' => [
                     'total_paid' => $totalPaid,
                     'total_pending' => $totalPending,

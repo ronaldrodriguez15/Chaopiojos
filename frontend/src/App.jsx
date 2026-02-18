@@ -4,7 +4,7 @@ import { Toaster } from '@/components/ui/toaster';
 import PiojologistView from '@/components/PiojologistView';
 import AdminView from '@/components/AdminView';
 import Login from '@/components/Login';
-import { LogOut, Sparkles, Bell } from 'lucide-react';
+import { LogOut, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -46,7 +46,6 @@ function App() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   
   const [users, setUsers] = useState([]);
-  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
 
   // Notification system
   const [notifications, setNotifications] = useState([]);
@@ -270,12 +269,10 @@ function App() {
   }, [currentUser]);
 
   const loadUsers = async () => {
-    setIsLoadingUsers(true);
     const result = await userService.getAll();
     if (result.success) {
       setUsers(result.users);
     }
-    setIsLoadingUsers(false);
   };
 
   const loadBookings = async () => {
@@ -384,6 +381,19 @@ function App() {
     return result;
   };
 
+  const handleDeleteBooking = async (bookingId) => {
+    const result = await bookingService.delete(bookingId);
+    if (result.success) {
+      await loadBookings();
+      // También actualizar el estado local de appointments
+      setAppointments(prev => prev.filter(apt => {
+        const aptId = apt.backendId || apt.bookingId || apt.id;
+        return aptId !== bookingId;
+      }));
+    }
+    return result;
+  };
+
   // Sync appointments and products with localStorage
   useEffect(() => {
     localStorage.setItem('appointments', JSON.stringify(appointments));
@@ -407,7 +417,7 @@ function App() {
     
     if (currentUser.role === 'admin') {
       relevantAppointments = allAppointments;
-    } else if (currentUser.role === 'piojologist') {
+    } else if (currentUser.role === 'piojologa') {
       relevantAppointments = allAppointments.filter(apt => apt.piojologistId === currentUser.id);
     }
 
@@ -473,7 +483,7 @@ function App() {
       // Notificaciones de asignación (solo piojólogas)
       if (notif.type === 'assignment') {
         if (currentUser.role === 'admin') return true;
-        return currentUser.role === 'piojologist' && notif.piojologistId === currentUser.id;
+        return currentUser.role === 'piojologa' && notif.piojologistId === currentUser.id;
       }
       
       // Notificaciones de aceptación/rechazo/completado (solo admins)
@@ -837,7 +847,7 @@ function App() {
   };
 
   // Derived list of piojologists for assignment logic
-  const piojologists = users.filter(u => u.role === 'piojologist');
+  const piojologists = users.filter(u => u.role === 'piojologa');
 
   // Get page title based on current user role
   const getPageTitle = () => {
@@ -893,13 +903,13 @@ function App() {
       };
 
   return (
-    <div className="min-h-screen bg-orange-50 font-fredoka overflow-x-hidden text-gray-800">
+    <div className="min-h-screen bg-orange-50 font-fredoka overflow-x-hidden text-gray-800 px-2 py-1 sm:px-1 sm:py-1.5 lg:px-1.5">
       <Helmet>
         <title>{getPageTitle()}</title>
         <meta name="description" content="El sistema más divertido para decir adiós a los piojitos." />
       </Helmet>
 
-      <div className="container mx-auto px-4 py-6 max-w-7xl">
+      <div className="w-full max-w-[96rem] mx-auto py-6">
         <AnimatePresence mode="wait">
           {!currentUser ? (
             <motion.div
@@ -917,7 +927,7 @@ function App() {
               transition={{ type: "spring", bounce: 0.4 }}
             >
               {/* Playful Header */}
-              <div className="flex flex-col md:flex-row justify-between items-center mb-8 bg-white/80 backdrop-blur-md p-6 rounded-[2rem] shadow-xl border-4 border-orange-200 relative">
+              <div className="flex flex-col md:flex-row justify-between items-center mb-8 bg-white/80 backdrop-blur-md p-3 rounded-[2rem] shadow-xl border-4 border-orange-200 relative">
                 <div className="flex items-center gap-4 mb-4 md:mb-0">
                   <div className="bg-white p-2 rounded-2xl shadow-lg transform -rotate-3 hover:rotate-3 transition-transform border-2 border-orange-200">
                     <img src="/logo.png" alt="Chao Piojos" className="w-14 h-14 object-contain" />
@@ -967,8 +977,8 @@ function App() {
               </div>
 
               {/* Main Content Area */}
-              <div className="bg-white/60 backdrop-blur-sm rounded-[2.5rem] p-4 md:p-8 shadow-2xl border-4 border-white relative z-0">
-                {currentUser.role === 'piojologist' && (
+              <div className="bg-white/60 backdrop-blur-sm rounded-[2.5rem] p-1 shadow-2xl border-4 border-white relative z-0">
+                {currentUser.role === 'piojologa' && (
                   <PiojologistView 
                     currentUser={currentUser}
                     appointments={allAppointments}
@@ -997,6 +1007,7 @@ function App() {
                     updateAppointments={updateAppointments}
                     updateBookings={updateBookingsState}
                     reloadBookings={loadBookings}
+                    onDeleteBooking={handleDeleteBooking}
                     piojologists={piojologists}
                     products={products}
                     updateProducts={updateProducts}

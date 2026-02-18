@@ -29,7 +29,7 @@ const PiojologistMap = ({ piojologists = [] }) => {
   useEffect(() => {
     // Filter piojologists y usar sus coordenadas reales (si existen)
     const piojologistsData = piojologists
-      .filter(p => p.role === 'piojologist' && p.address)
+      .filter(p => p.role === 'piojologa' && p.address)
       .filter(p => p.lat && p.lng) // Solo mostrar si tienen coordenadas geocodificadas
       .map(p => ({
         ...p,

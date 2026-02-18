@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { DollarSign, Eye, X, CheckCircle2 } from 'lucide-react';
+import { DollarSign, Eye, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { useToast } from '@/components/ui/use-toast';
 import Pagination from './Pagination';
 
 const EarningsModule = React.memo(({ 
   piojologists,
   appointments,
   users,
+  referralPayouts = [],
+  referralCommissionsList = [],
   getServicePrice,
   formatCurrency,
   handleMarkServiceAsPaid,
@@ -17,7 +18,6 @@ const EarningsModule = React.memo(({
   openHistoryDialog,
   setOpenHistoryDialog
 }) => {
-  const { toast } = useToast();
   const [currentPage, setCurrentPage] = useState(1);
   const [confirmPayment, setConfirmPayment] = useState(null);
   const itemsPerPage = 10;
@@ -28,11 +28,23 @@ const EarningsModule = React.memo(({
     else if (currentPage > 1 && piojologists.length === 0) setCurrentPage(1);
   }, [piojologists.length, currentPage]);
 
+  const referralByPiojologist = useMemo(() => {
+    return (referralPayouts || []).reduce((acc, item) => {
+      const id = Number(item.id);
+      if (!Number.isFinite(id)) return acc;
+      acc[id] = {
+        pending: Number(item.pending_amount || 0),
+        paid: Number(item.total_earned || 0),
+        count: Number(item.total_commissions_count || 0)
+      };
+      return acc;
+    }, {});
+  }, [referralPayouts]);
+
   const stats = useMemo(() => {
     const completed = appointments.filter(a => a.status === 'completed');
     const totalBruto = completed.reduce((acc, curr) => acc + getServicePrice(curr), 0);
     
-    let totalComisionEmpresa = 0;
     let totalPendientePago = 0;
     let totalYaPagado = 0;
     let serviciosCobrados = 0;
@@ -42,9 +54,6 @@ const EarningsModule = React.memo(({
       const commissionRate = (piojologist?.commission_rate || 50) / 100;
       const servicePrice = getServicePrice(apt);
       const piojologistShare = servicePrice * commissionRate;
-      const empresaShare = servicePrice * (1 - commissionRate);
-      
-      totalComisionEmpresa += empresaShare;
       
       const paymentStatus = apt.payment_status_to_piojologist || apt.paymentStatusToPiojologist || 'pending';
       if (paymentStatus === 'paid') {
@@ -55,13 +64,20 @@ const EarningsModule = React.memo(({
       }
     });
 
+    const referralPending = (referralPayouts || []).reduce((sum, row) => sum + Number(row.pending_amount || 0), 0);
+    const referralPaid = (referralPayouts || []).reduce((sum, row) => sum + Number(row.total_earned || 0), 0);
+
     return {
       serviciosCobrados,
       totalBruto,
-      totalPendientePago,
-      totalYaPagado
+      totalPendienteServicios: totalPendientePago,
+      totalPendienteReferidos: referralPending,
+      totalPagadoServicios: totalYaPagado,
+      totalPagadoReferidos: referralPaid,
+      totalPendientePago: totalPendientePago + referralPending,
+      totalYaPagado: totalYaPagado + referralPaid
     };
-  }, [appointments, users, getServicePrice]);
+  }, [appointments, users, getServicePrice, referralPayouts]);
 
   const paginatedPiojologists = piojologists.slice(
     (currentPage - 1) * itemsPerPage,
@@ -89,6 +105,16 @@ const EarningsModule = React.memo(({
               {card.label}
             </p>
             <p className="text-2xl mt-2">{card.value}</p>
+            {card.label === 'Pendiente de pagar' && (
+              <p className="text-xs font-bold mt-2 opacity-80">
+                Servicios: {formatCurrency(stats.totalPendienteServicios)} | Referidos: {formatCurrency(stats.totalPendienteReferidos)}
+              </p>
+            )}
+            {card.label === 'Ya pagado' && (
+              <p className="text-xs font-bold mt-2 opacity-80">
+                Servicios: {formatCurrency(stats.totalPagadoServicios)} | Referidos: {formatCurrency(stats.totalPagadoReferidos)}
+              </p>
+            )}
           </div>
         ))}
       </div>
@@ -109,9 +135,11 @@ const EarningsModule = React.memo(({
             {paginatedPiojologists.map(pioj => {
               const completedServices = appointments.filter(a => a.piojologistId === pioj.id && a.status === 'completed');
               const commissionRate = (pioj.commission_rate || 50) / 100;
+              const referralData = referralByPiojologist[Number(pioj.id)] || { pending: 0, paid: 0, count: 0 };
+              const hasPendingReferrals = Number(referralData.pending || 0) > 0;
               
-              let pendingPayment = 0;
-              let alreadyPaid = 0;
+              let pendingPaymentServices = 0;
+              let alreadyPaidServices = 0;
               let pendingCount = 0;
               
               completedServices.forEach(apt => {
@@ -120,12 +148,15 @@ const EarningsModule = React.memo(({
                 const paymentStatus = apt.payment_status_to_piojologist || apt.paymentStatusToPiojologist || 'pending';
                 
                 if (paymentStatus === 'paid') {
-                  alreadyPaid += piojologistShare;
+                  alreadyPaidServices += piojologistShare;
                 } else {
-                  pendingPayment += piojologistShare;
+                  pendingPaymentServices += piojologistShare;
                   pendingCount++;
                 }
               });
+
+              const pendingPayment = pendingPaymentServices + referralData.pending;
+              const alreadyPaid = alreadyPaidServices + referralData.paid;
 
               return (
                 <tr key={pioj.id} className="border-b border-gray-50 last:border-0 hover:bg-green-50/50 transition-colors">
@@ -149,21 +180,33 @@ const EarningsModule = React.memo(({
                     <span className="font-black text-red-600">
                       {formatCurrency(pendingPayment)}
                     </span>
+                    <p className="text-[11px] text-gray-600 font-bold mt-1">
+                      Servicios: {formatCurrency(pendingPaymentServices)}
+                    </p>
+                    <p className="text-[11px] text-purple-600 font-bold mt-1">
+                      Referidos: {formatCurrency(referralData.pending)}
+                    </p>
                   </td>
                   <td className="p-4 text-right">
                     <span className="font-black text-green-600">
                       {formatCurrency(alreadyPaid)}
                     </span>
+                    <p className="text-[11px] text-gray-600 font-bold mt-1">
+                      Servicios: {formatCurrency(alreadyPaidServices)}
+                    </p>
+                    <p className="text-[11px] text-purple-600 font-bold mt-1">
+                      Referidos: {formatCurrency(referralData.paid)}
+                    </p>
                   </td>
                   <td className="p-4 text-center">
                     <div className="flex items-center justify-center gap-2">
-                      {pendingCount > 0 && (
+                      {(pendingCount > 0 || hasPendingReferrals) && (
                         <Button
                           size="icon"
                           variant="ghost"
                           onClick={() => setOpenPayDialog(pioj.id)}
                           className="h-10 w-10 rounded-xl bg-green-100 text-green-600 hover:bg-green-200"
-                          title="Pagar Servicios"
+                          title="Pagar y ver detalle"
                         >
                           <DollarSign className="w-5 h-5" />
                         </Button>
@@ -219,6 +262,10 @@ const EarningsModule = React.memo(({
             {openPayDialog && (() => {
               const piojologist = piojologists.find(p => p.id === openPayDialog);
               if (!piojologist) return <p className="text-gray-500">Piojóloga no encontrada</p>;
+              const pendingReferralCommissions = (referralCommissionsList || []).filter(c => {
+                const referrerId = Number(c.referrer_id ?? c.referrer?.id);
+                return referrerId === Number(openPayDialog) && c.status === 'pending';
+              });
               
               // Filtrar servicios pendientes y eliminar duplicados por ID
               const pendingServicesRaw = appointments.filter(apt => 
@@ -237,11 +284,17 @@ const EarningsModule = React.memo(({
                 return true;
               });
               
-              if (pendingServices.length === 0) {
-                return <p className="text-center text-gray-500 py-8 font-bold">No hay servicios pendientes de pago</p>;
+              if (pendingServices.length === 0 && pendingReferralCommissions.length === 0) {
+                return <p className="text-center text-gray-500 py-8 font-bold">No hay cobros pendientes para esta piojologa</p>;
               }
               
               const commissionRate = (piojologist.commission_rate || 50) / 100;
+              const pendingServicesTotal = pendingServices.reduce((sum, apt) => {
+                const servicePrice = getServicePrice(apt);
+                return sum + (servicePrice * commissionRate);
+              }, 0);
+              const pendingReferralsTotal = pendingReferralCommissions.reduce((sum, c) => sum + Number(c.commission_amount || 0), 0);
+              const pendingCombinedTotal = pendingServicesTotal + pendingReferralsTotal;
               
               return (
                 <>
@@ -253,9 +306,23 @@ const EarningsModule = React.memo(({
                     <p className="text-sm text-gray-600">
                       <span className="font-bold">Servicios pendientes:</span> {pendingServices.length}
                     </p>
+                    <p className="text-sm text-gray-600">
+                      <span className="font-bold">Referidos pendientes:</span> {pendingReferralCommissions.length}
+                    </p>
+                    <p className="text-sm text-gray-700 font-bold">
+                      Servicios: {formatCurrency(pendingServicesTotal)} | Referidos: {formatCurrency(pendingReferralsTotal)}
+                    </p>
+                    <p className="text-base text-green-700 font-black">
+                      Total por cobrar: {formatCurrency(pendingCombinedTotal)}
+                    </p>
                   </div>
                   
                   <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {pendingServices.length > 0 && (
+                      <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-3">
+                        <p className="text-sm font-black text-emerald-700">Servicios pendientes</p>
+                      </div>
+                    )}
                     {pendingServices.map(apt => {
                       const servicePrice = getServicePrice(apt);
                       const piojologistShare = servicePrice * commissionRate;
@@ -292,11 +359,37 @@ const EarningsModule = React.memo(({
                             className="w-full bg-green-500 hover:bg-green-600 text-white rounded-xl py-2 font-bold"
                           >
                             <CheckCircle2 className="w-4 h-4 mr-2" />
-                            Marcar como Pagado
+                            Marcar servicio como pagado
                           </Button>
                         </div>
                       );
                     })}
+                    {pendingReferralCommissions.length > 0 && (
+                      <div className="bg-purple-50 border-2 border-purple-200 rounded-xl p-3 mt-4">
+                        <p className="text-sm font-black text-purple-700">Referidos pendientes</p>
+                        <p className="text-xs text-purple-600 font-bold">
+                          Desglose informativo de cobros por referido.
+                        </p>
+                      </div>
+                    )}
+                    {pendingReferralCommissions.map((commission) => (
+                      <div key={`ref-${commission.id}`} className="bg-white border-2 border-purple-200 rounded-xl p-4">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <p className="font-bold text-gray-800">{commission.booking?.clientName || 'Cliente referido'}</p>
+                            <p className="text-sm text-gray-500">Comision por referido</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-black text-purple-600 text-lg">{formatCurrency(commission.commission_amount || 0)}</p>
+                            <p className="text-xs text-purple-500 font-bold">Pendiente</p>
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center text-xs text-gray-500">
+                          <span>Fecha: {commission.booking?.fecha ? new Date(commission.booking.fecha).toLocaleDateString('es-ES') : '-'}</span>
+                          <span>ID #{commission.id}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </>
               );
@@ -325,6 +418,7 @@ const EarningsModule = React.memo(({
               {openHistoryDialog && (() => {
                 const piojologist = piojologists.find(p => p.id === openHistoryDialog);
                 if (!piojologist) return <p className="text-gray-500">Piojóloga no encontrada</p>;
+                const referralData = referralByPiojologist[Number(piojologist.id)] || { pending: 0, paid: 0, count: 0 };
                 
                 const allServices = appointments.filter(apt => 
                   apt.piojologistId === openHistoryDialog && 
@@ -363,6 +457,12 @@ const EarningsModule = React.memo(({
                         <div className="bg-amber-50 p-2.5 rounded-lg">
                           <span className="text-gray-600 block mb-1">⏳ Pendientes</span>
                           <span className="font-black text-base text-amber-700">{pendingServices.length}</span>
+                        </div>
+                        <div className="bg-purple-50 p-2.5 rounded-lg col-span-2">
+                          <span className="text-gray-600 block mb-1">Bonos referidos</span>
+                          <span className="font-black text-base text-purple-700">
+                            Pendiente: {formatCurrency(referralData.pending)} | Pagado: {formatCurrency(referralData.paid)}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -493,3 +593,4 @@ const EarningsModule = React.memo(({
 EarningsModule.displayName = 'EarningsModule';
 
 export default EarningsModule;
+

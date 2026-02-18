@@ -1,8 +1,7 @@
 ﻿import React, { useState } from 'react';
-import { Calendar, Trash2, Edit, ClipboardList } from 'lucide-react';
+import { Calendar, Trash2, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/components/ui/use-toast';
 import {
   Dialog,
@@ -19,7 +18,8 @@ const ScheduleManagement = ({
   serviceCatalog,
   formatCurrency,
   updateAppointments,
-  onAssignFromCalendar
+  onAssignFromCalendar,
+  onDeleteBooking
 }) => {
   // Función auxiliar para calcular el total del servicio
   const calculateServiceTotal = (appointment) => {
@@ -39,6 +39,8 @@ const ScheduleManagement = ({
   const [selectedService, setSelectedService] = useState(null);
   const [assignPiojologistId, setAssignPiojologistId] = useState('');
   const [servicesPage, setServicesPage] = useState(1);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [bookingToDelete, setBookingToDelete] = useState(null);
   const servicesPerPage = 6;
   const [serviceFilters, setServiceFilters] = useState({
     clientName: '',
@@ -600,9 +602,9 @@ const ScheduleManagement = ({
                     <span className="text-gray-800">
                       {(() => {
                         const payment = selectedService.paymentMethod || selectedService.payment_method;
-                        if (payment === 'pay_now') return 'Paga en lnea (Bold)';
+                        if (payment === 'pay_now') return 'Paga en lnea';
                         if (payment === 'pay_later') return 'Paga despus del servicio';
-                        return 'No registrado';
+                        return 'Paga despus del servicio';
                       })()}
                     </span>
                   </div>
@@ -719,11 +721,126 @@ const ScheduleManagement = ({
                     </div>
                   </div>
                 )}
+
+                {/* Botón Eliminar - Solo para pending y assigned */}
+                {(selectedService.status === 'pending' || selectedService.status === 'assigned') && onDeleteBooking && (
+                  <div className="mt-4 pt-4 border-t-2 border-gray-200">
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        setBookingToDelete(selectedService);
+                        setDeleteConfirmOpen(true);
+                      }}
+                      className="w-full bg-red-500 hover:bg-red-600 text-white rounded-xl px-4 py-3 font-bold border-b-4 border-red-700 active:border-b-0 active:translate-y-1 flex items-center justify-center gap-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Eliminar Agendamiento
+                    </Button>
+                    <p className="text-xs text-gray-500 mt-2 text-center">
+                      Solo se pueden eliminar agendamientos pendientes o asignados
+                    </p>
+                  </div>
+                )}
                   </div>
                 </div>
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="rounded-[3rem] border-4 border-red-400 p-0 overflow-hidden sm:max-w-md bg-red-50 shadow-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Confirmar Eliminación</DialogTitle>
+          </DialogHeader>
+          <div className="text-center pt-8 pb-6">
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <Trash2 className="w-6 h-6 text-red-600" />
+              <h2 className="text-2xl font-black text-red-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
+                CONFIRMAR ELIMINACIÓN
+              </h2>
+            </div>
+          </div>
+          <div className="px-6 md:px-8 pb-8 space-y-6">
+            <div className="text-center space-y-4">
+              <div className="space-y-2">
+                <h3 className="text-xl font-black text-gray-800">
+                  ¿Estás seguro?
+                </h3>
+                <p className="text-base text-gray-600 font-bold">
+                  {bookingToDelete ? (
+                    <>
+                      El agendamiento de{' '}
+                      <span className="text-red-600 font-black">"{bookingToDelete.clientName}"</span>{' '}
+                      será eliminado permanentemente.
+                    </>
+                  ) : (
+                    'Este agendamiento será eliminado permanentemente.'
+                  )}
+                </p>
+                {bookingToDelete && (
+                  <div className="bg-white rounded-2xl p-4 border-2 border-red-200 mt-4">
+                    <p className="text-sm font-bold text-gray-700">
+                      📅 {bookingToDelete.date} - {bookingToDelete.time}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {bookingToDelete.serviceType}
+                    </p>
+                  </div>
+                )}
+                <p className="text-sm text-gray-500 mt-3">
+                  Esta acción no se puede deshacer.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setBookingToDelete(null);
+                }}
+                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-2xl py-4 font-bold border-2 border-gray-300"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={async () => {
+                  if (bookingToDelete && onDeleteBooking) {
+                    const backendId = bookingToDelete.backendId || bookingToDelete.bookingId || bookingToDelete.id;
+                    const result = await onDeleteBooking(backendId);
+                    if (result && result.success) {
+                      setDeleteConfirmOpen(false);
+                      setBookingToDelete(null);
+                      setIsServiceDetailOpen(false);
+                      setSelectedService(null);
+                      toast({
+                        title: "🗑️ Agendamiento Eliminado",
+                        description: "El agendamiento ha sido eliminado exitosamente",
+                        className: "bg-red-100 text-red-800 rounded-2xl border-2 border-red-200"
+                      });
+                    } else {
+                      setDeleteConfirmOpen(false);
+                      toast({
+                        title: "❌ No se puede eliminar",
+                        description: result?.message || "El agendamiento no puede ser eliminado",
+                        variant: "destructive",
+                        className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+                      });
+                    }
+                  }
+                }}
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-2xl py-4 font-bold shadow-lg border-b-4 border-red-700 active:border-b-0 active:translate-y-1"
+              >
+                <Trash2 className="w-5 h-5 mr-2" />
+                Eliminar
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

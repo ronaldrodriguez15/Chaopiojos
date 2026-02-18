@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Bar, Pie, Line } from 'react-chartjs-2';
+import React, { useMemo } from 'react';
+import { Bar, Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement);
@@ -43,15 +43,6 @@ const DashboardModule = React.memo(({ appointments, users, piojologists, formatC
       }).length;
     });
   }, [appointments]);
-
-  const revenueByPiojologist = useMemo(() => {
-    return piojologists.map(pioj => ({
-      name: pioj.name,
-      revenue: appointments
-        .filter(a => a.piojologistId === pioj.id && a.status === 'completed')
-        .reduce((sum, a) => sum + (a.price_confirmed || a.estimatedPrice || 0), 0)
-    })).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
-  }, [appointments, piojologists]);
 
   return (
     <div className="space-y-6">

@@ -1,9 +1,7 @@
-﻿import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense, startTransition } from 'react';
+﻿import React, { useState, useEffect, useCallback, lazy, Suspense, startTransition } from 'react';
 import { motion } from 'framer-motion';
-import { Settings, UserPlus, Calendar, User, CheckCircle, PieChart, Crown, Users, Trash2, Edit, Save, X, ShoppingBag, DollarSign, PackagePlus, Map, Loader, RefreshCw, Menu, Eye, CheckCircle2, XCircle, Copy } from 'lucide-react';
+import { Calendar, PieChart, Users, User, DollarSign, Map, Loader, RefreshCw, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -11,7 +9,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Bar, Pie, Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
@@ -19,13 +16,12 @@ import ScheduleManagement from '@/components/ScheduleManagement';
 import PiojologistMap from '@/components/PiojologistMap';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { geocodeAddress } from '@/lib/geocoding';
-import { bookingService, referralService, userService } from '@/lib/api';
+import { bookingService, referralService } from '@/lib/api';
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement);
 
 // Lazy load módulos pesados para mejor rendimiento
-const DashboardModule = lazy(() => import('@/components/admin/DashboardModule'));
 const UsersModule = lazy(() => import('@/components/admin/UsersModule'));
 const ProductsModule = lazy(() => import('@/components/admin/ProductsModule'));
 const ServicesModule = lazy(() => import('@/components/admin/ServicesModule'));
@@ -36,20 +32,10 @@ const ProductDetailDialog = lazy(() => import('@/components/admin/dialogs/Produc
 // Lazy load diálogos para mejor rendimiento
 const ServiceCatalogDialog = lazy(() => import('@/components/admin/dialogs/ServiceCatalogDialog'));
 const DeleteConfirmDialog = lazy(() => import('@/components/admin/dialogs/DeleteConfirmDialog'));
-const RejectRequestDialog = lazy(() => import('@/components/admin/dialogs/RejectRequestDialog'));
 const UserDetailDialog = lazy(() => import('@/components/admin/dialogs/UserDetailDialog'));
 const EarningsDialog = lazy(() => import('@/components/admin/dialogs/EarningsDialog'));
-const PayAllDialog = lazy(() => import('@/components/admin/dialogs/PaymentDialogs').then(module => ({ default: module.PayAllDialog })));
-const PaymentConfirmDialog = lazy(() => import('@/components/admin/dialogs/PaymentDialogs').then(module => ({ default: module.PaymentConfirmDialog })));
 
-// Loading component
-const LoadingModule = () => (
-  <div className="flex items-center justify-center p-12">
-    <Loader className="w-8 h-8 animate-spin text-blue-500" />
-  </div>
-);
-
-const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, baseAppointments = [], bookings = [], updateAppointments, updateBookings, reloadBookings, piojologists, products, updateProducts, services = [], onCreateService, onUpdateService, onDeleteService, serviceCatalog, formatCurrency, syncICalEvents, productRequests, onApproveRequest, onRejectRequest, onNotify }) => {
+const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, baseAppointments = [], bookings = [], updateAppointments, updateBookings, reloadBookings, onDeleteBooking, piojologists, products, updateProducts, services = [], onCreateService, onUpdateService, onDeleteService, serviceCatalog, formatCurrency, syncICalEvents, productRequests, onApproveRequest, onRejectRequest, onNotify }) => {
   const { toast } = useToast();
   
   // User Management State
@@ -59,85 +45,38 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
   const [isUserDetailOpen, setIsUserDetailOpen] = useState(false);
   const [detailUser, setDetailUser] = useState(null);
   const [referralCodeValidation, setReferralCodeValidation] = useState({ isValidating: false, isValid: null, message: '' });
-  const [isRegeneratingCode, setIsRegeneratingCode] = useState(false);
-  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const [userFormData, setUserFormData] = useState({
     name: '',
     email: '',
     password: '',
-    role: 'piojologist',
+    role: 'piojologa',
     specialty: '',
     available: true,
     address: '',
     commission_rate: 50,
+    referral_value: 15000,
     referral_code_used: '', // Código de referido ingresado
     referral_code: '' // Código único generado para la piojóloga
   });
 
   // Service Creation State
   const [isServiceDialogOpen, setIsServiceDialogOpen] = useState(false);
-  const [serviceFormData, setServiceFormData] = useState({
-    clientName: '',
-    serviceType: '',
-    date: '',
-    time: '',
-    piojologistId: '',
-    yourLoss: '',
-    ourPayment: '',
-    total: '',
-    age: '',
-    whatsapp: '',
-    direccion: '',
-    barrio: '',
-    numPersonas: '',
-    hasAlergias: false,
-    detalleAlergias: '',
-    referidoPor: '',
-    terminosAceptados: false
-  });
 
   // Delete Confirmation Modals
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [deleteType, setDeleteType] = useState(null); // 'service' or 'product'
 
-  // Reject Request Confirmation Modal
-  const [rejectConfirmOpen, setRejectConfirmOpen] = useState(false);
-  const [requestToReject, setRequestToReject] = useState(null);
-  const [rejectReason, setRejectReason] = useState('');
-
   // Earnings Modal State
   const [showEarningsModal, setShowEarningsModal] = useState(false);
   const [earningsHistory, setEarningsHistory] = useState([]);
+  const [referralCommissionsList, setReferralCommissionsList] = useState([]);
   const [loadingEarnings, setLoadingEarnings] = useState(false);
-  const [payingAll, setPayingAll] = useState(false);
-  const [selectedPiojologist, setSelectedPiojologist] = useState(null);
-
-  // Payment Confirmation Modal
-  const [showPaymentConfirm, setShowPaymentConfirm] = useState(false);
-  const [paymentData, setPaymentData] = useState(null);
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   
   // Detalles de Servicios por Piojóloga Modal
   const [openPayDialog, setOpenPayDialog] = useState(null); // ID de la piojóloga para pagar servicios
   const [openHistoryDialog, setOpenHistoryDialog] = useState(null); // ID de la piojóloga para ver historial
 
-  // Pagination states
-  const [usersPage, setUsersPage] = useState(1);
-  const [productsPage, setProductsPage] = useState(1);
-  const [servicesPage, setServicesPage] = useState(1);
-  const [earningsPage, setEarningsPage] = useState(1);
-  const [requestsPage, setRequestsPage] = useState(1);
-  const itemsPerPage = 10;
-  const servicesPerPage = 6;
-
-  // Search filters for Active Services
-  const [serviceFilters, setServiceFilters] = useState({
-    clientName: '',
-    serviceType: '',
-    piojologist: '',
-    status: 'all'
-  });
 
   // Persist active tab across refresh
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('adminTab') || 'dashboard');
@@ -148,32 +87,60 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     });
   };
 
+  const loadReferralPaymentHistory = useCallback(async (showErrorToast = false) => {
+    setLoadingEarnings(true);
+    try {
+      const [historyResult, commissionsResult] = await Promise.all([
+        referralService.getPaymentHistory(),
+        referralService.getAllCommissions()
+      ]);
+
+      if (historyResult.success) {
+        setEarningsHistory(historyResult.data.piojologists || []);
+      }
+      if (commissionsResult.success) {
+        setReferralCommissionsList(commissionsResult.data.commissions || []);
+      }
+
+      if (historyResult.success && commissionsResult.success) {
+        return true;
+      }
+
+      if (showErrorToast) {
+        toast({
+          title: "❌ Error",
+          description: "No se pudo cargar el historial de comisiones",
+          variant: "destructive"
+        });
+      }
+      return false;
+    } catch (error) {
+      console.error('Error cargando historial:', error);
+      if (showErrorToast) {
+        toast({
+          title: "❌ Error",
+          description: "No se pudo cargar el historial de comisiones",
+          variant: "destructive"
+        });
+      }
+      return false;
+    } finally {
+      setLoadingEarnings(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    if (activeTab === 'earnings') {
+      loadReferralPaymentHistory(false);
+    }
+  }, [activeTab, loadReferralPaymentHistory]);
+
   // Mobile nav toggle for tabs
   const [isNavOpen, setIsNavOpen] = useState(false);
   useEffect(() => {
     // Close mobile nav when tab changes
     setIsNavOpen(false);
   }, [activeTab]);
-
-  const [appointmentFormData, setAppointmentFormData] = useState({
-    clientName: '',
-    serviceType: '',
-    date: '',
-    time: '',
-    piojologistId: '',
-    yourLoss: '',
-    ourPayment: '',
-    total: '',
-    age: '',
-    whatsapp: '',
-    direccion: '',
-    barrio: '',
-    numPersonas: '',
-    hasAlergias: false,
-    detalleAlergias: '',
-    referidoPor: '',
-    terminosAceptados: false
-  });
 
   // Resolver nombres de piojólogas faltantes en bookings/appointments combinados
   const normalizeRejectionHistory = (value) => {
@@ -254,37 +221,16 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
       name: '',
       email: '',
       password: '',
-      role: 'piojologist',
+      role: 'piojologa',
       specialty: '',
       available: true,
       address: '',
+      referral_value: 15000,
       referral_code_used: '',
       referral_code: ''
     });
     setEditingUser(null);
     setReferralCodeValidation({ isValid: true, message: '' });
-  };
-
-  const resetServiceForm = () => {
-    setServiceFormData({
-      clientName: '',
-      serviceType: '',
-      date: '',
-      time: '',
-      piojologistId: '',
-      yourLoss: '',
-      ourPayment: '',
-      total: '',
-      age: '',
-      whatsapp: '',
-      direccion: '',
-      barrio: '',
-      numPersonas: '',
-      hasAlergias: false,
-      detalleAlergias: '',
-      referidoPor: '',
-      terminosAceptados: false
-    });
   };
 
   const resetProductForm = () => {
@@ -360,7 +306,10 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
   const handleOpenUserDialog = (user = null) => {
     if (user) {
       setEditingUser(user);
-      setUserFormData(user);
+      setUserFormData({
+        ...user,
+        referral_value: Number(user.referral_value ?? 15000)
+      });
     } else {
       resetUserForm();
     }
@@ -374,9 +323,64 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     setIsUserDetailOpen(true);
   };
 
-  const handleOpenEarningsModal = (piojologist) => {
+  const handleOpenEarningsModal = async () => {
     setShowEarningsModal(true);
-    // Aquí puedes agregar lógica adicional si necesitas filtrar por piojóloga específica
+    await loadReferralPaymentHistory(true);
+  };
+
+  const handlePayAll = async (piojologist) => {
+    try {
+      const result = await referralService.markAllAsPaid(piojologist.id);
+      if (result.success) {
+        toast({
+          title: "✅ Pagos realizados",
+          description: `Se han marcado todas las comisiones de ${piojologist.name} como pagadas`,
+          className: "bg-green-100 border-2 border-green-200 text-green-800 rounded-2xl font-bold"
+        });
+        // Recargar historial
+        await loadReferralPaymentHistory(true);
+      } else {
+        toast({
+          title: "❌ Error",
+          description: result.message || "No se pudieron marcar los pagos",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error pagando comisiones:', error);
+      toast({
+        title: "❌ Error",
+        description: "Ocurrió un error al procesar los pagos",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handlePayOneReferral = async (commission, piojologistName = 'la piojóloga') => {
+    try {
+      const result = await referralService.markAsPaid(commission.id);
+      if (result.success) {
+        toast({
+          title: "✅ Comisión pagada",
+          description: `Se marcó la comisión #${commission.id} como pagada para ${piojologistName}`,
+          className: "bg-green-100 border-2 border-green-200 text-green-800 rounded-2xl font-bold"
+        });
+        await loadReferralPaymentHistory(true);
+      } else {
+        toast({
+          title: "❌ Error",
+          description: result.message || "No se pudo marcar la comisión como pagada",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error pagando comisión individual:', error);
+      toast({
+        title: "❌ Error",
+        description: "Ocurrió un error al procesar el pago individual",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleUserSubmit = async (e) => {
@@ -386,8 +390,15 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     try {
       let userToSave = { ...userFormData };
 
+      if (userToSave.role === 'piojologa') {
+        const referralValue = Number(userToSave.referral_value);
+        userToSave.referral_value = Number.isFinite(referralValue) && referralValue >= 0 ? referralValue : 15000;
+      } else {
+        delete userToSave.referral_value;
+      }
+
       // Validar código de referido si se está usando uno
-      if (!editingUser && userToSave.referral_code_used && userToSave.role === 'piojologist') {
+      if (!editingUser && userToSave.referral_code_used && userToSave.role === 'piojologa') {
         if (!referralCodeValidation.isValid) {
           toast({
             title: "❌ Código de referido inválido",
@@ -400,8 +411,8 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
         }
       }
 
-      // Si la piojóloga tiene dirección y es piojologist, ya tiene coordenadas del autocomplete
-      if (userToSave.role === 'piojologist' && userToSave.address && !userToSave.lat) {
+      // Si la piojóloga tiene dirección y es piojologa, ya tiene coordenadas del autocomplete
+      if (userToSave.role === 'piojologa' && userToSave.address && !userToSave.lat) {
         // Si no tiene coordenadas (edición de usuario sin autocomplete), geocodificar
         const coordinates = await geocodeAddress(userToSave.address);
         if (coordinates) {
@@ -447,7 +458,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
         }
       } else {
         // Generar código único de referido para nuevas piojólogas
-        if (userToSave.role === 'piojologist') {
+        if (userToSave.role === 'piojologa') {
           try {
             // Generar código único simple
             const timestamp = Date.now().toString(36);
@@ -492,46 +503,6 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     } finally {
       setIsGeocodifying(false);
     }
-  };
-
-  // Service Creation
-  const handleServiceSubmit = (e) => {
-    e.preventDefault();
-    const piojologist = piojologists.find(p => p.id === parseInt(serviceFormData.piojologistId));
-    const servicePrice = serviceCatalog[serviceFormData.serviceType] || 0;
-    
-    const newService = {
-      id: Date.now(),
-      clientName: serviceFormData.clientName,
-      serviceType: serviceFormData.serviceType,
-      date: serviceFormData.date,
-      time: serviceFormData.time,
-      piojologistId: parseInt(serviceFormData.piojologistId),
-      piojologistName: piojologist?.name || null,
-      status: 'confirmed',
-      estimatedPrice: servicePrice,
-      yourLoss: serviceFormData.yourLoss || '0',
-      ourPayment: serviceFormData.ourPayment || '0',
-      total: serviceFormData.total || '0',
-      age: serviceFormData.age || '',
-      whatsapp: serviceFormData.whatsapp || '',
-      direccion: serviceFormData.direccion || '',
-      barrio: serviceFormData.barrio || '',
-      numPersonas: serviceFormData.numPersonas || '',
-      hasAlergias: serviceFormData.hasAlergias || '',
-      detalleAlergias: serviceFormData.detalleAlergias || '',
-      referidoPor: serviceFormData.referidoPor || ''
-    };
-
-    const internalAppointments = baseAppointments.length ? baseAppointments : appointments.filter(a => !a.isPublicBooking);
-    updateAppointments([...internalAppointments, newService]);
-    setIsServiceDialogOpen(false);
-    resetServiceForm();
-    toast({ 
-      title: "¡Servicio Creado! ✨", 
-      description: `Asignado a ${piojologist?.name}`,
-      className: "bg-purple-100 text-purple-800 rounded-2xl border-2 border-purple-200" 
-    });
   };
 
   // Earnings Logic
@@ -719,11 +690,18 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
   const confirmDeleteService = async () => {
     if (itemToDelete && deleteType === 'service') {
       const result = await onDeleteService(itemToDelete.id);
-      if (result) {
+      if (result && result.success) {
         toast({ 
           title: "🗑️ Servicio Eliminado", 
           description: "El servicio ha sido removido del catálogo",
           className: "bg-red-100 text-red-800 rounded-2xl border-2 border-red-200" 
+        });
+      } else {
+        toast({ 
+          title: "❌ No se puede eliminar", 
+          description: result?.message || "El servicio está siendo usado en reservas aceptadas",
+          variant: "destructive",
+          className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold" 
         });
       }
     }
@@ -829,16 +807,12 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     }
   };
 
-  const unassignedAppointments = displayAppointments.filter(apt => 
-    apt.status === 'pending' || (apt.status === 'confirmed' && !apt.piojologistId)
-  );
-
   const handleAssignFromCalendar = (appointment, piojologistId) => {
     handleAssignPiojologist(appointment?.backendId || appointment?.bookingId || appointment?.id, piojologistId, appointment);
   };
 
   return (
-    <div className="space-y-8">
+    <div className="w-full space-y-8 overflow-x-hidden">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <div className="flex items-center justify-between md:justify-start gap-3 mb-4 md:mb-6">
           <h2 className="text-xl font-black text-gray-800 md:hidden">Módulos</h2>
@@ -1171,6 +1145,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
             formatCurrency={formatCurrency}
             updateAppointments={updateAppointments}
             onAssignFromCalendar={handleAssignFromCalendar}
+            onDeleteBooking={onDeleteBooking}
           />
         </TabsContent>
 
@@ -1209,7 +1184,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
         </TabsContent>
 
         <TabsContent value="services" className="space-y-6">
-          <Suspense fallback={<LoadingModule />}>
+          <Suspense fallback={<div>Cargando...</div>}>
             <ServicesModule
               services={services}
               toMoney={toMoney}
@@ -1225,6 +1200,8 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
               piojologists={piojologists}
               appointments={appointments}
               users={users}
+              referralPayouts={earningsHistory}
+              referralCommissionsList={referralCommissionsList}
               getServicePrice={getServicePrice}
               formatCurrency={formatCurrency}
               handleMarkServiceAsPaid={handleMarkServiceAsPaid}
@@ -1248,7 +1225,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                 </h3>
               </div>
               <div className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded-full text-sm font-bold self-start sm:self-auto">
-                🎯 {users.filter(u => u.role === 'piojologist' && u.lat && u.lng).length} ubicadas
+                🎯 {users.filter(u => u.role === 'piojologa' && u.lat && u.lng).length} ubicadas
               </div>
             </div>
             
@@ -1319,9 +1296,18 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                 <select 
                   className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all"
                   value={userFormData.role}
-                  onChange={e => setUserFormData({...userFormData, role: e.target.value})}
+                  onChange={e => {
+                    const nextRole = e.target.value;
+                    setUserFormData({
+                      ...userFormData,
+                      role: nextRole,
+                      referral_value: nextRole === 'piojologa'
+                        ? Number(userFormData.referral_value ?? 15000)
+                        : userFormData.referral_value
+                    });
+                  }}
                 >
-                  <option value="piojologist">🦸 Piojóloga</option>
+                  <option value="piojologa">🦸 Piojóloga</option>
                   <option value="admin">👑 Administrador</option>
                 </select>
               </div>
@@ -1352,7 +1338,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
               />
             </div>
 
-            {userFormData.role === 'piojologist' && (
+            {userFormData.role === 'piojologa' && (
               <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-2">Especialidad (Súper Poder)</label>
@@ -1362,6 +1348,27 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
                     onChange={e => setUserFormData({...userFormData, specialty: e.target.value})}
                     placeholder="Ej. Visión de Rayos X"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">
+                    💸 Valor referido (COP)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
+                    value={userFormData.referral_value ?? 15000}
+                    onChange={e => setUserFormData({
+                      ...userFormData,
+                      referral_value: e.target.value === '' ? '' : Number(e.target.value)
+                    })}
+                    placeholder="15000"
+                  />
+                  <p className="text-xs text-gray-500 mt-2">
+                    Por defecto: {formatCurrency(15000)}. Puedes personalizarlo por piojóloga.
+                  </p>
                 </div>
 
                 {/* Código de Referido Usado */}
@@ -1458,7 +1465,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
               </motion.div>
             )}
 
-            {userFormData.role === 'piojologist' && (
+            {userFormData.role === 'piojologa' && (
               <div>
                 <label className="block text-sm font-medium text-gray-600 mb-2">📍 Dirección</label>
                 <AddressAutocomplete
@@ -1481,7 +1488,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
               </div>
             )}
 
-            {userFormData.role !== 'piojologist' && (
+            {userFormData.role !== 'piojologa' && (
               <div>
                 <label className="block text-sm font-medium text-gray-600 mb-2">📍 Dirección (Opcional)</label>
                 <AddressAutocomplete
@@ -1573,7 +1580,10 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
           formatCurrency={formatCurrency}
           formatDate12H={formatDate12H}
           earningsHistory={earningsHistory}
+          referralCommissionsList={referralCommissionsList}
           loadingEarnings={loadingEarnings}
+          handlePayAll={handlePayAll}
+          handlePayOneReferral={handlePayOneReferral}
         />
       </Suspense>
 
@@ -1621,3 +1631,5 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
 };
 
 export default AdminView;
+
+

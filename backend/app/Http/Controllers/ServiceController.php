@@ -71,10 +71,30 @@ class ServiceController extends Controller
 
     public function destroy(Service $service)
     {
+        // Verificar si el servicio está siendo usado en bookings con estado 'accepted'
+        $bookingsWithService = \App\Models\Booking::where(function($query) use ($service) {
+            $query->where('serviceType', $service->name)
+                  ->orWhereJsonContains('services_per_person', $service->name);
+        })->where('estado', 'accepted')->count();
+
+        if ($bookingsWithService > 0) {
+            return response()->json([
+                'message' => 'No se puede eliminar este servicio porque está siendo usado en ' . $bookingsWithService . ' reserva(s) aceptada(s)',
+                'error' => 'service_in_use'
+            ], 422);
+        }
+
+        // Eliminar bookings asociados que NO estén en estado 'accepted'
+        \App\Models\Booking::where(function($query) use ($service) {
+            $query->where('serviceType', $service->name)
+                  ->orWhereJsonContains('services_per_person', $service->name);
+        })->where('estado', '!=', 'accepted')->delete();
+
+        // Eliminar el servicio
         $service->delete();
 
         return response()->json([
-            'message' => 'Servicio eliminado',
+            'message' => 'Servicio eliminado exitosamente',
         ]);
     }
 }

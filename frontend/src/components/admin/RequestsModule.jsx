@@ -4,7 +4,6 @@ import { CheckCircle2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
 import Pagination from './Pagination';
 
 const RequestsModule = React.memo(({ 

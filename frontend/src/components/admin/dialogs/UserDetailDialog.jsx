@@ -21,7 +21,7 @@ const UserDetailDialog = ({
         {/* Title */}
         <div className="text-center pt-8 pb-6">
           <div className="flex items-center justify-center gap-3 mb-2">
-            {user.role === 'admin' ? <Crown className="w-6 h-6 text-yellow-600" /> : user.role === 'piojologist' ? <UserCheck className="w-6 h-6 text-yellow-600" /> : <User className="w-6 h-6 text-yellow-600" />}
+            {user.role === 'admin' ? <Crown className="w-6 h-6 text-yellow-600" /> : user.role === 'piojologa' ? <UserCheck className="w-6 h-6 text-yellow-600" /> : <User className="w-6 h-6 text-yellow-600" />}
             <h2 className="text-2xl font-black text-yellow-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
               DETALLES DEL USUARIO
             </h2>
@@ -32,11 +32,11 @@ const UserDetailDialog = ({
           <div className="px-6 sm:px-8 pb-8 space-y-4">
           <div className="bg-white rounded-3xl p-6 border-2 border-yellow-400 text-center">
             <div className="w-20 h-20 mx-auto rounded-full bg-yellow-100 flex items-center justify-center text-4xl shadow-lg mb-3">
-              {user.role === 'admin' ? '👑' : user.role === 'piojologist' ? '👩‍⚕️' : '👤'}
+              {user.role === 'admin' ? '👑' : user.role === 'piojologa' ? '👩‍⚕️' : '👤'}
             </div>
             <h3 className="text-2xl font-bold text-gray-800 mb-2">{user.name}</h3>
             <span className="inline-block px-4 py-2 rounded-xl text-sm font-bold uppercase tracking-wider bg-yellow-200 text-yellow-700">
-              {user.role}
+              {user.role === 'admin' ? 'admin' : user.role === 'piojologa' ? 'piojóloga' : user.role}
             </span>
           </div>
 
@@ -51,14 +51,14 @@ const UserDetailDialog = ({
               <p className="text-base font-bold text-gray-800">{formatDate12H(user.created_at)}</p>
             </div>
 
-            {user.role === 'piojologist' && user.specialty && (
+            {user.role === 'piojologa' && user.specialty && (
               <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400">
                 <p className="text-xs font-bold text-yellow-600 mb-1">⚡ Especialidad</p>
                 <p className="text-base font-bold text-gray-800">{user.specialty}</p>
               </div>
             )}
 
-            {user.role === 'piojologist' && user.commission_rate && (
+            {user.role === 'piojologa' && user.commission_rate && (
               <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400">
                 <p className="text-xs font-bold text-yellow-600 mb-1">💰 Tasa de Comisión</p>
                 <div className="flex gap-2 flex-wrap">
@@ -72,7 +72,7 @@ const UserDetailDialog = ({
               </div>
             )}
 
-            {user.role === 'piojologist' && (
+            {user.role === 'piojologa' && (
               <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400">
                 <p className="text-xs font-bold text-yellow-600 mb-2">🎁 Código de Referido Personal</p>
                 {user.referral_code ? (
@@ -90,7 +90,17 @@ const UserDetailDialog = ({
               </div>
             )}
 
-            {user.role === 'piojologist' && user.referred_by_id && (
+            {user.role === 'piojologa' && (
+              <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400">
+                <p className="text-xs font-bold text-yellow-600 mb-1">Valor referido</p>
+                <p className="text-2xl font-bold text-gray-800">
+                  {formatCurrency(Number(user.referral_value ?? 15000))}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Comision por cada servicio referido completado</p>
+              </div>
+            )}
+
+            {user.role === 'piojologa' && user.referred_by_id && (
               <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400">
                 <p className="text-xs font-bold text-yellow-600 mb-1">👥 Referido Por</p>
                 <p className="text-sm font-bold text-gray-800">Este usuario fue referido por otro miembro</p>
@@ -109,7 +119,7 @@ const UserDetailDialog = ({
               </div>
             )}
 
-            {user.role === 'piojologist' && (
+            {user.role === 'piojologa' && (
               <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400">
                 <p className="text-xs font-bold text-yellow-600 mb-1">📊 Estado</p>
                 <span className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${
@@ -120,7 +130,7 @@ const UserDetailDialog = ({
               </div>
             )}
 
-            {user.role === 'piojologist' && typeof user.earnings !== 'undefined' && (
+            {user.role === 'piojologa' && typeof user.earnings !== 'undefined' && (
               <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400">
                 <p className="text-xs font-bold text-yellow-600 mb-1">💵 Ganancias Totales</p>
                 <p className="text-2xl font-bold text-gray-800">{formatCurrency(user.earnings)}</p>

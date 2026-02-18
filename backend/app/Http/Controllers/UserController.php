@@ -44,12 +44,13 @@ class UserController extends Controller
                 'name' => 'required|string|max:255',
                 'email' => 'required|email|unique:users,email',
                 'password' => 'required|string|min:3',
-                'role' => ['required', Rule::in(['admin', 'piojologist'])],
+                'role' => ['required', Rule::in(['admin', 'piojologa'])],
                 'specialty' => 'nullable|string|max:255',
                 'available' => 'nullable|boolean',
                 'address' => 'nullable|string|max:255',
                 'lat' => 'nullable|numeric',
                 'lng' => 'nullable|numeric',
+                'referral_value' => 'nullable|numeric|min:0|max:99999999',
                 'referral_code_used' => 'nullable|string|max:20', // Código de referido ingresado
                 'referral_code' => 'nullable|string|max:20|unique:users,referral_code', // Código único generado
             ]);
@@ -61,10 +62,18 @@ class UserController extends Controller
                 $validated['available'] = true;
             }
 
+            if (($validated['role'] ?? null) === 'piojologa') {
+                $validated['referral_value'] = isset($validated['referral_value'])
+                    ? (float) $validated['referral_value']
+                    : 15000;
+            } else {
+                unset($validated['referral_value']);
+            }
+
             // Si es piojóloga y se proporcionó un código de referido
-            if ($validated['role'] === 'piojologist' && !empty($validated['referral_code_used'])) {
+            if ($validated['role'] === 'piojologa' && !empty($validated['referral_code_used'])) {
                 $referrer = User::where('referral_code', $validated['referral_code_used'])
-                    ->where('role', 'piojologist')
+                    ->where('role', 'piojologa')
                     ->first();
 
                 if ($referrer) {
@@ -145,11 +154,12 @@ class UserController extends Controller
                 'name' => 'sometimes|required|string|max:255',
                 'email' => ['sometimes', 'required', 'email', Rule::unique('users')->ignore($id)],
                 'password' => 'sometimes|nullable|string|min:3',
-                'role' => ['sometimes', 'required', Rule::in(['admin', 'piojologist'])],
+                'role' => ['sometimes', 'required', Rule::in(['admin', 'piojologa'])],
                 'specialty' => 'nullable|string|max:255',
                 'available' => 'nullable|boolean',
                 'earnings' => 'nullable|numeric',
                 'commission_rate' => 'nullable|numeric|min:0|max:100',
+                'referral_value' => 'nullable|numeric|min:0|max:99999999',
                 'address' => 'nullable|string|max:255',
                 'lat' => 'nullable|numeric',
                 'lng' => 'nullable|numeric',
@@ -157,6 +167,17 @@ class UserController extends Controller
             ]);
 
             // Si se proporciona una nueva contraseña, hashearla
+            $incomingRole = $validated['role'] ?? $user->role;
+            if ($incomingRole === 'piojologa') {
+                if (!array_key_exists('referral_value', $validated)) {
+                    $validated['referral_value'] = $user->referral_value ?? 15000;
+                } else {
+                    $validated['referral_value'] = (float) $validated['referral_value'];
+                }
+            } else {
+                unset($validated['referral_value']);
+            }
+
             if (isset($validated['password']) && !empty($validated['password'])) {
                 $validated['password'] = Hash::make($validated['password']);
             } else {
@@ -242,7 +263,7 @@ class UserController extends Controller
             ]);
 
             $user = User::where('referral_code', $validated['code'])
-                ->where('role', 'piojologist')
+                ->where('role', 'piojologa')
                 ->first();
 
             if ($user) {
@@ -280,7 +301,7 @@ class UserController extends Controller
         try {
             $user = User::findOrFail($id);
 
-            if ($user->role !== 'piojologist') {
+            if ($user->role !== 'piojologa') {
                 return response()->json([
                     'success' => false,
                     'message' => 'Solo las piojólogas pueden tener código de referido'
@@ -311,3 +332,4 @@ class UserController extends Controller
         }
     }
 }
+
