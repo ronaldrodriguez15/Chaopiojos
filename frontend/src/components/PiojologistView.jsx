@@ -544,6 +544,10 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     () => appointments.filter((apt) => apt.piojologistId === currentUser.id && (apt.status === 'assigned' || apt.status === 'pending')),
     [appointments, currentUser.id]
   );
+  const servicePlanOptions = useMemo(() => {
+    const plans = Object.keys(serviceCatalog || {});
+    return plans.length ? plans : ['Normal'];
+  }, [serviceCatalog]);
   const assignedToMe = useMemo(
     () => appointments.filter((apt) => apt.piojologistId === currentUser.id && (apt.status === 'accepted' || apt.status === 'confirmed')),
     [appointments, currentUser.id]
@@ -956,9 +960,12 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                         onClick={() => {
                           setFinishingAppointmentId(apt.id);
                           setSelectedProducts([]);
-                          const basePrice = getServicePrice(apt);
-                          setFinishingPlan(apt.planType || apt.serviceType || 'Normal');
-                          setFinishingPrice(basePrice);
+                          const preferredPlan = apt.planType || apt.serviceType || servicePlanOptions[0];
+                          const initialPlan = servicePlanOptions.includes(preferredPlan) ? preferredPlan : servicePlanOptions[0];
+                          const people = Math.max(1, Number(apt.numPersonas) || 1);
+                          const initialPrice = (Number(serviceCatalog[initialPlan]) || 0) * people;
+                          setFinishingPlan(initialPlan);
+                          setFinishingPrice(String(initialPrice));
                           setFinishingNotes(apt.serviceNotes || '');
                           setFinishingAdditionalCosts('');
                         }}
@@ -1023,23 +1030,34 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                         </div>
 
                         <div className="space-y-3">
-                          {/* Valor del Servicio - Informativo */}
+                          {/* Valor del Servicio - Seleccionable */}
                           <div className="bg-gradient-to-r from-blue-50 to-blue-100 border-2 border-blue-300 rounded-2xl p-4 shadow-sm">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="font-black text-blue-700 text-sm flex items-center gap-2">
-                                  💰 Valor del Servicio
-                                </p>
-                                <p className="text-xs text-blue-600 font-semibold mt-1">
-                                  {apt.numPersonas > 1 ? `${apt.numPersonas} personas` : apt.serviceType}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-2xl font-black text-blue-700">
-                                  {formatCurrency(getServicePrice(apt))}
-                                </p>
-                              </div>
-                            </div>
+                            <Label className="font-black text-blue-700 text-sm mb-2 block">
+                              Valor del Servicio
+                            </Label>
+                            <p className="text-xs text-blue-600 font-semibold mb-2">
+                              {apt.numPersonas > 1 ? `${apt.numPersonas} personas` : apt.serviceType}
+                            </p>
+                            <select
+                              value={finishingPlan}
+                              onChange={(e) => {
+                                const selectedPlan = e.target.value;
+                                setFinishingPlan(selectedPlan);
+                                const people = Math.max(1, Number(apt.numPersonas) || 1);
+                                const unitPrice = Number(serviceCatalog[selectedPlan]) || 0;
+                                setFinishingPrice(String(unitPrice * people));
+                              }}
+                              className="w-full bg-white border-2 border-blue-200 rounded-xl p-3 text-sm font-black text-blue-700 focus:border-blue-400 outline-none"
+                            >
+                              {servicePlanOptions.map((planName) => (
+                                <option key={`finish-plan-${planName}`} value={planName}>
+                                  {planName} - {formatCurrency((Number(serviceCatalog[planName]) || 0) * (Math.max(1, Number(apt.numPersonas) || 1)))}
+                                </option>
+                              ))}
+                            </select>
+                            <p className="text-right text-2xl font-black text-blue-700 mt-2">
+                              {formatCurrency(Number(finishingPrice) || 0)}
+                            </p>
                           </div>
 
                           <div className="bg-white border-2 border-purple-100 rounded-2xl p-3 shadow-sm">
@@ -1400,9 +1418,12 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                              onClick={() => {
                                setFinishingAppointmentId(apt.id);
                                setSelectedProducts([]);
-                                const basePrice = getServicePrice(apt);
-                                setFinishingPlan(apt.planType || apt.serviceType || 'Normal');
-                                setFinishingPrice(basePrice);
+                                const preferredPlan = apt.planType || apt.serviceType || servicePlanOptions[0];
+                                const initialPlan = servicePlanOptions.includes(preferredPlan) ? preferredPlan : servicePlanOptions[0];
+                                const people = Math.max(1, Number(apt.numPersonas) || 1);
+                                const initialPrice = (Number(serviceCatalog[initialPlan]) || 0) * people;
+                                setFinishingPlan(initialPlan);
+                                setFinishingPrice(String(initialPrice));
                                 setFinishingNotes(apt.serviceNotes || '');
                                 setFinishingAdditionalCosts('');
                              }}
@@ -1466,26 +1487,37 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                             </div>
 
                             <div className="space-y-3">
-                            {/* Valor del Servicio - Informativo */}
+                            {/* Valor del Servicio - Seleccionable */}
                             <div className="bg-gradient-to-r from-blue-50 to-blue-100 border-2 border-blue-300 rounded-2xl p-4 shadow-sm">
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <p className="font-black text-blue-700 text-sm flex items-center gap-2">
-                                    💰 Valor del Servicio
-                                  </p>
-                                  <p className="text-xs text-blue-600 font-semibold mt-1">
-                                    {apt.numPersonas > 1 ? `${apt.numPersonas} personas` : apt.serviceType}
-                                  </p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-2xl font-black text-blue-700">
-                                    {formatCurrency(getServicePrice(apt))}
-                                  </p>
-                                </div>
-                              </div>
+                              <Label className="font-black text-blue-700 text-sm mb-2 block">
+                                Valor del Servicio
+                              </Label>
+                              <p className="text-xs text-blue-600 font-semibold mb-2">
+                                {apt.numPersonas > 1 ? `${apt.numPersonas} personas` : apt.serviceType}
+                              </p>
+                              <select
+                                value={finishingPlan}
+                                onChange={(e) => {
+                                  const selectedPlan = e.target.value;
+                                  setFinishingPlan(selectedPlan);
+                                  const people = Math.max(1, Number(apt.numPersonas) || 1);
+                                  const unitPrice = Number(serviceCatalog[selectedPlan]) || 0;
+                                  setFinishingPrice(String(unitPrice * people));
+                                }}
+                                className="w-full bg-white border-2 border-blue-200 rounded-xl p-3 text-sm font-black text-blue-700 focus:border-blue-400 outline-none"
+                              >
+                                {servicePlanOptions.map((planName) => (
+                                  <option key={`finish-plan-${planName}`} value={planName}>
+                                    {planName} - {formatCurrency((Number(serviceCatalog[planName]) || 0) * (Math.max(1, Number(apt.numPersonas) || 1)))}
+                                  </option>
+                                ))}
+                              </select>
+                              <p className="text-right text-2xl font-black text-blue-700 mt-2">
+                                {formatCurrency(Number(finishingPrice) || 0)}
+                              </p>
                             </div>
 
-                            <div className="bg-white border-2 border-purple-100 rounded-2xl p-3 shadow-sm">
+                          <div className="bg-white border-2 border-purple-100 rounded-2xl p-3 shadow-sm">
                               <Label className="font-black text-gray-700 text-sm mb-1 block flex items-center gap-2">
                                 💵 Costos adicionales <span className="text-xs text-gray-500 font-normal">(opcional)</span>
                               </Label>
@@ -1790,4 +1822,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
 };
 
 export default PiojologistView;
+
+
+
 

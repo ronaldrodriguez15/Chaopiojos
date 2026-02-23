@@ -185,6 +185,18 @@ const PublicBooking = () => {
     return () => { isMounted = false; };
   }, []);
 
+  useEffect(() => {
+    const previousBodyBackgroundColor = document.body.style.backgroundColor;
+    const previousBodyBackgroundImage = document.body.style.backgroundImage;
+    document.body.style.backgroundColor = '#8fc0ea';
+    document.body.style.backgroundImage = 'none';
+
+    return () => {
+      document.body.style.backgroundColor = previousBodyBackgroundColor;
+      document.body.style.backgroundImage = previousBodyBackgroundImage;
+    };
+  }, []);
+
   // Leer código de referido desde la URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -569,11 +581,7 @@ const PublicBooking = () => {
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-b from-orange-50 via-amber-50 to-white font-fredoka text-gray-800 text-[20px] md:text-xl leading-relaxed md:leading-normal relative overflow-hidden flex items-center justify-center px-3 md:px-6 py-6">
-      {/* Decorative Background Blobs */}
-      <div className="fixed top-20 -left-10 w-48 h-48 bg-yellow-300 rounded-full mix-blend-multiply filter blur-2xl opacity-40 animate-pulse pointer-events-none"></div>
-      <div className="fixed bottom-20 -right-10 w-64 h-64 bg-orange-300 rounded-full mix-blend-multiply filter blur-2xl opacity-40 animate-pulse pointer-events-none"></div>
-      <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-lime-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 pointer-events-none"></div>
+      <div className="min-h-0 md:min-h-screen bg-[#8fc0ea] font-fredoka text-gray-800 text-[20px] md:text-xl leading-relaxed md:leading-normal relative overflow-hidden flex items-start md:items-center justify-center px-2 md:px-6 py-2 md:py-6">
 
       {/* Floating Elements - Same as Login */}
       <motion.div
