@@ -766,11 +766,15 @@ function App() {
 
     const backendId = appointment.backendId || appointment.bookingId || (isBookingId ? appointmentId.replace('booking-','') : appointmentId);
     const servicePrice = serviceCatalog[appointment.serviceType] || 0;
+    const confirmedServicePrice = Number(completionData.priceConfirmed ?? servicePrice);
+    const effectiveServicePrice = Number.isFinite(confirmedServicePrice) && confirmedServicePrice > 0
+      ? confirmedServicePrice
+      : servicePrice;
     
     // Get piojologist's commission rate (default to 50% if not set)
     const piojologist = users.find(u => u.id === appointment.piojologistId);
     const commissionRate = (piojologist?.commission_rate || 50) / 100;
-    const piojologistShare = servicePrice * commissionRate;
+    const piojologistShare = effectiveServicePrice * commissionRate;
 
     // Calculate deductions from used products
     let productDeductions = 0;
@@ -813,14 +817,14 @@ function App() {
     if (appointment.isPublicBooking || isBookingId || bookingMatch) {
       const updatedBookings = bookings.map(apt => 
         (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId || (isBookingId && apt.backendId === Number(appointmentId.replace('booking-',''))))
-          ? { ...apt, status: 'completed', price: completionData.priceConfirmed ?? servicePrice, price_confirmed: completionData.priceConfirmed ?? servicePrice, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions, payment_status_to_piojologist: 'pending', paymentStatusToPiojologist: 'pending' }
+          ? { ...apt, status: 'completed', price: effectiveServicePrice, price_confirmed: effectiveServicePrice, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions, payment_status_to_piojologist: 'pending', paymentStatusToPiojologist: 'pending' }
           : apt
       );
       setBookings(updatedBookings);
     } else {
       const updatedAppointments = appointments.map(apt => 
         (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId)
-          ? { ...apt, status: 'completed', price: completionData.priceConfirmed ?? servicePrice, price_confirmed: completionData.priceConfirmed ?? servicePrice, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions, payment_status_to_piojologist: 'pending', paymentStatusToPiojologist: 'pending' }
+          ? { ...apt, status: 'completed', price: effectiveServicePrice, price_confirmed: effectiveServicePrice, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions, payment_status_to_piojologist: 'pending', paymentStatusToPiojologist: 'pending' }
           : apt
       );
       setAppointments(updatedAppointments);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { DollarSign, Eye, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -8,6 +8,7 @@ const EarningsModule = React.memo(({
   piojologists,
   appointments,
   users,
+  serviceCatalog = {},
   referralPayouts = [],
   referralCommissionsList = [],
   getServicePrice,
@@ -41,20 +42,62 @@ const EarningsModule = React.memo(({
     }, {});
   }, [referralPayouts]);
 
+  const paginatedPiojologists = piojologists.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  const getServiceCommissionBreakdown = (apt = {}, commissionRate = 0.5) => {
+    const servicesPerPerson = Array.isArray(apt.services_per_person) ? apt.services_per_person : [];
+    if (servicesPerPerson.length > 0) {
+      const breakdown = servicesPerPerson.map((serviceName, idx) => {
+        const basePrice = Number(serviceCatalog?.[serviceName] || 0);
+        return {
+          idx,
+          serviceName,
+          basePrice,
+          commission: basePrice * commissionRate
+        };
+      });
+
+      const sumBase = breakdown.reduce((acc, item) => acc + item.basePrice, 0);
+      if (sumBase > 0) return breakdown;
+
+      const fallbackPerPerson = Number(getServicePrice(apt) || 0) / servicesPerPerson.length;
+      return breakdown.map((item) => ({
+        ...item,
+        basePrice: fallbackPerPerson,
+        commission: fallbackPerPerson * commissionRate
+      }));
+    }
+
+    const fallbackPrice = Number(getServicePrice(apt) || 0);
+    return [{
+      idx: 0,
+      serviceName: apt.serviceType || 'Servicio',
+      basePrice: fallbackPrice,
+      commission: fallbackPrice * commissionRate
+    }];
+  };
+
+  const getPiojologistShareByService = (apt = {}, commissionRate = 0.5) => {
+    return getServiceCommissionBreakdown(apt, commissionRate)
+      .reduce((sum, item) => sum + Number(item.commission || 0), 0);
+  };
+
   const stats = useMemo(() => {
     const completed = appointments.filter(a => a.status === 'completed');
     const totalBruto = completed.reduce((acc, curr) => acc + getServicePrice(curr), 0);
-    
+
     let totalPendientePago = 0;
     let totalYaPagado = 0;
     let serviciosCobrados = 0;
-    
+
     completed.forEach(apt => {
       const piojologist = users.find(u => u.id === apt.piojologistId);
       const commissionRate = (piojologist?.commission_rate || 50) / 100;
-      const servicePrice = getServicePrice(apt);
-      const piojologistShare = servicePrice * commissionRate;
-      
+      const piojologistShare = getPiojologistShareByService(apt, commissionRate);
+
       const paymentStatus = apt.payment_status_to_piojologist || apt.paymentStatusToPiojologist || 'pending';
       if (paymentStatus === 'paid') {
         totalYaPagado += piojologistShare;
@@ -77,24 +120,19 @@ const EarningsModule = React.memo(({
       totalPendientePago: totalPendientePago + referralPending,
       totalYaPagado: totalYaPagado + referralPaid
     };
-  }, [appointments, users, getServicePrice, referralPayouts]);
-
-  const paginatedPiojologists = piojologists.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  }, [appointments, users, getServicePrice, referralPayouts, serviceCatalog]);
 
   const cards = [
-    { label: 'Servicios cobrados pendientes', value: stats.serviciosCobrados, tone: 'bg-amber-50 text-amber-700 border-amber-200', icon: '⏳' },
-    { label: 'Total facturado', value: formatCurrency(stats.totalBruto), tone: 'bg-blue-50 text-blue-700 border-blue-200', icon: '💰' },
-    { label: 'Pendiente de pagar', value: formatCurrency(stats.totalPendientePago), tone: 'bg-red-50 text-red-700 border-red-200', icon: '🔴' },
-    { label: 'Ya pagado', value: formatCurrency(stats.totalYaPagado), tone: 'bg-green-50 text-green-700 border-green-200', icon: '✅' }
+    { label: 'Servicios cobrados pendientes', value: stats.serviciosCobrados, tone: 'bg-amber-50 text-amber-700 border-amber-200', icon: 'P' },
+    { label: 'Total facturado', value: formatCurrency(stats.totalBruto), tone: 'bg-blue-50 text-blue-700 border-blue-200', icon: '$' },
+    { label: 'Pendiente de pagar', value: formatCurrency(stats.totalPendientePago), tone: 'bg-red-50 text-red-700 border-red-200', icon: '!' },
+    { label: 'Ya pagado', value: formatCurrency(stats.totalYaPagado), tone: 'bg-green-50 text-green-700 border-green-200', icon: 'OK' }
   ];
 
   return (
     <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-green-100 space-y-8">
       <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3">
-        <span className="text-3xl">💰</span> Control de Pagos a Piojólogas
+        <span className="text-3xl">ðŸ’°</span> Control de Pagos a PiojÃ³logas
       </h3>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -123,8 +161,8 @@ const EarningsModule = React.memo(({
         <table className="w-full text-left">
           <thead>
             <tr className="border-b-2 border-gray-100">
-              <th className="p-4 font-black text-gray-400">Piojóloga</th>
-              <th className="p-4 font-black text-gray-400 text-center">Comisión</th>
+              <th className="p-4 font-black text-gray-400">PiojÃ³loga</th>
+              <th className="p-4 font-black text-gray-400 text-center">ComisiÃ³n</th>
               <th className="p-4 font-black text-gray-400 text-center">Cobrados</th>
               <th className="p-4 font-black text-gray-400 text-right">Pendiente Pago</th>
               <th className="p-4 font-black text-gray-400 text-right">Ya Pagado</th>
@@ -143,8 +181,7 @@ const EarningsModule = React.memo(({
               let pendingCount = 0;
               
               completedServices.forEach(apt => {
-                const servicePrice = getServicePrice(apt);
-                const piojologistShare = servicePrice * commissionRate;
+                const piojologistShare = getPiojologistShareByService(apt, commissionRate);
                 const paymentStatus = apt.payment_status_to_piojologist || apt.paymentStatusToPiojologist || 'pending';
                 
                 if (paymentStatus === 'paid') {
@@ -244,7 +281,7 @@ const EarningsModule = React.memo(({
         colorScheme="green"
       />
 
-      {/* Diálogo: Pagar Servicios */}
+      {/* DiÃ¡logo: Pagar Servicios */}
       <Dialog open={!!openPayDialog} onOpenChange={(open) => !open && setOpenPayDialog(null)}>
         <DialogContent className="rounded-[3rem] border-4 border-green-400 p-0 overflow-hidden sm:max-w-2xl bg-green-50 shadow-2xl max-h-[85vh] flex flex-col">
           <DialogHeader className="sr-only">
@@ -261,7 +298,7 @@ const EarningsModule = React.memo(({
           <div className="px-6 pb-6 space-y-4 overflow-y-auto">
             {openPayDialog && (() => {
               const piojologist = piojologists.find(p => p.id === openPayDialog);
-              if (!piojologist) return <p className="text-gray-500">Piojóloga no encontrada</p>;
+              if (!piojologist) return <p className="text-gray-500">PiojÃ³loga no encontrada</p>;
               const pendingReferralCommissions = (referralCommissionsList || []).filter(c => {
                 const referrerId = Number(c.referrer_id ?? c.referrer?.id);
                 return referrerId === Number(openPayDialog) && c.status === 'pending';
@@ -274,7 +311,7 @@ const EarningsModule = React.memo(({
                 (apt.payment_status_to_piojologist || apt.paymentStatusToPiojologist || 'pending') === 'pending'
               );
               
-              // Eliminar duplicados basándose en el ID (tomar el último en caso de duplicados)
+              // Eliminar duplicados basÃ¡ndose en el ID (tomar el Ãºltimo en caso de duplicados)
               const uniqueIds = new Set();
               const pendingServices = pendingServicesRaw.filter(apt => {
                 if (uniqueIds.has(apt.id)) {
@@ -290,8 +327,7 @@ const EarningsModule = React.memo(({
               
               const commissionRate = (piojologist.commission_rate || 50) / 100;
               const pendingServicesTotal = pendingServices.reduce((sum, apt) => {
-                const servicePrice = getServicePrice(apt);
-                return sum + (servicePrice * commissionRate);
+                return sum + getPiojologistShareByService(apt, commissionRate);
               }, 0);
               const pendingReferralsTotal = pendingReferralCommissions.reduce((sum, c) => sum + Number(c.commission_amount || 0), 0);
               const pendingCombinedTotal = pendingServicesTotal + pendingReferralsTotal;
@@ -301,7 +337,7 @@ const EarningsModule = React.memo(({
                   <div className="bg-green-50 p-4 rounded-2xl border-2 border-green-200 mb-4">
                     <h4 className="font-black text-gray-700 text-lg mb-2">{piojologist.name}</h4>
                     <p className="text-sm text-gray-600">
-                      <span className="font-bold">Comisión:</span> {piojologist.commission_rate || 50}%
+                      <span className="font-bold">ComisiÃ³n:</span> {piojologist.commission_rate || 50}%
                     </p>
                     <p className="text-sm text-gray-600">
                       <span className="font-bold">Servicios pendientes:</span> {pendingServices.length}
@@ -325,7 +361,8 @@ const EarningsModule = React.memo(({
                     )}
                     {pendingServices.map(apt => {
                       const servicePrice = getServicePrice(apt);
-                      const piojologistShare = servicePrice * commissionRate;
+                      const piojologistShare = getPiojologistShareByService(apt, commissionRate);
+                      const commissionBreakdown = getServiceCommissionBreakdown(apt, commissionRate);
                       
                       return (
                         <div key={apt.id} className="bg-white border-2 border-gray-200 rounded-xl p-4 hover:border-green-300 transition-colors">
@@ -335,14 +372,26 @@ const EarningsModule = React.memo(({
                               <p className="text-sm text-gray-500">{apt.serviceType}</p>
                             </div>
                             <div className="text-right">
-                              <p className="font-black text-green-600 text-lg">{formatCurrency(piojologistShare)}</p>
-                              <p className="text-xs text-gray-500">Comisión {piojologist.commission_rate || 50}%</p>
+                              <p className="font-black text-blue-700 text-sm">Servicio: {formatCurrency(servicePrice)}</p>
+                              <p className="font-black text-green-600 text-lg">Comision: {formatCurrency(piojologistShare)}</p>
+                              <p className="text-xs text-gray-500">Tasa {piojologist.commission_rate || 50}%</p>
                             </div>
                           </div>
                           <div className="flex justify-between items-center text-xs text-gray-500 mb-3">
-                            <span>📅 {new Date(apt.date).toLocaleDateString('es-ES')}</span>
-                            <span>⏰ {apt.time}</span>
+                            <span>ðŸ“… {new Date(apt.date).toLocaleDateString('es-ES')}</span>
+                            <span>â° {apt.time}</span>
                           </div>
+                          {commissionBreakdown.length > 0 && (
+                            <div className="mb-3 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 space-y-1.5">
+                              <p className="text-[11px] font-black text-emerald-700 uppercase">Comision por servicio</p>
+                              {commissionBreakdown.map((item) => (
+                                <div key={`${apt.id}-commission-${item.idx}`} className="flex items-center justify-between text-xs font-bold text-gray-700">
+                                  <span>Persona {item.idx + 1}: {item.serviceName}</span>
+                                  <span className="text-emerald-700">{formatCurrency(item.commission)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           <Button
                             onClick={() => {
                               setConfirmPayment({
@@ -398,7 +447,7 @@ const EarningsModule = React.memo(({
         </DialogContent>
       </Dialog>
 
-      {/* Diálogo: Ver Historial de Pagos */}
+      {/* DiÃ¡logo: Ver Historial de Pagos */}
       <Dialog open={!!openHistoryDialog} onOpenChange={(open) => !open && setOpenHistoryDialog(null)}>
         <DialogContent className="rounded-[3rem] border-4 border-blue-400 p-0 overflow-hidden sm:max-w-2xl bg-blue-50 shadow-2xl">
           <DialogHeader className="sr-only">
@@ -417,7 +466,7 @@ const EarningsModule = React.memo(({
             <div className="px-6 sm:px-8 pb-8 space-y-4">
               {openHistoryDialog && (() => {
                 const piojologist = piojologists.find(p => p.id === openHistoryDialog);
-                if (!piojologist) return <p className="text-gray-500">Piojóloga no encontrada</p>;
+                if (!piojologist) return <p className="text-gray-500">PiojÃ³loga no encontrada</p>;
                 const referralData = referralByPiojologist[Number(piojologist.id)] || { pending: 0, paid: 0, count: 0 };
                 
                 const allServices = appointments.filter(apt => 
@@ -447,15 +496,15 @@ const EarningsModule = React.memo(({
                           <span className="font-black text-base text-gray-800">{allServices.length}</span>
                         </div>
                         <div className="bg-purple-50 p-2.5 rounded-lg">
-                          <span className="text-gray-600 block mb-1">Comisión</span>
+                          <span className="text-gray-600 block mb-1">ComisiÃ³n</span>
                           <span className="font-black text-base text-purple-600">{piojologist.commission_rate || 50}%</span>
                         </div>
                         <div className="bg-green-50 p-2.5 rounded-lg">
-                          <span className="text-gray-600 block mb-1">✅ Pagados</span>
+                          <span className="text-gray-600 block mb-1">âœ… Pagados</span>
                           <span className="font-black text-base text-green-700">{paidServices.length}</span>
                         </div>
                         <div className="bg-amber-50 p-2.5 rounded-lg">
-                          <span className="text-gray-600 block mb-1">⏳ Pendientes</span>
+                          <span className="text-gray-600 block mb-1">â³ Pendientes</span>
                           <span className="font-black text-base text-amber-700">{pendingServices.length}</span>
                         </div>
                         <div className="bg-purple-50 p-2.5 rounded-lg col-span-2">
@@ -470,7 +519,7 @@ const EarningsModule = React.memo(({
                     <div className="space-y-3">
                       {allServices.map(apt => {
                         const servicePrice = getServicePrice(apt);
-                        const piojologistShare = servicePrice * commissionRate;
+                        const piojologistShare = getPiojologistShareByService(apt, commissionRate);
                         const isPaid = (apt.payment_status_to_piojologist || apt.paymentStatusToPiojologist || 'pending') === 'paid';
                         
                         return (
@@ -491,7 +540,7 @@ const EarningsModule = React.memo(({
                                       ? 'bg-green-200 text-green-800' 
                                       : 'bg-amber-200 text-amber-800'
                                   }`}>
-                                    {isPaid ? '✅ Pagado' : '⏳ Pendiente'}
+                                    {isPaid ? 'âœ… Pagado' : 'â³ Pendiente'}
                                   </span>
                                 </div>
                                 <p className="text-xs sm:text-sm text-gray-600 truncate">{apt.serviceType}</p>
@@ -508,8 +557,8 @@ const EarningsModule = React.memo(({
                               </div>
                             </div>
                             <div className="flex justify-between items-center text-xs text-gray-500 gap-2">
-                              <span>📅 {new Date(apt.date).toLocaleDateString('es-ES')}</span>
-                              <span>⏰ {apt.time}</span>
+                              <span>ðŸ“… {new Date(apt.date).toLocaleDateString('es-ES')}</span>
+                              <span>â° {apt.time}</span>
                             </div>
                           </div>
                         );
@@ -523,7 +572,7 @@ const EarningsModule = React.memo(({
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Confirmación de Pago */}
+      {/* Modal de ConfirmaciÃ³n de Pago */}
       <Dialog open={!!confirmPayment} onOpenChange={(open) => !open && setConfirmPayment(null)}>
         <DialogContent className="rounded-[3rem] border-4 border-green-400 p-0 sm:max-w-md bg-green-50 shadow-2xl">
           <div className="text-center pt-8 pb-6">
@@ -536,9 +585,9 @@ const EarningsModule = React.memo(({
           </div>
           
           <div className="px-8 pb-8 text-center space-y-6">
-            <div className="text-6xl mb-4">💵</div>
+            <div className="text-6xl mb-4">ðŸ’µ</div>
             <h3 className="text-lg font-medium text-gray-700 mb-4">
-              ¿Confirmar pago de este servicio?
+              Â¿Confirmar pago de este servicio?
             </h3>
             {confirmPayment && (
               <div className="bg-white rounded-2xl p-4 border-2 border-green-400">
@@ -549,7 +598,7 @@ const EarningsModule = React.memo(({
               </div>
             )}
             <p className="text-gray-600 text-sm">
-              Este servicio se marcará como pagado y aparecerá en el historial.
+              Este servicio se marcarÃ¡ como pagado y aparecerÃ¡ en el historial.
             </p>
             
             <div className="flex gap-4 pt-4">
@@ -580,7 +629,7 @@ const EarningsModule = React.memo(({
                 }}
                 className="flex-1 bg-green-500 hover:bg-green-600 text-white rounded-2xl py-3 px-6 font-bold shadow-lg transition-all"
               >
-                Sí, Marcar como Pagado
+                SÃ­, Marcar como Pagado
               </Button>
             </div>
           </div>
@@ -593,4 +642,5 @@ const EarningsModule = React.memo(({
 EarningsModule.displayName = 'EarningsModule';
 
 export default EarningsModule;
+
 

@@ -56,8 +56,8 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
 
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [finishingAppointmentId, setFinishingAppointmentId] = useState(null);
-  const [finishingPlan, setFinishingPlan] = useState('');
-  const [finishingPrice, setFinishingPrice] = useState('');
+  const [finishingPlansPerPerson, setFinishingPlansPerPerson] = useState([]);
+  const [finishingPricesPerPerson, setFinishingPricesPerPerson] = useState([]);
   const [finishingNotes, setFinishingNotes] = useState('');
   const [finishingAdditionalCosts, setFinishingAdditionalCosts] = useState('');
   const [servicesView, setServicesView] = useState(() => localStorage.getItem('piojoServicesView') || 'assigned'); // assigned | rejected
@@ -270,18 +270,57 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   };
 
   const getServicePrice = (apt = {}) => {
-    // Si tiene services_per_person, calcular el total sumando todos
+    // Priorizar siempre el valor confirmado/guardado en la reserva
+    const raw = apt.price ?? apt.price_confirmed ?? apt.estimatedPrice;
+    const num = Number(raw);
+    if (Number.isFinite(num) && num > 0) return num;
+
+    // Fallback: calcular por servicios por persona si no hay precio confirmado
     if (apt.services_per_person && Array.isArray(apt.services_per_person)) {
-      const total = apt.services_per_person.reduce((sum, serviceType) => {
+      return apt.services_per_person.reduce((sum, serviceType) => {
         return sum + (serviceCatalog[serviceType] || 0);
       }, 0);
-      return total;
     }
-    
-    // Fallback al comportamiento anterior
-    const raw = apt.price ?? apt.price_confirmed ?? apt.estimatedPrice ?? serviceCatalog[apt.serviceType] ?? 0;
-    const num = Number(raw);
-    return Number.isFinite(num) ? num : 0;
+
+    return Number(serviceCatalog[apt.serviceType] || 0);
+  };
+
+  const getPerServiceBreakdown = (apt = {}, rate = 0) => {
+    const servicesPerPerson = Array.isArray(apt.services_per_person) ? apt.services_per_person : [];
+    if (servicesPerPerson.length > 0) {
+      const breakdown = servicesPerPerson.map((serviceName, idx) => {
+        const basePrice = Number(serviceCatalog?.[serviceName] || 0);
+        return {
+          idx,
+          serviceName,
+          basePrice,
+          commission: basePrice * rate
+        };
+      });
+
+      const sumBase = breakdown.reduce((acc, item) => acc + item.basePrice, 0);
+      if (sumBase > 0) return breakdown;
+
+      const fallbackPerPerson = Number(getServicePrice(apt) || 0) / servicesPerPerson.length;
+      return breakdown.map((item) => ({
+        ...item,
+        basePrice: fallbackPerPerson,
+        commission: fallbackPerPerson * rate
+      }));
+    }
+
+    const fallbackPrice = Number(getServicePrice(apt) || 0);
+    return [{
+      idx: 0,
+      serviceName: apt.serviceType || 'Servicio',
+      basePrice: fallbackPrice,
+      commission: fallbackPrice * rate
+    }];
+  };
+
+  const getPiojologistShareByService = (apt = {}, rate = 0.5) => {
+    return getPerServiceBreakdown(apt, rate)
+      .reduce((sum, item) => sum + Number(item.commission || 0), 0);
   };
 
   const getAssignmentTime = (apt = {}) => {
@@ -496,32 +535,40 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   const onCompleteService = async () => {
     if (!finishingAppointmentId) return;
 
-    const priceValue = parseFloat(finishingPrice || '0');
+    const priceValue = finishingTotalPrice;
     const additionalCostsValue = parseFloat(finishingAdditionalCosts || '0');
-    if (!finishingPlan) {
-      toast({ title: 'Selecciona un plan', className: 'bg-red-100 border-2 border-red-200 text-red-700 font-bold' });
+    if (!finishingPlansPerPerson.length || finishingPlansPerPerson.some((plan) => !plan)) {
+      toast({ title: 'Selecciona un plan por persona', className: 'bg-red-100 border-2 border-red-200 text-red-700 font-bold' });
       return;
     }
-    if (isNaN(priceValue) || priceValue <= 0) {
-      toast({ title: 'Ingresa un valor válido', className: 'bg-red-100 border-2 border-red-200 text-red-700 font-bold' });
+    if (
+      finishingPricesPerPerson.length !== finishingPlansPerPerson.length ||
+      finishingPricesPerPerson.some((price) => isNaN(Number(price)) || Number(price) <= 0)
+    ) {
+      toast({ title: 'Ingresa un valor valido por persona', className: 'bg-red-100 border-2 border-red-200 text-red-700 font-bold' });
       return;
     }
 
+    const uniquePlans = Array.from(new Set(finishingPlansPerPerson));
+    const resolvedPlanType = uniquePlans.length === 1 ? uniquePlans[0] : 'Mixto';
+
     await handleCompleteService(finishingAppointmentId, selectedProducts, {
-      planType: finishingPlan,
+      planType: resolvedPlanType,
       priceConfirmed: priceValue,
+      servicesPerPerson: finishingPlansPerPerson,
+      pricesPerPerson: finishingPricesPerPerson.map((price) => Number(price) || 0),
       notes: finishingNotes,
       additionalCosts: additionalCostsValue
     });
     
     setFinishingAppointmentId(null);
     setSelectedProducts([]);
-    setFinishingPlan('');
-    setFinishingPrice('');
+    setFinishingPlansPerPerson([]);
+    setFinishingPricesPerPerson([]);
     setFinishingNotes('');
     setFinishingAdditionalCosts('');
     toast({
-      title: "¡Victoria Total! 🏆",
+      title: "Victoria total",
       description: "Servicio completado y ganancias registradas.",
       className: "bg-yellow-100 border-2 border-yellow-200 text-yellow-800 rounded-2xl font-bold"
     });
@@ -548,6 +595,32 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     const plans = Object.keys(serviceCatalog || {});
     return plans.length ? plans : ['Normal'];
   }, [serviceCatalog]);
+  const getPeopleCount = (apt = {}) => Math.max(1, Number(apt.numPersonas) || 1);
+  const getPlanPrice = (planName) => Number(serviceCatalog[planName]) || 0;
+  const buildInitialPlansForAppointment = (apt = {}) => {
+    const people = getPeopleCount(apt);
+    const basePreferredPlan = apt.planType || apt.serviceType || servicePlanOptions[0];
+    const fallbackPlan = servicePlanOptions.includes(basePreferredPlan) ? basePreferredPlan : servicePlanOptions[0];
+    const incomingServices = Array.isArray(apt.services_per_person) ? apt.services_per_person : [];
+    return Array.from({ length: people }, (_, idx) => {
+      const candidate = incomingServices[idx] || fallbackPlan;
+      return servicePlanOptions.includes(candidate) ? candidate : fallbackPlan;
+    });
+  };
+  const buildInitialPricesFromPlans = (plans = []) => plans.map((planName) => String(getPlanPrice(planName)));
+  const finishingTotalPrice = finishingPricesPerPerson.reduce((sum, price) => sum + (Number(price) || 0), 0);
+  const setPersonPlanAndPrice = (index, selectedPlan) => {
+    setFinishingPlansPerPerson((prev) => {
+      const nextPlans = [...prev];
+      nextPlans[index] = selectedPlan;
+      return nextPlans;
+    });
+    setFinishingPricesPerPerson((prev) => {
+      const nextPrices = [...prev];
+      nextPrices[index] = String(getPlanPrice(selectedPlan));
+      return nextPrices;
+    });
+  };
   const assignedToMe = useMemo(
     () => appointments.filter((apt) => apt.piojologistId === currentUser.id && (apt.status === 'accepted' || apt.status === 'confirmed')),
     [appointments, currentUser.id]
@@ -568,18 +641,17 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     () => (servicesView === 'rejected' ? myRejectedServices : assignedToMe),
     [servicesView, myRejectedServices, assignedToMe]
   );
+
   const commissionRate = (currentUser.commission_rate || 50) / 100;
-  
-  // Calcular ganancias pendientes por cobrar (servicios completados pero no pagados por el admin)
+
   const totalEarnings = useMemo(() => (
     completedHistory.filter((apt) => {
       const paymentStatus = apt.payment_status_to_piojologist || apt.paymentStatusToPiojologist || 'pending';
       return paymentStatus === 'pending';
     })
-    .reduce((acc, apt) => acc + (getServicePrice(apt) * commissionRate - (Number(apt.deductions) || 0)), 0)
-  ), [completedHistory, commissionRate]);
+    .reduce((acc, apt) => acc + (getPiojologistShareByService(apt, commissionRate) - (Number(apt.deductions) || 0)), 0)
+  ), [completedHistory, commissionRate, serviceCatalog]);
 
-  // Vigilar asignaciones pendientes y liberar si faltan menos de 2 horas para el servicio
   useEffect(() => {
     pendingAssignments.forEach((apt) => {
       const deadline = getResponseDeadline(apt);
@@ -602,7 +674,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     const earningsByMonthMap = completedHistory.reduce((acc, apt) => {
       const date = apt.date ? new Date(apt.date) : new Date();
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const net = getServicePrice(apt) * commissionRate - (Number(apt.deductions) || 0);
+      const net = getPiojologistShareByService(apt, commissionRate) - (Number(apt.deductions) || 0);
       acc[key] = (acc[key] || 0) + net;
       return acc;
     }, {});
@@ -625,7 +697,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
         }
       ]
     };
-  }, [completedHistory, commissionRate]);
+  }, [completedHistory, commissionRate, serviceCatalog]);
 
   const statusPieData = useMemo(() => ({
     labels: ['Pendientes', 'Asignados', 'Aceptados', 'Completados'],
@@ -960,12 +1032,10 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                         onClick={() => {
                           setFinishingAppointmentId(apt.id);
                           setSelectedProducts([]);
-                          const preferredPlan = apt.planType || apt.serviceType || servicePlanOptions[0];
-                          const initialPlan = servicePlanOptions.includes(preferredPlan) ? preferredPlan : servicePlanOptions[0];
-                          const people = Math.max(1, Number(apt.numPersonas) || 1);
-                          const initialPrice = (Number(serviceCatalog[initialPlan]) || 0) * people;
-                          setFinishingPlan(initialPlan);
-                          setFinishingPrice(String(initialPrice));
+                          const initialPlans = buildInitialPlansForAppointment(apt);
+                          const initialPrices = buildInitialPricesFromPlans(initialPlans);
+                          setFinishingPlansPerPerson(initialPlans);
+                          setFinishingPricesPerPerson(initialPrices);
                           setFinishingNotes(apt.serviceNotes || '');
                           setFinishingAdditionalCosts('');
                         }}
@@ -1038,25 +1108,29 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                             <p className="text-xs text-blue-600 font-semibold mb-2">
                               {apt.numPersonas > 1 ? `${apt.numPersonas} personas` : apt.serviceType}
                             </p>
-                            <select
-                              value={finishingPlan}
-                              onChange={(e) => {
-                                const selectedPlan = e.target.value;
-                                setFinishingPlan(selectedPlan);
-                                const people = Math.max(1, Number(apt.numPersonas) || 1);
-                                const unitPrice = Number(serviceCatalog[selectedPlan]) || 0;
-                                setFinishingPrice(String(unitPrice * people));
-                              }}
-                              className="w-full bg-white border-2 border-blue-200 rounded-xl p-3 text-sm font-black text-blue-700 focus:border-blue-400 outline-none"
-                            >
-                              {servicePlanOptions.map((planName) => (
-                                <option key={`finish-plan-${planName}`} value={planName}>
-                                  {planName} - {formatCurrency((Number(serviceCatalog[planName]) || 0) * (Math.max(1, Number(apt.numPersonas) || 1)))}
-                                </option>
+                            <div className="space-y-2">
+                              {Array.from({ length: getPeopleCount(apt) }, (_, idx) => (
+                                <div key={`finish-person-${apt.id}-${idx}`} className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white border-2 border-blue-200 rounded-xl p-2">
+                                  <select
+                                    value={finishingPlansPerPerson[idx] || servicePlanOptions[0]}
+                                    onChange={(e) => setPersonPlanAndPrice(idx, e.target.value)}
+                                    className="w-full bg-white border-2 border-blue-200 rounded-xl p-2 text-sm font-black text-blue-700 focus:border-blue-400 outline-none"
+                                  >
+                                    {servicePlanOptions.map((planName) => (
+                                      <option key={`finish-plan-${idx}-${planName}`} value={planName}>
+                                        Persona {idx + 1}: {planName}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <div className="w-full bg-blue-50 border-2 border-blue-200 rounded-xl p-2 text-sm font-black text-blue-700 flex items-center justify-between">
+                                    <span>Valor</span>
+                                    <span>{formatCurrency(Number(finishingPricesPerPerson[idx]) || 0)}</span>
+                                  </div>
+                                </div>
                               ))}
-                            </select>
+                            </div>
                             <p className="text-right text-2xl font-black text-blue-700 mt-2">
-                              {formatCurrency(Number(finishingPrice) || 0)}
+                              {formatCurrency(Number(finishingTotalPrice) || 0)}
                             </p>
                           </div>
 
@@ -1418,12 +1492,10 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                              onClick={() => {
                                setFinishingAppointmentId(apt.id);
                                setSelectedProducts([]);
-                                const preferredPlan = apt.planType || apt.serviceType || servicePlanOptions[0];
-                                const initialPlan = servicePlanOptions.includes(preferredPlan) ? preferredPlan : servicePlanOptions[0];
-                                const people = Math.max(1, Number(apt.numPersonas) || 1);
-                                const initialPrice = (Number(serviceCatalog[initialPlan]) || 0) * people;
-                                setFinishingPlan(initialPlan);
-                                setFinishingPrice(String(initialPrice));
+                                const initialPlans = buildInitialPlansForAppointment(apt);
+                                const initialPrices = buildInitialPricesFromPlans(initialPlans);
+                                setFinishingPlansPerPerson(initialPlans);
+                                setFinishingPricesPerPerson(initialPrices);
                                 setFinishingNotes(apt.serviceNotes || '');
                                 setFinishingAdditionalCosts('');
                              }}
@@ -1495,25 +1567,29 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                               <p className="text-xs text-blue-600 font-semibold mb-2">
                                 {apt.numPersonas > 1 ? `${apt.numPersonas} personas` : apt.serviceType}
                               </p>
-                              <select
-                                value={finishingPlan}
-                                onChange={(e) => {
-                                  const selectedPlan = e.target.value;
-                                  setFinishingPlan(selectedPlan);
-                                  const people = Math.max(1, Number(apt.numPersonas) || 1);
-                                  const unitPrice = Number(serviceCatalog[selectedPlan]) || 0;
-                                  setFinishingPrice(String(unitPrice * people));
-                                }}
-                                className="w-full bg-white border-2 border-blue-200 rounded-xl p-3 text-sm font-black text-blue-700 focus:border-blue-400 outline-none"
-                              >
-                                {servicePlanOptions.map((planName) => (
-                                  <option key={`finish-plan-${planName}`} value={planName}>
-                                    {planName} - {formatCurrency((Number(serviceCatalog[planName]) || 0) * (Math.max(1, Number(apt.numPersonas) || 1)))}
-                                  </option>
+                              <div className="space-y-2">
+                                {Array.from({ length: getPeopleCount(apt) }, (_, idx) => (
+                                  <div key={`finish-person-${apt.id}-${idx}`} className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white border-2 border-blue-200 rounded-xl p-2">
+                                    <select
+                                      value={finishingPlansPerPerson[idx] || servicePlanOptions[0]}
+                                      onChange={(e) => setPersonPlanAndPrice(idx, e.target.value)}
+                                      className="w-full bg-white border-2 border-blue-200 rounded-xl p-2 text-sm font-black text-blue-700 focus:border-blue-400 outline-none"
+                                    >
+                                      {servicePlanOptions.map((planName) => (
+                                        <option key={`finish-plan-${idx}-${planName}`} value={planName}>
+                                          Persona {idx + 1}: {planName}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <div className="w-full bg-blue-50 border-2 border-blue-200 rounded-xl p-2 text-sm font-black text-blue-700 flex items-center justify-between">
+                                      <span>Valor</span>
+                                      <span>{formatCurrency(Number(finishingPricesPerPerson[idx]) || 0)}</span>
+                                    </div>
+                                  </div>
                                 ))}
-                              </select>
+                              </div>
                               <p className="text-right text-2xl font-black text-blue-700 mt-2">
-                                {formatCurrency(Number(finishingPrice) || 0)}
+                                {formatCurrency(Number(finishingTotalPrice) || 0)}
                               </p>
                             </div>
 
@@ -1591,6 +1667,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
               commissionRate={commissionRate}
               getServicePrice={getServicePrice}
               formatCurrency={formatCurrency}
+              serviceCatalog={serviceCatalog}
             />
           </Suspense>
         </TabsContent>
@@ -1822,7 +1899,5 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
 };
 
 export default PiojologistView;
-
-
 
 

@@ -431,4 +431,34 @@ export const referralService = {
   }
 };
 
+// Configuración de aplicación
+export const settingsService = {
+  async getBookingSettings() {
+    try {
+      const response = await api.get('/booking-settings');
+      return { success: true, settings: response.data?.settings || { requireAdvance12h: true } };
+    } catch (error) {
+      console.error('Error obteniendo configuración de agendamiento:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al obtener configuración',
+        settings: { requireAdvance12h: true }
+      };
+    }
+  },
+
+  async updateBookingSettings(payload) {
+    try {
+      const response = await api.put('/booking-settings', payload);
+      return { success: true, settings: response.data?.settings || payload };
+    } catch (error) {
+      console.error('Error actualizando configuración de agendamiento:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al actualizar configuración'
+      };
+    }
+  }
+};
+
 export default api;

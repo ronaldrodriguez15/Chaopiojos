@@ -16,7 +16,7 @@ import ScheduleManagement from '@/components/ScheduleManagement';
 import PiojologistMap from '@/components/PiojologistMap';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { geocodeAddress } from '@/lib/geocoding';
-import { bookingService, referralService } from '@/lib/api';
+import { bookingService, referralService, settingsService } from '@/lib/api';
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement);
@@ -76,6 +76,8 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
   // Detalles de Servicios por Piojóloga Modal
   const [openPayDialog, setOpenPayDialog] = useState(null); // ID de la piojóloga para pagar servicios
   const [openHistoryDialog, setOpenHistoryDialog] = useState(null); // ID de la piojóloga para ver historial
+  const [bookingRequireAdvance12h, setBookingRequireAdvance12h] = useState(true);
+  const [bookingSettingsLoading, setBookingSettingsLoading] = useState(false);
 
 
   // Persist active tab across refresh
@@ -135,6 +137,57 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     }
   }, [activeTab, loadReferralPaymentHistory]);
 
+  useEffect(() => {
+    let isMounted = true;
+    const loadBookingSettings = async () => {
+      setBookingSettingsLoading(true);
+      const result = await settingsService.getBookingSettings();
+      if (isMounted && result.success) {
+        setBookingRequireAdvance12h(!!result.settings?.requireAdvance12h);
+      }
+      if (isMounted) setBookingSettingsLoading(false);
+    };
+    loadBookingSettings();
+    return () => { isMounted = false; };
+  }, []);
+
+  const handleToggleBookingAdvance12h = async (checked) => {
+    const previous = bookingRequireAdvance12h;
+    setBookingRequireAdvance12h(checked);
+    try {
+      localStorage.setItem('booking_require_12h', checked ? '1' : '0');
+      window.dispatchEvent(new CustomEvent('booking-settings-updated', {
+        detail: { requireAdvance12h: checked }
+      }));
+    } catch (e) {
+      // ignore storage sync errors
+    }
+    const result = await settingsService.updateBookingSettings({ requireAdvance12h: checked });
+    if (!result.success) {
+      setBookingRequireAdvance12h(previous);
+      try {
+        localStorage.setItem('booking_require_12h', previous ? '1' : '0');
+        window.dispatchEvent(new CustomEvent('booking-settings-updated', {
+          detail: { requireAdvance12h: previous }
+        }));
+      } catch (e) {
+        // ignore storage sync errors
+      }
+      toast({
+        title: "❌ Error",
+        description: result.message || "No se pudo actualizar la regla de anticipación",
+        variant: "destructive"
+      });
+      return;
+    }
+    toast({
+      title: "✅ Configuración actualizada",
+      description: checked
+        ? "Se exige anticipación mínima de 12 horas."
+        : "Se permite agendar sin anticipación mínima de 12 horas."
+    });
+  };
+
   // Mobile nav toggle for tabs
   const [isNavOpen, setIsNavOpen] = useState(false);
   useEffect(() => {
@@ -169,18 +222,19 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
   });
 
   const getServicePrice = (apt = {}) => {
-    // Si tiene services_per_person, calcular el total sumando todos
+    // Priorizar siempre el valor confirmado/guardado en la reserva
+    const raw = apt.price ?? apt.price_confirmed ?? apt.estimatedPrice;
+    const num = Number(raw);
+    if (Number.isFinite(num) && num > 0) return num;
+
+    // Fallback: calcular por servicios por persona si no hay precio confirmado
     if (apt.services_per_person && Array.isArray(apt.services_per_person)) {
-      const total = apt.services_per_person.reduce((sum, serviceType) => {
+      return apt.services_per_person.reduce((sum, serviceType) => {
         return sum + (serviceCatalog[serviceType] || 0);
       }, 0);
-      return total;
     }
-    
-    // Fallback al comportamiento anterior
-    const raw = apt.price ?? apt.price_confirmed ?? apt.estimatedPrice ?? serviceCatalog[apt.serviceType] ?? 0;
-    const num = Number(raw);
-    return Number.isFinite(num) ? num : 0;
+
+    return Number(serviceCatalog[apt.serviceType] || 0);
   };
 
   const toMoney = (amount = 0) => {
@@ -1143,7 +1197,10 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
             piojologists={piojologists}
             serviceCatalog={serviceCatalog}
             formatCurrency={formatCurrency}
-            updateAppointments={updateAppointments}
+            reloadBookings={reloadBookings}
+            requireAdvance12hSetting={bookingRequireAdvance12h}
+            onToggleRequireAdvance12h={handleToggleBookingAdvance12h}
+            bookingSettingsLoading={bookingSettingsLoading}
             onAssignFromCalendar={handleAssignFromCalendar}
             onDeleteBooking={onDeleteBooking}
           />
@@ -1200,6 +1257,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
               piojologists={piojologists}
               appointments={appointments}
               users={users}
+              serviceCatalog={serviceCatalog}
               referralPayouts={earningsHistory}
               referralCommissionsList={referralCommissionsList}
               getServicePrice={getServicePrice}

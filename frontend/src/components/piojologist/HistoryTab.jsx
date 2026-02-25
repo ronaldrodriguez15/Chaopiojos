@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Check, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const HistoryTab = ({ completedHistory, commissionRate, getServicePrice, formatCurrency }) => {
+const HistoryTab = ({ completedHistory, commissionRate, getServicePrice, formatCurrency, serviceCatalog = {} }) => {
   const [pendingPage, setPendingPage] = useState(1);
   const [pendingPerPage, setPendingPerPage] = useState(5);
   const [paidPage, setPaidPage] = useState(1);
@@ -22,21 +22,52 @@ const HistoryTab = ({ completedHistory, commissionRate, getServicePrice, formatC
     });
   }, [completedHistory]);
 
+  const getPerPersonBreakdown = (apt = {}) => {
+    const fromArray = Array.isArray(apt.services_per_person) ? apt.services_per_person : [];
+    if (fromArray.length > 0) {
+      return fromArray.map((serviceName, idx) => ({
+        idx,
+        serviceName,
+        amount: Number(serviceCatalog?.[serviceName] || 0)
+      }));
+    }
+
+    const people = Math.max(1, Number(apt.numPersonas) || 1);
+    if (!apt.serviceType) return [];
+    const fallbackAmount = Number(serviceCatalog?.[apt.serviceType] || 0);
+    return Array.from({ length: people }, (_, idx) => ({
+      idx,
+      serviceName: apt.serviceType,
+      amount: fallbackAmount
+    }));
+  };
+
+  const getCommissionByServiceTotal = (apt = {}) => {
+    const perPerson = getPerPersonBreakdown(apt);
+    if (perPerson.length > 0) {
+      const sum = perPerson.reduce((acc, item) => acc + (Number(item.amount || 0) * commissionRate), 0);
+      if (sum > 0) return sum;
+    }
+
+    const fallbackPrice = Number(getServicePrice(apt) || 0);
+    return fallbackPrice * commissionRate;
+  };
+
   const pendingTotal = useMemo(() => {
     return pendingServices.reduce((acc, apt) => {
-      const gross = getServicePrice(apt) * commissionRate;
+      const gross = getCommissionByServiceTotal(apt);
       const deductions = Number(apt.deductions) || 0;
       return acc + (gross - deductions);
     }, 0);
-  }, [pendingServices, commissionRate, getServicePrice]);
+  }, [pendingServices, commissionRate, getServicePrice, serviceCatalog]);
 
   const paidTotal = useMemo(() => {
     return paidServices.reduce((acc, apt) => {
-      const gross = getServicePrice(apt) * commissionRate;
+      const gross = getCommissionByServiceTotal(apt);
       const deductions = Number(apt.deductions) || 0;
       return acc + (gross - deductions);
     }, 0);
-  }, [paidServices, commissionRate, getServicePrice]);
+  }, [paidServices, commissionRate, getServicePrice, serviceCatalog]);
 
   const pendingTotalPages = Math.max(1, Math.ceil(pendingServices.length / pendingPerPage));
   const paidTotalPages = Math.max(1, Math.ceil(paidServices.length / paidPerPage));
@@ -98,6 +129,17 @@ const HistoryTab = ({ completedHistory, commissionRate, getServicePrice, formatC
                     </div>
                     <p className="font-black text-gray-800">{apt.clientName}</p>
                     <p className="text-xs text-gray-500">{new Date(apt.date).toLocaleDateString()} - {apt.serviceType}</p>
+                    {getPerPersonBreakdown(apt).length > 0 && (
+                      <div className="mt-2 bg-white/70 border border-amber-200 rounded-xl p-2 space-y-1">
+                        <p className="text-[11px] font-black text-amber-700 uppercase">Detalle por persona</p>
+                        {getPerPersonBreakdown(apt).map((item) => (
+                          <div key={`${apt.id}-pending-person-${item.idx}`} className="flex items-center justify-between text-xs font-bold text-gray-700">
+                            <span>Persona {item.idx + 1}: {item.serviceName}</span>
+                            <span className="text-amber-700">{formatCurrency(item.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {(apt.yourLoss || apt.ourPayment || apt.age) && (
                       <p className="text-xs text-yellow-600 font-bold mt-1">
                         {apt.age ? `${apt.age}a ` : ''}| Pierdes: {formatCurrency(parseFloat(apt.yourLoss) || 0)} | Te pagamos: {formatCurrency(parseFloat(apt.ourPayment) || 0)}
@@ -106,7 +148,7 @@ const HistoryTab = ({ completedHistory, commissionRate, getServicePrice, formatC
                   </div>
                   <div className="text-left sm:text-right">
                     {(() => {
-                      const gross = getServicePrice(apt) * commissionRate;
+                      const gross = getCommissionByServiceTotal(apt);
                       const deductions = Number(apt.deductions) || 0;
                       const net = gross - deductions;
                       return (
@@ -178,7 +220,7 @@ const HistoryTab = ({ completedHistory, commissionRate, getServicePrice, formatC
                   </div>
                   <div className="text-left sm:text-right">
                     {(() => {
-                      const gross = getServicePrice(apt) * commissionRate;
+                      const gross = getCommissionByServiceTotal(apt);
                       const deductions = Number(apt.deductions) || 0;
                       const net = gross - deductions;
                       return (

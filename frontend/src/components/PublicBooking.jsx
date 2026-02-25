@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 import { motion } from 'framer-motion';
-import { bookingService, serviceService, referralService } from '@/lib/api';
+import { bookingService, serviceService, referralService, settingsService } from '@/lib/api';
 import {
   Dialog,
   DialogContent,
@@ -122,6 +122,16 @@ const PublicBooking = () => {
   const [confirmedBooking, setConfirmedBooking] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [requireAdvance12h, setRequireAdvance12h] = useState(() => {
+    try {
+      const raw = localStorage.getItem('booking_require_12h');
+      if (raw === '0') return false;
+      if (raw === '1') return true;
+    } catch (e) {
+      // ignore
+    }
+    return true;
+  });
   
   // Estados para código de referido
   const [referralCode, setReferralCode] = useState('');
@@ -183,6 +193,45 @@ const PublicBooking = () => {
     };
     loadServices();
     return () => { isMounted = false; };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadBookingSettings = async () => {
+      const result = await settingsService.getBookingSettings();
+      if (isMounted && result.success) {
+        const next = !!result.settings?.requireAdvance12h;
+        setRequireAdvance12h(next);
+        try {
+          localStorage.setItem('booking_require_12h', next ? '1' : '0');
+        } catch (e) {
+          // ignore
+        }
+      }
+    };
+    loadBookingSettings();
+    return () => { isMounted = false; };
+  }, []);
+
+  useEffect(() => {
+    const onSettingsUpdated = (event) => {
+      const next = !!event?.detail?.requireAdvance12h;
+      setRequireAdvance12h(next);
+    };
+
+    const onStorage = (event) => {
+      if (event.key !== 'booking_require_12h') return;
+      const next = event.newValue !== '0';
+      setRequireAdvance12h(next);
+    };
+
+    window.addEventListener('booking-settings-updated', onSettingsUpdated);
+    window.addEventListener('storage', onStorage);
+
+    return () => {
+      window.removeEventListener('booking-settings-updated', onSettingsUpdated);
+      window.removeEventListener('storage', onStorage);
+    };
   }, []);
 
   useEffect(() => {
@@ -439,21 +488,23 @@ const PublicBooking = () => {
       return;
     }
 
-    // Validar anticipacin mnima de 12 horas
-    const now = new Date();
-    const selectedDateTime = new Date(selectedDate);
-    const [slotHour, slotMinute] = selectedSlot.split(':').map((v) => parseInt(v, 10));
-    selectedDateTime.setHours(slotHour, slotMinute, 0, 0);
-    const twelveHoursMs = 12 * 60 * 60 * 1000;
+    if (requireAdvance12h) {
+      // Validar anticipación mínima de 12 horas
+      const now = new Date();
+      const selectedDateTime = new Date(selectedDate);
+      const [slotHour, slotMinute] = selectedSlot.split(':').map((v) => parseInt(v, 10));
+      selectedDateTime.setHours(slotHour, slotMinute, 0, 0);
+      const twelveHoursMs = 12 * 60 * 60 * 1000;
 
-    if (selectedDateTime.getTime() - now.getTime() < twelveHoursMs) {
-      toast({
-        title: ' Anticipacin insuficiente',
-        description: 'Los servicios se solicitan con mnimo 12 horas de antelacin.',
-        duration: 4000,
-        variant: 'destructive'
-      });
-      return;
+      if (selectedDateTime.getTime() - now.getTime() < twelveHoursMs) {
+        toast({
+          title: ' Anticipacin insuficiente',
+          description: 'Los servicios se solicitan con mnimo 12 horas de antelacin.',
+          duration: 4000,
+          variant: 'destructive'
+        });
+        return;
+      }
     }
 
     try {
@@ -943,19 +994,21 @@ const PublicBooking = () => {
                         <button
                           key={slot}
                           onClick={() => {
-                            const now = new Date();
-                            const target = new Date(selectedDate);
-                            target.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-                            const twelveHoursMs = 12 * 60 * 60 * 1000;
+                            if (requireAdvance12h) {
+                              const now = new Date();
+                              const target = new Date(selectedDate);
+                              target.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                              const twelveHoursMs = 12 * 60 * 60 * 1000;
 
-                            if (target.getTime() - now.getTime() < twelveHoursMs) {
-                              toast({
-                                title: ' Anticipación insuficiente',
-                                description: 'Los servicios se solicitan con mínimo 12 horas de antelación.',
-                                duration: 4000,
-                                variant: 'destructive'
-                              });
-                              return;
+                              if (target.getTime() - now.getTime() < twelveHoursMs) {
+                                toast({
+                                  title: ' Anticipación insuficiente',
+                                  description: 'Los servicios se solicitan con mínimo 12 horas de antelación.',
+                                  duration: 4000,
+                                  variant: 'destructive'
+                                });
+                                return;
+                              }
                             }
 
                             setSelectedSlot(slot);

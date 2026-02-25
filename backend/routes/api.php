@@ -10,6 +10,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductRequestController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\ReferralController;
+use App\Http\Controllers\AppSettingController;
 
 /*
 |--------------------------------------------------------------------------
@@ -28,6 +29,7 @@ Route::get('/ical-proxy', [ICalProxyController::class, 'fetchICalFeed']);
 Route::post('/bookings', [BookingController::class, 'store']); // Ruta publica para crear reservas
 Route::get('/services', [ServiceController::class, 'index']);
 Route::post('/validate-referral-code', [UserController::class, 'validateReferralCode']); // Validar código de referido
+Route::get('/booking-settings', [AppSettingController::class, 'bookingSettings']);
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
@@ -67,4 +69,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/referral-commissions/{id}/mark-paid', [ReferralController::class, 'markAsPaid']); // Admin
     Route::put('/referral-commissions/mark-all-paid/{referrerId}', [ReferralController::class, 'markAllAsPaid']); // Admin
     Route::delete('/product-requests/{productRequest}', [ProductRequestController::class, 'destroy']);
+
+    // App settings (admin)
+    Route::put('/booking-settings', [AppSettingController::class, 'updateBookingSettings']);
 });
