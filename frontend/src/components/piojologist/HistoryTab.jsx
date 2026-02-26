@@ -1,12 +1,22 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Clock } from 'lucide-react';
+import { Check, Clock, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
-const HistoryTab = ({ completedHistory, commissionRate, getServicePrice, formatCurrency, serviceCatalog = {} }) => {
+const HistoryTab = ({
+  completedHistory,
+  commissionRate,
+  getServicePrice,
+  formatCurrency,
+  serviceCatalog = {},
+  onRevertCompletedService,
+  isRevertingCompletion = false
+}) => {
   const [pendingPage, setPendingPage] = useState(1);
   const [pendingPerPage, setPendingPerPage] = useState(5);
   const [paidPage, setPaidPage] = useState(1);
   const [paidPerPage, setPaidPerPage] = useState(5);
+  const [revertTarget, setRevertTarget] = useState(null);
 
   const pendingServices = useMemo(() => {
     return completedHistory.filter((apt) => {
@@ -162,6 +172,16 @@ const HistoryTab = ({ completedHistory, commissionRate, getServicePrice, formatC
                       );
                     })()}
                   </div>
+                  <div className="w-full sm:w-auto">
+                    <Button
+                      type="button"
+                      onClick={() => setRevertTarget(apt)}
+                      className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-white rounded-xl px-4 py-2 font-bold"
+                    >
+                      <RotateCcw className="w-4 h-4 mr-2" />
+                      Revertir
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -247,6 +267,54 @@ const HistoryTab = ({ completedHistory, commissionRate, getServicePrice, formatC
           </>
         )}
       </div>
+
+      <Dialog open={!!revertTarget} onOpenChange={(open) => !open && setRevertTarget(null)}>
+        <DialogContent className="rounded-[2.5rem] border-4 border-amber-300 p-0 overflow-hidden sm:max-w-md bg-gradient-to-b from-amber-50 to-white">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Revertir confirmación</DialogTitle>
+          </DialogHeader>
+          <div className="p-6 space-y-4 text-center">
+            <div className="w-16 h-16 mx-auto rounded-full bg-amber-100 flex items-center justify-center">
+              <RotateCcw className="w-8 h-8 text-amber-600" />
+            </div>
+            <h3 className="text-xl font-black text-amber-700">Revertir confirmación</h3>
+            {revertTarget && (
+              <div className="bg-white border-2 border-amber-200 rounded-2xl p-4 text-left">
+                <p className="font-black text-gray-800">{revertTarget.clientName}</p>
+                <p className="text-sm text-gray-600">{revertTarget.serviceType}</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  {new Date(revertTarget.date).toLocaleDateString()} - {revertTarget.time}
+                </p>
+              </div>
+            )}
+            <p className="text-sm text-gray-600">
+              Esta acción moverá el servicio de nuevo a estado aceptado.
+            </p>
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setRevertTarget(null)}
+                className="flex-1 rounded-xl border-2 border-gray-300 text-gray-700"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={!revertTarget || isRevertingCompletion || typeof onRevertCompletedService !== 'function'}
+                onClick={async () => {
+                  if (!revertTarget || typeof onRevertCompletedService !== 'function') return;
+                  const ok = await onRevertCompletedService(revertTarget.id);
+                  if (ok) setRevertTarget(null);
+                }}
+                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold"
+              >
+                {isRevertingCompletion ? 'Revirtiendo...' : 'Si, revertir'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

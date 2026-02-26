@@ -574,6 +574,76 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     });
   };
 
+  const [isRevertingCompletion, setIsRevertingCompletion] = useState(false);
+  const handleRevertCompletedService = async (serviceId) => {
+    const appointment = appointments.find(
+      (apt) => apt.id === serviceId || apt.backendId === serviceId || apt.bookingId === serviceId
+    );
+    if (!appointment) {
+      toast({
+        title: 'Error',
+        description: 'No se encontro el servicio',
+        variant: 'destructive',
+        className: 'bg-red-100 text-red-800 rounded-2xl border-2 border-red-200'
+      });
+      return false;
+    }
+
+    const backendId = appointment.backendId || appointment.bookingId || appointment.id;
+    setIsRevertingCompletion(true);
+    try {
+      const result = await bookingService.update(backendId, {
+        status: 'accepted',
+        payment_status_to_piojologist: 'pending'
+      });
+
+      if (!result.success) {
+        toast({
+          title: 'Error',
+          description: result.message || 'No se pudo revertir el servicio',
+          variant: 'destructive',
+          className: 'bg-red-100 text-red-800 rounded-2xl border-2 border-red-200'
+        });
+        return false;
+      }
+
+      const updateLocal = (apt) => (
+        apt.id === serviceId || apt.backendId === serviceId || apt.bookingId === serviceId
+          ? {
+              ...apt,
+              status: 'accepted',
+              payment_status_to_piojologist: 'pending',
+              paymentStatusToPiojologist: 'pending'
+            }
+          : apt
+      );
+
+      if (appointment?.isPublicBooking) {
+        updateBookings && updateBookings((bookings || []).map(updateLocal));
+      } else {
+        updateAppointments(appointments.map(updateLocal));
+      }
+
+      toast({
+        title: 'Confirmacion revertida',
+        description: 'El servicio volvio a estado aceptado.',
+        className: 'bg-amber-100 border-2 border-amber-200 text-amber-800 rounded-2xl font-bold'
+      });
+      return true;
+    } catch (error) {
+      console.error('Error al revertir servicio completado:', error);
+      toast({
+        title: 'Error',
+        description: 'No fue posible revertir la confirmacion',
+        variant: 'destructive',
+        className: 'bg-red-100 text-red-800 rounded-2xl border-2 border-red-200'
+      });
+      return false;
+    } finally {
+      setIsRevertingCompletion(false);
+    }
+  };
+
   const normalizeHistory = (value) => {
     if (Array.isArray(value)) return value;
     if (typeof value === 'string' && value.trim() !== '') {
@@ -1668,6 +1738,8 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
               getServicePrice={getServicePrice}
               formatCurrency={formatCurrency}
               serviceCatalog={serviceCatalog}
+              onRevertCompletedService={handleRevertCompletedService}
+              isRevertingCompletion={isRevertingCompletion}
             />
           </Suspense>
         </TabsContent>

@@ -559,8 +559,8 @@ const EarningsModule = React.memo(({
                               </div>
                             </div>
                             <div className="flex justify-between items-center text-xs text-gray-500 gap-2">
-                              <span> {new Date(apt.date).toLocaleDateString('es-ES')}</span>
-                              <span> {apt.time}</span>
+                              <span>📅 {new Date(apt.date).toLocaleDateString('es-ES')}</span>
+                              <span>⏰ {apt.time}</span>
                             </div>
                             {isPaid && (
                               <div className="mt-3 pt-3 border-t border-green-200">
@@ -597,7 +597,7 @@ const EarningsModule = React.memo(({
         </DialogContent>
       </Dialog>
 
-      {/* Modal de ConfirmaciÃ³n de Pago */}
+      {/* Modal de Confirmación de Pago */}
       <Dialog open={!!confirmPayment} onOpenChange={(open) => !open && setConfirmPayment(null)}>
         <DialogContent className="rounded-[3rem] border-4 border-green-400 p-0 sm:max-w-md bg-green-50 shadow-2xl">
           <div className="text-center pt-8 pb-6">
@@ -610,9 +610,9 @@ const EarningsModule = React.memo(({
           </div>
           
           <div className="px-8 pb-8 text-center space-y-6">
-            <div className="text-6xl mb-4">ðŸ’µ</div>
+            <div className="text-6xl mb-4">💵</div>
             <h3 className="text-lg font-medium text-gray-700 mb-4">
-              Â¿Confirmar pago de este servicio?
+              ¿Confirmar pago de este servicio?
             </h3>
             {confirmPayment && (
               <div className="bg-white rounded-2xl p-4 border-2 border-green-400">
@@ -623,7 +623,7 @@ const EarningsModule = React.memo(({
               </div>
             )}
             <p className="text-gray-600 text-sm">
-              Este servicio se marcarÃ¡ como pagado y aparecerÃ¡ en el historial.
+              Este servicio se marcará como pagado y aparecerá en el historial.
             </p>
             
             <div className="flex gap-4 pt-4">
@@ -654,7 +654,7 @@ const EarningsModule = React.memo(({
                 }}
                 className="flex-1 bg-green-500 hover:bg-green-600 text-white rounded-2xl py-3 px-6 font-bold shadow-lg transition-all"
               >
-                SÃ­, Marcar como Pagado
+                Sí, Marcar como Pagado
               </Button>
             </div>
           </div>
@@ -729,5 +729,6 @@ const EarningsModule = React.memo(({
 EarningsModule.displayName = 'EarningsModule';
 
 export default EarningsModule;
+
 
 
