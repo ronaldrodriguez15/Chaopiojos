@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
-import { DollarSign, Eye, CheckCircle2 } from 'lucide-react';
+import { DollarSign, Eye, CheckCircle2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import Pagination from './Pagination';
@@ -14,6 +14,7 @@ const EarningsModule = React.memo(({
   getServicePrice,
   formatCurrency,
   handleMarkServiceAsPaid,
+  handleRevertServicePayment,
   openPayDialog,
   setOpenPayDialog,
   openHistoryDialog,
@@ -21,6 +22,7 @@ const EarningsModule = React.memo(({
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [confirmPayment, setConfirmPayment] = useState(null);
+  const [confirmRevertPayment, setConfirmRevertPayment] = useState(null);
   const itemsPerPage = 10;
 
   useEffect(() => {
@@ -132,7 +134,7 @@ const EarningsModule = React.memo(({
   return (
     <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-green-100 space-y-8">
       <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3">
-        <span className="text-3xl">ðŸ’°</span> Control de Pagos a PiojÃ³logas
+        <span className="text-3xl">💰</span> Control de Pagos a Piojólogas
       </h3>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -161,8 +163,8 @@ const EarningsModule = React.memo(({
         <table className="w-full text-left">
           <thead>
             <tr className="border-b-2 border-gray-100">
-              <th className="p-4 font-black text-gray-400">PiojÃ³loga</th>
-              <th className="p-4 font-black text-gray-400 text-center">ComisiÃ³n</th>
+              <th className="p-4 font-black text-gray-400">Piojóloga</th>
+              <th className="p-4 font-black text-gray-400 text-center">Comisión</th>
               <th className="p-4 font-black text-gray-400 text-center">Cobrados</th>
               <th className="p-4 font-black text-gray-400 text-right">Pendiente Pago</th>
               <th className="p-4 font-black text-gray-400 text-right">Ya Pagado</th>
@@ -298,7 +300,7 @@ const EarningsModule = React.memo(({
           <div className="px-6 pb-6 space-y-4 overflow-y-auto">
             {openPayDialog && (() => {
               const piojologist = piojologists.find(p => p.id === openPayDialog);
-              if (!piojologist) return <p className="text-gray-500">PiojÃ³loga no encontrada</p>;
+              if (!piojologist) return <p className="text-gray-500">Piojóloga no encontrada</p>;
               const pendingReferralCommissions = (referralCommissionsList || []).filter(c => {
                 const referrerId = Number(c.referrer_id ?? c.referrer?.id);
                 return referrerId === Number(openPayDialog) && c.status === 'pending';
@@ -337,7 +339,7 @@ const EarningsModule = React.memo(({
                   <div className="bg-green-50 p-4 rounded-2xl border-2 border-green-200 mb-4">
                     <h4 className="font-black text-gray-700 text-lg mb-2">{piojologist.name}</h4>
                     <p className="text-sm text-gray-600">
-                      <span className="font-bold">ComisiÃ³n:</span> {piojologist.commission_rate || 50}%
+                      <span className="font-bold">Comisión:</span> {piojologist.commission_rate || 50}%
                     </p>
                     <p className="text-sm text-gray-600">
                       <span className="font-bold">Servicios pendientes:</span> {pendingServices.length}
@@ -378,8 +380,8 @@ const EarningsModule = React.memo(({
                             </div>
                           </div>
                           <div className="flex justify-between items-center text-xs text-gray-500 mb-3">
-                            <span>ðŸ“… {new Date(apt.date).toLocaleDateString('es-ES')}</span>
-                            <span>â° {apt.time}</span>
+                            <span> {new Date(apt.date).toLocaleDateString('es-ES')}</span>
+                            <span> {apt.time}</span>
                           </div>
                           {commissionBreakdown.length > 0 && (
                             <div className="mb-3 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 space-y-1.5">
@@ -466,7 +468,7 @@ const EarningsModule = React.memo(({
             <div className="px-6 sm:px-8 pb-8 space-y-4">
               {openHistoryDialog && (() => {
                 const piojologist = piojologists.find(p => p.id === openHistoryDialog);
-                if (!piojologist) return <p className="text-gray-500">PiojÃ³loga no encontrada</p>;
+                if (!piojologist) return <p className="text-gray-500">Piojóloga no encontrada</p>;
                 const referralData = referralByPiojologist[Number(piojologist.id)] || { pending: 0, paid: 0, count: 0 };
                 
                 const allServices = appointments.filter(apt => 
@@ -496,15 +498,15 @@ const EarningsModule = React.memo(({
                           <span className="font-black text-base text-gray-800">{allServices.length}</span>
                         </div>
                         <div className="bg-purple-50 p-2.5 rounded-lg">
-                          <span className="text-gray-600 block mb-1">ComisiÃ³n</span>
+                          <span className="text-gray-600 block mb-1">Comisión</span>
                           <span className="font-black text-base text-purple-600">{piojologist.commission_rate || 50}%</span>
                         </div>
                         <div className="bg-green-50 p-2.5 rounded-lg">
-                          <span className="text-gray-600 block mb-1">âœ… Pagados</span>
+                          <span className="text-gray-600 block mb-1">Pagados</span>
                           <span className="font-black text-base text-green-700">{paidServices.length}</span>
                         </div>
                         <div className="bg-amber-50 p-2.5 rounded-lg">
-                          <span className="text-gray-600 block mb-1">â³ Pendientes</span>
+                          <span className="text-gray-600 block mb-1">Pendientes</span>
                           <span className="font-black text-base text-amber-700">{pendingServices.length}</span>
                         </div>
                         <div className="bg-purple-50 p-2.5 rounded-lg col-span-2">
@@ -540,7 +542,7 @@ const EarningsModule = React.memo(({
                                       ? 'bg-green-200 text-green-800' 
                                       : 'bg-amber-200 text-amber-800'
                                   }`}>
-                                    {isPaid ? 'âœ… Pagado' : 'â³ Pendiente'}
+                                    {isPaid ? '✔ Pagado' : 'Pendiente'}
                                   </span>
                                 </div>
                                 <p className="text-xs sm:text-sm text-gray-600 truncate">{apt.serviceType}</p>
@@ -557,9 +559,32 @@ const EarningsModule = React.memo(({
                               </div>
                             </div>
                             <div className="flex justify-between items-center text-xs text-gray-500 gap-2">
-                              <span>ðŸ“… {new Date(apt.date).toLocaleDateString('es-ES')}</span>
-                              <span>â° {apt.time}</span>
+                              <span> {new Date(apt.date).toLocaleDateString('es-ES')}</span>
+                              <span> {apt.time}</span>
                             </div>
+                            {isPaid && (
+                              <div className="mt-3 pt-3 border-t border-green-200">
+                                <Button
+                                  type="button"
+                                  onClick={() => {
+                                    setConfirmRevertPayment({
+                                      serviceId: apt.id,
+                                      piojologistId: piojologist.id,
+                                      piojologistName: piojologist.name,
+                                      amount: piojologistShare,
+                                      clientName: apt.clientName,
+                                      serviceType: apt.serviceType,
+                                      date: apt.date,
+                                      time: apt.time
+                                    });
+                                  }}
+                                  className="w-full bg-amber-500 hover:bg-amber-600 text-white rounded-xl py-2 font-bold"
+                                >
+                                  <RotateCcw className="w-4 h-4 mr-2" />
+                                  Revertir pago
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -630,6 +655,68 @@ const EarningsModule = React.memo(({
                 className="flex-1 bg-green-500 hover:bg-green-600 text-white rounded-2xl py-3 px-6 font-bold shadow-lg transition-all"
               >
                 SÃ­, Marcar como Pagado
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!confirmRevertPayment} onOpenChange={(open) => !open && setConfirmRevertPayment(null)}>
+        <DialogContent className="rounded-[3rem] border-4 border-amber-400 p-0 sm:max-w-md bg-amber-50 shadow-2xl">
+          <div className="text-center pt-8 pb-6">
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <RotateCcw className="w-6 h-6 text-amber-600" />
+              <h2 className="text-2xl font-black text-amber-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
+                REVERTIR PAGO
+              </h2>
+            </div>
+          </div>
+
+          <div className="px-8 pb-8 text-center space-y-6">
+            <div className="text-6xl mb-4">↩️</div>
+            <h3 className="text-lg font-medium text-gray-700 mb-4">
+              ¿Revertir este servicio a pendiente?
+            </h3>
+            {confirmRevertPayment && (
+              <div className="bg-white rounded-2xl p-4 border-2 border-amber-300">
+                <p className="text-lg font-bold text-gray-800">{confirmRevertPayment.clientName}</p>
+                <p className="text-sm text-gray-600">{confirmRevertPayment.serviceType}</p>
+                <p className="text-2xl font-black text-amber-600 mt-2">{formatCurrency(confirmRevertPayment.amount)}</p>
+                <p className="text-xs text-gray-500 mt-1">Para: {confirmRevertPayment.piojologistName}</p>
+              </div>
+            )}
+            <p className="text-gray-600 text-sm">
+              Este servicio volvera al estado pendiente de pago.
+            </p>
+
+            <div className="flex gap-4 pt-4">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setConfirmRevertPayment(null)}
+                className="flex-1 rounded-2xl py-3 px-6 font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 border-2 border-gray-300 transition-all"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (confirmRevertPayment && typeof handleRevertServicePayment === 'function') {
+                    await handleRevertServicePayment(
+                      confirmRevertPayment.serviceId,
+                      confirmRevertPayment.piojologistId,
+                      confirmRevertPayment.piojologistName,
+                      confirmRevertPayment.amount,
+                      confirmRevertPayment.clientName,
+                      confirmRevertPayment.serviceType,
+                      confirmRevertPayment.date,
+                      confirmRevertPayment.time
+                    );
+                    setConfirmRevertPayment(null);
+                  }
+                }}
+                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl py-3 px-6 font-bold shadow-lg transition-all"
+              >
+                Si, Revertir
               </Button>
             </div>
           </div>

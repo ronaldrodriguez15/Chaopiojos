@@ -626,6 +626,65 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     }
   };
 
+  const handleRevertServicePayment = async (serviceId, piojologistId, piojologistName, amount, clientName, serviceType, serviceDate) => {
+    try {
+      const appointment = appointments.find(apt => apt.id === serviceId);
+      if (!appointment) {
+        toast({
+          title: "❌ Error",
+          description: "No se encontró el servicio",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const backendId = appointment.backendId || appointment.bookingId || appointment.id;
+      const result = await bookingService.update(backendId, {
+        payment_status_to_piojologist: 'pending'
+      });
+
+      if (!result.success) {
+        toast({
+          title: "❌ Error al revertir",
+          description: result.message || "No se pudo revertir el pago en la base de datos",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const updatedAppointments = appointments.map(apt =>
+        apt.id === serviceId
+          ? {
+              ...apt,
+              payment_status_to_piojologist: 'pending',
+              paymentStatusToPiojologist: 'pending'
+            }
+          : apt
+      );
+
+      if (typeof updateAppointments === 'function') {
+        updateAppointments(updatedAppointments);
+      }
+
+      if (typeof reloadBookings === 'function') {
+        await reloadBookings();
+      }
+
+      toast({
+        title: "↩️ Pago revertido",
+        description: `El servicio de ${piojologistName} volvió a pendiente por ${formatCurrency(amount)}`,
+        className: "bg-amber-100 text-amber-800 rounded-2xl border-2 border-amber-200"
+      });
+    } catch (error) {
+      console.error('Error revirtiendo pago de servicio:', error);
+      toast({
+        title: "❌ Error",
+        description: "No se pudo revertir el pago del servicio",
+        variant: "destructive"
+      });
+    }
+  };
+
   // Product Logic
   const handleProductSubmit = (e) => {
     e.preventDefault();
@@ -1263,6 +1322,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
               getServicePrice={getServicePrice}
               formatCurrency={formatCurrency}
               handleMarkServiceAsPaid={handleMarkServiceAsPaid}
+              handleRevertServicePayment={handleRevertServicePayment}
               openPayDialog={openPayDialog}
               setOpenPayDialog={setOpenPayDialog}
               openHistoryDialog={openHistoryDialog}
