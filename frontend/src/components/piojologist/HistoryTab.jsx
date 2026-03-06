@@ -18,6 +18,29 @@ const HistoryTab = ({
   const [paidPerPage, setPaidPerPage] = useState(5);
   const [revertTarget, setRevertTarget] = useState(null);
 
+  const parseServiceDate = (dateValue) => {
+    if (!dateValue) return null;
+    if (dateValue instanceof Date) return Number.isNaN(dateValue.getTime()) ? null : dateValue;
+
+    if (typeof dateValue === 'string') {
+      const trimmed = dateValue.trim();
+      const dateOnlyMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (dateOnlyMatch) {
+        const [, year, month, day] = dateOnlyMatch;
+        return new Date(Number(year), Number(month) - 1, Number(day), 12, 0, 0);
+      }
+    }
+
+    const parsed = new Date(dateValue);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const formatServiceDate = (dateValue) => {
+    const parsed = parseServiceDate(dateValue);
+    if (!parsed) return 'Sin fecha';
+    return parsed.toLocaleDateString();
+  };
+
   const pendingServices = useMemo(() => {
     return completedHistory.filter((apt) => {
       const paymentStatus = apt.payment_status_to_piojologist || apt.paymentStatusToPiojologist || 'pending';
@@ -35,16 +58,30 @@ const HistoryTab = ({
   const getPerPersonBreakdown = (apt = {}) => {
     const fromArray = Array.isArray(apt.services_per_person) ? apt.services_per_person : [];
     if (fromArray.length > 0) {
+      const confirmedTotal = Number(getServicePrice(apt) || 0);
+      const catalogAmounts = fromArray.map((serviceName) => Number(serviceCatalog?.[serviceName] || 0));
+      const catalogTotal = catalogAmounts.reduce((acc, value) => acc + value, 0);
+      const resolvedAmounts = (() => {
+        if (confirmedTotal > 0 && catalogTotal > 0) {
+          return catalogAmounts.map((value) => (value / catalogTotal) * confirmedTotal);
+        }
+        if (catalogTotal > 0) {
+          return catalogAmounts;
+        }
+        const fallbackPerPerson = fromArray.length > 0 ? confirmedTotal / fromArray.length : 0;
+        return fromArray.map(() => fallbackPerPerson);
+      })();
+
       return fromArray.map((serviceName, idx) => ({
         idx,
         serviceName,
-        amount: Number(serviceCatalog?.[serviceName] || 0)
+        amount: Number(resolvedAmounts[idx] || 0)
       }));
     }
 
     const people = Math.max(1, Number(apt.numPersonas) || 1);
     if (!apt.serviceType) return [];
-    const fallbackAmount = Number(serviceCatalog?.[apt.serviceType] || 0);
+    const fallbackAmount = Number(getServicePrice(apt) || serviceCatalog?.[apt.serviceType] || 0);
     return Array.from({ length: people }, (_, idx) => ({
       idx,
       serviceName: apt.serviceType,
@@ -138,7 +175,7 @@ const HistoryTab = ({
                       <span className="bg-amber-500 text-white px-2 py-0.5 rounded-full text-xs font-black">PENDIENTE</span>
                     </div>
                     <p className="font-black text-gray-800">{apt.clientName}</p>
-                    <p className="text-xs text-gray-500">{new Date(apt.date).toLocaleDateString()} - {apt.serviceType}</p>
+                    <p className="text-xs text-gray-500">{formatServiceDate(apt.date)} - {apt.serviceType}</p>
                     {getPerPersonBreakdown(apt).length > 0 && (
                       <div className="mt-2 bg-white/70 border border-amber-200 rounded-xl p-2 space-y-1">
                         <p className="text-[11px] font-black text-amber-700 uppercase">Detalle por persona</p>
@@ -231,7 +268,7 @@ const HistoryTab = ({
                       <span className="bg-green-500 text-white px-2 py-0.5 rounded-full text-xs font-black">PAGADO</span>
                     </div>
                     <p className="font-black text-gray-800">{apt.clientName}</p>
-                    <p className="text-xs text-gray-500">{new Date(apt.date).toLocaleDateString()} - {apt.serviceType}</p>
+                    <p className="text-xs text-gray-500">{formatServiceDate(apt.date)} - {apt.serviceType}</p>
                     {(apt.yourLoss || apt.ourPayment || apt.age) && (
                       <p className="text-xs text-yellow-600 font-bold mt-1">
                         {apt.age ? `${apt.age}a ` : ''}| Pierdes: {formatCurrency(parseFloat(apt.yourLoss) || 0)} | Te pagamos: {formatCurrency(parseFloat(apt.ourPayment) || 0)}
@@ -283,7 +320,7 @@ const HistoryTab = ({
                 <p className="font-black text-gray-800">{revertTarget.clientName}</p>
                 <p className="text-sm text-gray-600">{revertTarget.serviceType}</p>
                 <p className="text-sm text-gray-500 mt-1">
-                  {new Date(revertTarget.date).toLocaleDateString()} - {revertTarget.time}
+                  {formatServiceDate(revertTarget.date)} - {revertTarget.time}
                 </p>
               </div>
             )}

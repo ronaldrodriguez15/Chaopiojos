@@ -6,6 +6,12 @@ import { Toaster } from '@/components/ui/toaster';
 import { motion } from 'framer-motion';
 import { bookingService, serviceService, referralService, settingsService } from '@/lib/api';
 import {
+  DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE,
+  BUSINESS_WHATSAPP_NUMBER,
+  BUSINESS_WHATSAPP_API_NUMBER,
+  buildBookingWhatsappMessage
+} from '@/lib/bookingSmsTemplate';
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -132,6 +138,15 @@ const PublicBooking = () => {
     }
     return true;
   });
+  const [whatsappConfirmationTemplate, setWhatsappConfirmationTemplate] = useState(() => {
+    try {
+      const raw = localStorage.getItem('booking_whatsapp_template');
+      if (raw && raw.trim()) return raw;
+    } catch (e) {
+      // ignore
+    }
+    return DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE;
+  });
   
   // Estados para código de referido
   const [referralCode, setReferralCode] = useState('');
@@ -201,9 +216,12 @@ const PublicBooking = () => {
       const result = await settingsService.getBookingSettings();
       if (isMounted && result.success) {
         const next = !!result.settings?.requireAdvance12h;
+        const nextTemplate = result.settings?.whatsappConfirmationTemplate || DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE;
         setRequireAdvance12h(next);
+        setWhatsappConfirmationTemplate(nextTemplate);
         try {
           localStorage.setItem('booking_require_12h', next ? '1' : '0');
+          localStorage.setItem('booking_whatsapp_template', nextTemplate);
         } catch (e) {
           // ignore
         }
@@ -215,14 +233,23 @@ const PublicBooking = () => {
 
   useEffect(() => {
     const onSettingsUpdated = (event) => {
-      const next = !!event?.detail?.requireAdvance12h;
-      setRequireAdvance12h(next);
+      if (typeof event?.detail?.requireAdvance12h !== 'undefined') {
+        const next = !!event.detail.requireAdvance12h;
+        setRequireAdvance12h(next);
+      }
+      if (typeof event?.detail?.whatsappConfirmationTemplate === 'string' && event.detail.whatsappConfirmationTemplate.trim()) {
+        setWhatsappConfirmationTemplate(event.detail.whatsappConfirmationTemplate);
+      }
     };
 
     const onStorage = (event) => {
-      if (event.key !== 'booking_require_12h') return;
-      const next = event.newValue !== '0';
-      setRequireAdvance12h(next);
+      if (event.key === 'booking_require_12h') {
+        const next = event.newValue !== '0';
+        setRequireAdvance12h(next);
+      }
+      if (event.key === 'booking_whatsapp_template' && typeof event.newValue === 'string' && event.newValue.trim()) {
+        setWhatsappConfirmationTemplate(event.newValue);
+      }
     };
 
     window.addEventListener('booking-settings-updated', onSettingsUpdated);
@@ -237,7 +264,7 @@ const PublicBooking = () => {
   useEffect(() => {
     const previousBodyBackgroundColor = document.body.style.backgroundColor;
     const previousBodyBackgroundImage = document.body.style.backgroundImage;
-    document.body.style.backgroundColor = '#8fc0ea';
+    document.body.style.backgroundColor = '#8bb6d9';
     document.body.style.backgroundImage = 'none';
 
     return () => {
@@ -630,9 +657,32 @@ const PublicBooking = () => {
     }
   };
 
+  const whatsappConfirmationMessage = useMemo(() => {
+    if (!confirmedBooking) return '';
+    const servicesList = Array.isArray(confirmedBooking.servicesPerPerson) && confirmedBooking.servicesPerPerson.length
+      ? confirmedBooking.servicesPerPerson.map((service, idx) => `   ${idx + 1}. ${service}`).join('\n')
+      : '';
+
+    return buildBookingWhatsappMessage(whatsappConfirmationTemplate, {
+      clientName: confirmedBooking.clientName || '',
+      fecha: confirmedBooking.fecha || '',
+      hora: confirmedBooking.hora || '',
+      direccion: confirmedBooking.direccion || '',
+      detailsLine: confirmedBooking.descripcionUbicacion
+        ? `Detalles: ${confirmedBooking.descripcionUbicacion}`
+        : '',
+      barrio: confirmedBooking.barrio || 'No especificado',
+      numPersonas: confirmedBooking.numPersonas || '',
+      edad: confirmedBooking.edad || 'No especificada',
+      servicesList,
+      total: formatCurrency(confirmedBooking.finalTotal || 0),
+      businessWhatsapp: BUSINESS_WHATSAPP_NUMBER
+    });
+  }, [confirmedBooking, whatsappConfirmationTemplate]);
+
   return (
     <>
-      <div className="min-h-0 md:min-h-screen bg-[#8fc0ea] font-fredoka text-gray-800 text-[20px] md:text-xl leading-relaxed md:leading-normal relative overflow-hidden flex items-start md:items-center justify-center px-2 md:px-6 py-2 md:py-6">
+      <div className="min-h-0 md:min-h-screen bg-[#8bb6d9] font-sans text-gray-800 text-[20px] md:text-xl leading-relaxed md:leading-normal relative overflow-hidden flex items-start md:items-center justify-center px-2 md:px-6 py-2 md:py-6">
 
       {/* Floating Elements - Same as Login */}
       <motion.div
@@ -641,6 +691,26 @@ const PublicBooking = () => {
         className="absolute top-20 left-[10%] text-4xl opacity-20"
       >🦠</motion.div>
       <motion.div
+        animate={{ y: [0, 14, 0], x: [0, 8, 0] }}
+        transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
+        className="absolute top-32 right-[18%] text-3xl opacity-20"
+      >🦠</motion.div>
+      <motion.div
+        animate={{ y: [0, -12, 0], x: [0, -10, 0] }}
+        transition={{ duration: 5.2, repeat: Infinity, ease: "easeInOut", delay: 0.7 }}
+        className="absolute top-[42%] left-[6%] text-5xl opacity-15"
+      >🪳</motion.div>
+      <motion.div
+        animate={{ y: [0, 16, 0] }}
+        transition={{ duration: 3.8, repeat: Infinity, ease: "easeInOut", delay: 1.1 }}
+        className="absolute top-[58%] right-[8%] text-4xl opacity-20"
+      >🦠</motion.div>
+      <motion.div
+        animate={{ y: [0, -18, 0], x: [0, 12, 0] }}
+        transition={{ duration: 6, repeat: Infinity, ease: "easeInOut", delay: 1.4 }}
+        className="absolute bottom-24 left-[14%] text-3xl opacity-20"
+      >🪳</motion.div>
+      <motion.div
         animate={{ y: [0, 20, 0] }}
         transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 1 }}
         className="absolute bottom-20 right-[10%] w-16 h-16 opacity-30"
@@ -648,19 +718,15 @@ const PublicBooking = () => {
         <img src="/logo.png" alt="Chao Piojos" className="w-full h-full object-contain drop-shadow" />
       </motion.div>
 
-      <div className="max-w-7xl w-full mx-auto px-0 md:px-4 py-4 md:py-8 relative z-10 flex justify-center">
-        <div className="bg-white rounded-[2rem] md:rounded-[2.5rem] p-4 md:p-8 shadow-2xl border-4 border-orange-200 relative overflow-hidden max-w-5xl mx-auto">
-          <div className="absolute -left-10 -top-10 w-32 h-32 bg-amber-200 rounded-full mix-blend-multiply opacity-60 animate-pulse pointer-events-none"></div>
-          <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-orange-300 rounded-full mix-blend-multiply opacity-50 animate-pulse pointer-events-none"></div>
-
-          <div className="relative">
+      <div className="max-w-7xl w-full mx-auto px-0 md:px-2 py-4 md:py-8 relative z-10 flex justify-center">
+          <div className="relative max-w-6xl w-full mx-auto">
             {/* Calendar o Vista de Confirmacion */}
             {!showConfirmation ? (
-            <div className="bg-white rounded-2xl md:rounded-[2rem] p-4 md:p-6 shadow-xl border-4 border-orange-100 space-y-4 md:space-y-5">
+            <div className="bg-white rounded-2xl md:rounded-[2rem] p-5 md:p-8 shadow-xl space-y-5 md:space-y-6">
               {/* Month navigation */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                  <h3 className="text-xl md:text-2xl font-black text-gray-800 flex items-center gap-2 capitalize">
+                  <h3 className="text-2xl md:text-3xl font-black text-gray-800 flex items-center gap-2 capitalize">
                     <span className="text-2xl md:text-3xl"></span>
                     Horarios Disponibles
                   </h3>
@@ -670,7 +736,7 @@ const PublicBooking = () => {
                   <button
                     type="button"
                     onClick={goToPreviousMonth}
-                    className="flex items-center gap-1 md:gap-2 bg-orange-100 hover:bg-orange-200 text-orange-600 font-bold px-3 md:px-4 py-2 rounded-xl md:rounded-2xl border-2 border-orange-200 transition-colors text-sm md:text-base"
+                    className="flex items-center gap-1 md:gap-2 bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold px-4 md:px-5 py-2.5 md:py-3 rounded-xl md:rounded-2xl border-2 border-blue-200 transition-colors text-base md:text-lg"
                   >
                     <ChevronLeft className="w-3 h-3 md:w-4 md:h-4" />
                     <span className="hidden sm:inline">Anterior</span>
@@ -678,7 +744,7 @@ const PublicBooking = () => {
                   <button
                     type="button"
                     onClick={goToToday}
-                    className="flex items-center gap-1 md:gap-2 bg-blue-100 hover:bg-blue-200 text-blue-600 font-bold px-3 md:px-4 py-2 rounded-xl md:rounded-2xl border-2 border-blue-200 transition-colors text-sm md:text-base"
+                    className="flex items-center gap-1 md:gap-2 bg-blue-100 hover:bg-blue-200 text-blue-600 font-bold px-4 md:px-5 py-2.5 md:py-3 rounded-xl md:rounded-2xl border-2 border-blue-200 transition-colors text-base md:text-lg"
                   >
                     <CalendarDays className="w-3 h-3 md:w-4 md:h-4" />
                     Hoy
@@ -686,7 +752,7 @@ const PublicBooking = () => {
                   <button
                     type="button"
                     onClick={goToNextMonth}
-                    className="flex items-center gap-1 md:gap-2 bg-orange-100 hover:bg-orange-200 text-orange-600 font-bold px-3 md:px-4 py-2 rounded-xl md:rounded-2xl border-2 border-orange-200 transition-colors text-sm md:text-base"
+                    className="flex items-center gap-1 md:gap-2 bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold px-4 md:px-5 py-2.5 md:py-3 rounded-xl md:rounded-2xl border-2 border-blue-200 transition-colors text-base md:text-lg"
                   >
                     <span className="hidden sm:inline">Siguiente</span>
                     <ChevronRight className="w-3 h-3 md:w-4 md:h-4" />
@@ -695,16 +761,16 @@ const PublicBooking = () => {
               </div>
 
               {/* Week day headers */}
-              <div className="grid grid-cols-7 gap-1 md:gap-2 text-center font-bold text-gray-500">
+              <div className="grid grid-cols-7 gap-2 md:gap-3 text-center font-bold text-gray-500">
                 {WEEK_DAYS.map((day) => (
-                  <div key={day} className="uppercase tracking-wide text-[10px] md:text-xs text-gray-400">
+                  <div key={day} className="uppercase tracking-wide text-xs md:text-sm text-gray-400">
                     {day}
                   </div>
                 ))}
               </div>
 
               {/* Calendar grid */}
-              <div className="grid grid-cols-7 gap-1 md:gap-2">
+              <div className="grid grid-cols-7 gap-2 md:gap-3">
                 {calendarDays.map((dayInfo) => {
                   const { date, key, isToday, isCurrentMonth, slots } = dayInfo;
                   const dateLabel = date.getDate();
@@ -713,11 +779,11 @@ const PublicBooking = () => {
                   const isSelected = selectedDate ? key === buildDateKey(selectedDate) : false;
                   
                   const cellClasses = [
-                    'rounded-xl md:rounded-2xl border-2 min-h-[60px] md:min-h-[80px] flex items-center justify-center p-2 transition-all',
-                    isCurrentMonth ? 'bg-white border-orange-100' : 'bg-gray-50 border-gray-100 opacity-40',
+                    'rounded-xl md:rounded-2xl border-2 min-h-[82px] md:min-h-[118px] flex items-center justify-center p-2 md:p-3 transition-all',
+                    isCurrentMonth ? 'bg-white border-blue-100' : 'bg-gray-50 border-gray-100 opacity-40',
                     isToday ? 'shadow-md md:shadow-lg border-blue-300 ring-1 md:ring-2 ring-blue-200 ring-offset-1 md:ring-offset-2' : '',
-                    hasSlots ? 'cursor-pointer hover:-translate-y-0.5 md:hover:-translate-y-1 hover:shadow-md md:hover:shadow-lg hover:border-orange-400 active:translate-y-0' : 'cursor-default',
-                    isSelected ? 'border-4 border-orange-400 shadow-lg md:shadow-xl bg-orange-50' : ''
+                    hasSlots ? 'cursor-pointer hover:-translate-y-0.5 md:hover:-translate-y-1 hover:shadow-md md:hover:shadow-lg hover:border-blue-400 active:translate-y-0' : 'cursor-default',
+                    isSelected ? 'border-4 border-blue-400 shadow-lg md:shadow-xl bg-blue-50' : ''
                   ].join(' ');
 
                   return (
@@ -743,11 +809,11 @@ const PublicBooking = () => {
                         }
                       }}
                     >
-                      <div className={`w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl flex items-center justify-center font-black text-xl md:text-3xl ${
+                      <div className={`w-12 h-12 md:w-20 md:h-20 rounded-xl md:rounded-2xl flex items-center justify-center font-black text-2xl md:text-4xl ${
                         isToday 
                           ? 'bg-blue-500 text-white shadow-md' 
                           : isCurrentMonth && hasSlots
-                            ? 'bg-orange-100 text-orange-600'
+                            ? 'bg-blue-100 text-blue-700'
                             : isCurrentMonth
                               ? 'bg-gray-100 text-gray-600'
                               : 'bg-gray-50 text-gray-400'
@@ -760,7 +826,7 @@ const PublicBooking = () => {
               </div>
 
               <p className="text-xs md:text-sm text-gray-600 font-bold text-center">
-                Toca un da para ver los horarios disponibles.
+                Toca un día para ver los horarios disponibles.
               </p>
             </div>
             ) : (
@@ -826,12 +892,12 @@ const PublicBooking = () => {
                   </div>
 
                   {confirmedBooking?.hasReferral && (
-                    <div className="max-w-2xl mx-auto w-full bg-purple-50 p-4 md:p-5 rounded-2xl border-2 border-purple-200 shadow-md">
-                      <p className="text-xs font-black text-purple-500 uppercase">Referido aplicado</p>
-                      <p className="text-base md:text-lg font-black text-purple-700">
+                    <div className="max-w-2xl mx-auto w-full bg-slate-50 p-4 md:p-5 rounded-2xl border-2 border-slate-200 shadow-md">
+                      <p className="text-xs font-black text-slate-600 uppercase">Referido aplicado</p>
+                      <p className="text-base md:text-lg font-black text-slate-700">
                         Código: {confirmedBooking?.referralCode}
                       </p>
-                      <p className="text-sm md:text-base font-bold text-purple-700">
+                      <p className="text-sm md:text-base font-bold text-slate-700">
                         Referido por la piojóloga {confirmedBooking?.referrerName}
                       </p>
                     </div>
@@ -846,46 +912,7 @@ const PublicBooking = () => {
                     
                     {/* Botón para enviar confirmación por WhatsApp */}
                     <a
-                      href={`https://wa.me/573227932394?text=${encodeURIComponent(
-                        `*RESERVA CONFIRMADA* ✅\n\n` +
-                        `*Chao Piojos* 🦸\n\n` +
-                        `Nombre: ${confirmedBooking?.clientName}\n` +
-                        `Fecha: ${confirmedBooking?.fecha}\n` +
-                        `Hora: ${confirmedBooking?.hora}\n` +
-                        `Direccion: ${confirmedBooking?.direccion}\n` +
-                        (confirmedBooking?.descripcionUbicacion ? `Detalles: ${confirmedBooking.descripcionUbicacion}\n` : '') +
-                        `Barrio: ${confirmedBooking?.barrio || 'No especificado'}\n\n` +
-                        `Personas: ${confirmedBooking?.numPersonas}\n` +
-                        `Edad: ${confirmedBooking?.edad}\n` +
-                        (confirmedBooking?.servicesPerPerson?.map((service, idx) => 
-                          `   ${idx + 1}. ${service}`
-                        ).join('\n') || '') + '\n\n' +
-                        `*Total: ${formatCurrency(confirmedBooking?.finalTotal || 0)}* 💰\n\n` +
-                        `-------------------\n\n` +
-                        `*Dudas o cambios?* 📱\n` +
-                        `Escribenos al WhatsApp 3227932394\n\n` +
-                        `-------------------\n\n` +
-                        `*Como prepararte:* ✨\n\n` +
-                        `- Cabello seco, limpio y sin productos\n` +
-                        `- Cabello desenredado\n` +
-                        `- No aplicar tratamientos antipiojos antes\n` +
-                        `- Ten un espacio comodo y una toalla limpia\n` +
-                        `- Informa si hay alergias\n` +
-                        `- El procedimiento toma entre 30 y 60 minutos\n` +
-                        `- Menores deben estar acompañados por un adulto\n\n` +
-                        `-------------------\n\n` +
-                        `*Cuidados despues:* 🏡\n\n` +
-                        `- Lava el cabello despues de la limpieza\n` +
-                        `- Cambia ropa de cama y pijamas de los ultimos 3 dias\n` +
-                        `- Lava y desinfecta peines, cepillos, ligas, gorras\n` +
-                        `- Evita compartir objetos de cabeza\n` +
-                        `- Aspira sillones, almohadas, colchones\n` +
-                        `- Haz revisiones semanales en casa\n` +
-                        `- Viste al niño con ropa limpia tras la limpieza\n\n` +
-                        `-------------------\n\n` +
-                        `Confirmo mi asistencia ✅\n` +
-                        `Gracias por confiar en Chao Piojos! 💚`
-                      )}`}
+                      href={`https://wa.me/${BUSINESS_WHATSAPP_API_NUMBER}?text=${encodeURIComponent(whatsappConfirmationMessage)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full inline-flex items-center justify-center gap-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-black text-sm md:text-base px-6 py-4 rounded-2xl shadow-lg border-b-4 border-green-700 active:border-b-0 active:translate-y-1 transition-all"
@@ -904,7 +931,7 @@ const PublicBooking = () => {
                         <span aria-hidden="true"></span> Recomendaciones para tu visita
                       </p>
                       <p className="text-sm md:text-base font-black text-gray-800">
-                        Si tienes dudas o cambios escríbenos al WhatsApp <span className="text-emerald-600">3227932394</span>.
+                        Si tienes dudas o cambios escríbenos al WhatsApp <span className="text-emerald-600">{BUSINESS_WHATSAPP_NUMBER}</span>.
                       </p>
                       <div className="space-y-2 text-sm md:text-base text-gray-700 font-bold">
                         <p className="text-emerald-700 font-black">Cómo prepararte para recibir al piojólogo certificado</p>
@@ -937,7 +964,7 @@ const PublicBooking = () => {
                   {/* Botn para agendar otra cita */}
                   <Button
                     onClick={handleCloseConfirmation}
-                    className="bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-white font-black text-base md:text-lg px-8 md:px-12 py-4 md:py-6 rounded-2xl shadow-lg border-b-4 border-orange-600 active:border-b-0 active:translate-y-1 transition-all"
+                    className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-700 hover:to-cyan-700 text-white font-black text-base md:text-lg px-8 md:px-12 py-4 md:py-6 rounded-2xl shadow-lg border-b-4 border-blue-700 active:border-b-0 active:translate-y-1 transition-all"
                   >
                     <CalendarDays className="w-5 h-5 md:w-6 md:h-6 mr-2" />
                     Agendar Otra Cita
@@ -945,7 +972,6 @@ const PublicBooking = () => {
                 </div>
               </motion.div>
             )}
-          </div>
         </div>
       </div>
       <Dialog open={isModalOpen} onOpenChange={(open) => {
@@ -957,11 +983,11 @@ const PublicBooking = () => {
           setSelectedSlot('');
         }
       }}>
-        <DialogContent className="sm:max-w-4xl rounded-2xl md:rounded-[3rem] border-4 border-orange-200 p-0 text-[20px] md:text-xl leading-relaxed md:leading-normal bg-gradient-to-b from-orange-50 to-white">
-          <DialogHeader className="pt-8 pb-6 text-center border-b-4 border-orange-200 bg-gradient-to-b from-orange-100 to-orange-50">
+        <DialogContent className="sm:max-w-4xl rounded-2xl md:rounded-[3rem] p-0 text-[20px] md:text-xl leading-relaxed md:leading-normal bg-gradient-to-b from-blue-50 to-white font-sans">
+          <DialogHeader className="pt-8 pb-6 text-center bg-gradient-to-b from-blue-100 to-blue-50">
             <div className="flex items-center justify-center gap-3 mb-2">
-              <CalendarDays className="w-8 h-8 text-orange-600" strokeWidth={2.5} />
-              <DialogTitle className="text-2xl md:text-3xl font-black uppercase text-orange-600 tracking-wide" style={{ WebkitTextStroke: '1px rgba(249, 115, 22, 0.3)' }}>
+              <CalendarDays className="w-8 h-8 text-blue-700" strokeWidth={2.5} />
+              <DialogTitle className="text-2xl md:text-3xl font-black uppercase text-blue-700 tracking-wide" style={{ WebkitTextStroke: '1px rgba(30, 64, 175, 0.25)' }}>
                 Agenda tu Cita
               </DialogTitle>
             </div>
@@ -973,9 +999,9 @@ const PublicBooking = () => {
               /* Slot selection */
               <div className="space-y-4 pt-2">
                 <div className="text-center space-y-2">
-                  <div className="inline-flex items-center gap-2 bg-orange-100 px-3 py-1 rounded-full mb-2">
-                    <Clock className="w-4 h-4 text-orange-600" />
-                    <span className="text-xs font-black text-orange-600 uppercase">Selecciona tu Horario</span>
+                  <div className="inline-flex items-center gap-2 bg-blue-100 px-3 py-1 rounded-full mb-2">
+                    <Clock className="w-4 h-4 text-blue-700" />
+                    <span className="text-xs font-black text-blue-700 uppercase">Selecciona tu Horario</span>
                   </div>
                   <p className="text-xl md:text-2xl font-black text-gray-800">¿A qué hora prefieres?</p>
                   <p className="text-sm md:text-base text-gray-600 font-bold">Elige un horario disponible</p>
@@ -1014,12 +1040,12 @@ const PublicBooking = () => {
                             setSelectedSlot(slot);
                             setShowForm(true);
                           }}
-                          className="group relative bg-white border-4 border-orange-200 hover:border-orange-400 rounded-2xl md:rounded-3xl p-6 md:p-8 transition-all hover:-translate-y-1 hover:shadow-xl"
+                          className="group relative bg-white border-4 border-blue-200 hover:border-blue-400 rounded-2xl md:rounded-3xl p-6 md:p-8 transition-all hover:-translate-y-1 hover:shadow-xl"
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
-                              <div className="bg-orange-100 group-hover:bg-orange-400 p-4 rounded-2xl transition-colors">
-                                <Clock className="w-8 h-8 md:w-10 md:h-10 text-orange-600 group-hover:text-white transition-colors" />
+                              <div className="bg-blue-100 group-hover:bg-blue-500 p-4 rounded-2xl transition-colors">
+                                <Clock className="w-8 h-8 md:w-10 md:h-10 text-blue-700 group-hover:text-white transition-colors" />
                               </div>
                               <div className="text-left">
                                 <p className="text-sm md:text-base font-bold text-gray-500 uppercase tracking-wide">Cita</p>
@@ -1044,11 +1070,11 @@ const PublicBooking = () => {
               /* Booking form */
               <form className="space-y-5 md:space-y-6 text-[20px] md:text-xl pt-2" onSubmit={handleSubmit}>
                 {/* Hora seleccionada */}
-                <div className="bg-orange-50 border-4 border-orange-200 rounded-2xl p-4 flex items-center justify-between">
+                <div className="bg-blue-50 border-4 border-blue-200 rounded-2xl p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <Clock className="w-6 h-6 text-orange-600" />
+                    <Clock className="w-6 h-6 text-blue-700" />
                     <div>
-                      <p className="text-xs font-bold text-orange-500 uppercase">Hora seleccionada</p>
+                      <p className="text-xs font-bold text-blue-600 uppercase">Hora seleccionada</p>
                       <p className="text-lg md:text-xl font-black text-gray-800">{selectedSlot}</p>
                     </div>
                   </div>
@@ -1058,7 +1084,7 @@ const PublicBooking = () => {
                       setShowForm(false);
                       setSelectedSlot('');
                     }}
-                    className="text-sm font-bold text-orange-600 hover:text-orange-700 underline"
+                    className="text-sm font-bold text-blue-700 hover:text-blue-800 underline"
                   >
                     Cambiar
                   </button>
@@ -1073,7 +1099,7 @@ const PublicBooking = () => {
                       required
                       type="text"
                       name="name"
-                      className={`w-full rounded-xl md:rounded-2xl border-2 ${fieldErrors.name ? 'border-red-400 bg-red-50' : 'border-orange-200 bg-orange-50'} px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none ${fieldErrors.name ? 'focus:border-red-500' : 'focus:border-orange-500'} text-base md:text-lg`}
+                      className={`w-full rounded-xl md:rounded-2xl border-2 ${fieldErrors.name ? 'border-red-400 bg-red-50' : 'border-blue-200 bg-blue-50'} px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none ${fieldErrors.name ? 'focus:border-red-500' : 'focus:border-blue-500'} text-base md:text-lg`}
                       value={form.name}
                       onChange={(e) => handleChange('name', e.target.value)}
                       placeholder="Ej: Ana Pérez García"
@@ -1092,7 +1118,7 @@ const PublicBooking = () => {
                       type="number"
                       min="1"
                       max="10"
-                      className="w-full rounded-xl md:rounded-2xl border-2 border-orange-200 bg-orange-50 px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-orange-500 text-base md:text-lg"
+                      className="w-full rounded-xl md:rounded-2xl border-2 border-blue-200 bg-blue-50 px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-blue-500 text-base md:text-lg"
                       value={form.numPersonas}
                       onChange={(e) => {
                         const numPersonas = parseInt(e.target.value) || 1;
@@ -1114,7 +1140,7 @@ const PublicBooking = () => {
                     <input
                       required
                       type="text"
-                      className="w-full rounded-xl md:rounded-2xl border-2 border-orange-200 bg-orange-50 px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-orange-500 text-base md:text-lg"
+                      className="w-full rounded-xl md:rounded-2xl border-2 border-blue-200 bg-blue-50 px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-blue-500 text-base md:text-lg"
                       value={form.edad}
                       onChange={(e) => handleChange('edad', e.target.value)}
                       placeholder="Ej: 4 y 9, o 25"
@@ -1122,8 +1148,8 @@ const PublicBooking = () => {
                   </div>
 
                   {/* Niveles de Infestación por Persona */}
-                  <div className="space-y-3 bg-purple-50 p-4 rounded-2xl border-2 border-purple-200">
-                    <p className="text-base md:text-lg font-black text-purple-700 uppercase tracking-wide">💆 Nivel de Infestación por Persona</p>
+                  <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border-2 border-slate-200">
+                    <p className="text-base md:text-lg font-black text-slate-700 uppercase tracking-wide">💆 Nivel de Infestación por Persona</p>
                     {Array(parseInt(form.numPersonas) || 1).fill(null).map((_, idx) => (
                       <div key={idx} className="space-y-1">
                         <label className="text-sm md:text-base font-bold text-gray-700 ml-2 mb-1 block">
@@ -1134,7 +1160,7 @@ const PublicBooking = () => {
                         </label>
                         <select
                           required
-                          className="w-full rounded-xl md:rounded-2xl border-2 border-purple-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-purple-500 text-base md:text-lg cursor-pointer"
+                          className="w-full rounded-xl md:rounded-2xl border-2 border-slate-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-slate-500 text-base md:text-lg cursor-pointer"
                           value={form.servicesPerPerson[idx] || serviceOptions[0]?.value}
                           onChange={(e) => {
                             const newServices = [...form.servicesPerPerson];
@@ -1163,7 +1189,7 @@ const PublicBooking = () => {
                 </div>
 
                 {/* Contacto del Cliente */}
-                <div className="bg-blue-50 p-4 rounded-2xl border-2 border-blue-200 space-y-3">
+                <div className="bg-[#eef5fb] p-4 rounded-2xl border-2 border-[#c8dceb] space-y-3">
                   <p className="text-base md:text-lg font-black text-blue-600 uppercase">Contacto</p>
                   <div className="space-y-1">
                     <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">WhatsApp *</label>
@@ -1212,11 +1238,11 @@ const PublicBooking = () => {
                             ? 'border-green-400 bg-green-50' 
                             : referralCode && !referralValidation.isValid && !referralValidation.isValidating
                             ? 'border-red-400 bg-red-50'
-                            : 'border-purple-200 bg-purple-50'
+                            : 'border-slate-200 bg-slate-50'
                         } px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none ${
                           referralValidation.isValid 
                             ? 'focus:border-green-500' 
-                            : 'focus:border-purple-400'
+                            : 'focus:border-slate-500'
                         } text-base md:text-lg uppercase`}
                         value={referralCode}
                         onChange={(e) => {
@@ -1232,7 +1258,7 @@ const PublicBooking = () => {
                       />
                       {referralValidation.isValidating && (
                         <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                          <div className="animate-spin rounded-full h-5 w-5 border-2 border-purple-300 border-t-purple-600"></div>
+                          <div className="animate-spin rounded-full h-5 w-5 border-2 border-slate-300 border-t-slate-600"></div>
                         </div>
                       )}
                       {referralValidation.isValid && (
@@ -1316,7 +1342,7 @@ const PublicBooking = () => {
                 </div>
 
                 {/* Datos de Salud */}
-                <div className="bg-red-50 p-4 rounded-2xl border-2 border-red-200 space-y-3">
+                <div className="bg-[#f8f3f3] p-4 rounded-2xl border-2 border-[#e2d7d7] space-y-3">
                   <p className="text-base md:text-lg font-bold text-red-600 uppercase"> Datos de Salud</p>
                   <div className="flex items-center gap-3">
                     <input
@@ -1342,13 +1368,13 @@ const PublicBooking = () => {
                 </div>
 
                 {/* Referencias */}
-                <div className="bg-purple-50 p-4 rounded-2xl border-2 border-purple-200 space-y-3">
-                  <p className="text-base md:text-lg font-bold text-purple-600 uppercase"> Referencias</p>
+                <div className="bg-slate-50 p-4 rounded-2xl border-2 border-slate-200 space-y-3">
+                  <p className="text-base md:text-lg font-bold text-slate-700 uppercase"> Referencias</p>
                   <div className="space-y-1">
                     <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Referido Por (opcional)</label>
                     <input
                       type="text"
-                      className="w-full rounded-xl md:rounded-2xl border-2 border-purple-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-purple-400 text-base md:text-lg"
+                      className="w-full rounded-xl md:rounded-2xl border-2 border-slate-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-slate-500 text-base md:text-lg"
                       value={form.referidoPor}
                       onChange={(e) => handleChange('referidoPor', e.target.value)}
                       placeholder="Nombre o fuente"
@@ -1381,7 +1407,7 @@ const PublicBooking = () => {
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full bg-orange-500 hover:bg-orange-600 disabled:hover:bg-orange-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-base md:text-lg py-4 md:py-5 rounded-xl md:rounded-2xl shadow-lg hover:shadow-xl border-b-4 border-orange-700 active:border-b-0 active:translate-y-0.5"
+                  className="w-full bg-blue-500 hover:bg-blue-700 disabled:hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-base md:text-lg py-4 md:py-5 rounded-xl md:rounded-2xl shadow-lg hover:shadow-xl border-b-4 border-blue-800 active:border-b-0 active:translate-y-0.5"
                 >
                   <Check className="w-5 h-5 md:w-6 md:h-6 mr-2" /> {isSubmitting ? 'Procesando...' : 'Confirmar Reserva'}
                 </Button>
@@ -1402,5 +1428,3 @@ const PublicBooking = () => {
 };
 
 export default PublicBooking;
-
-

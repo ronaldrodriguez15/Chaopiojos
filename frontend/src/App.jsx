@@ -330,7 +330,10 @@ function App() {
               hasAlergias: booking.hasAlergias,
               detalleAlergias: booking.detalleAlergias,
               referidoPor: booking.referidoPor,
+              referral_code: booking.referral_code,
+              referred_by_user_id: booking.referred_by_user_id,
               payment_method: booking.payment_method,
+              paymentMethod: booking.payment_method,
               price_confirmed: booking.price_confirmed,
               estimatedPrice: serviceCatalog[booking.serviceType] || 0,
               status: normalizedStatus,
@@ -765,7 +768,14 @@ function App() {
     if (!appointment || !appointment.piojologistId) return;
 
     const backendId = appointment.backendId || appointment.bookingId || (isBookingId ? appointmentId.replace('booking-','') : appointmentId);
-    const servicePrice = serviceCatalog[appointment.serviceType] || 0;
+    const fallbackCatalogPrice = Number(serviceCatalog[appointment.serviceType] || 0);
+    const priceFromRecord = Number(appointment.price_confirmed ?? appointment.price ?? appointment.estimatedPrice);
+    const servicesBasedPrice = Array.isArray(appointment.services_per_person)
+      ? appointment.services_per_person.reduce((sum, serviceType) => sum + Number(serviceCatalog[serviceType] || 0), 0)
+      : 0;
+    const servicePrice = (Number.isFinite(priceFromRecord) && priceFromRecord > 0)
+      ? priceFromRecord
+      : (servicesBasedPrice > 0 ? servicesBasedPrice : fallbackCatalogPrice);
     const confirmedServicePrice = Number(completionData.priceConfirmed ?? servicePrice);
     const effectiveServicePrice = Number.isFinite(confirmedServicePrice) && confirmedServicePrice > 0
       ? confirmedServicePrice
@@ -931,23 +941,23 @@ function App() {
               transition={{ type: "spring", bounce: 0.4 }}
             >
               {/* Playful Header */}
-              <div className="flex flex-col md:flex-row justify-between items-center mb-8 bg-white/80 backdrop-blur-md p-3 rounded-[2rem] shadow-xl border-4 border-orange-200 relative">
-                <div className="flex items-center gap-4 mb-4 md:mb-0">
-                  <div className="bg-white p-2 rounded-2xl shadow-lg transform -rotate-3 hover:rotate-3 transition-transform border-2 border-orange-200">
-                    <img src="/logo.png" alt="Chao Piojos" className="w-14 h-14 object-contain" />
+              <div className="flex md:flex-row justify-between items-center mb-4 md:mb-8 bg-white/80 backdrop-blur-md p-2 md:p-3 rounded-[1.5rem] md:rounded-[2rem] shadow-xl border-4 border-orange-200 relative">
+                <div className="flex items-center gap-2 md:gap-4 mb-0 min-w-0">
+                  <div className="bg-white p-1.5 md:p-2 rounded-xl md:rounded-2xl shadow-lg transform -rotate-3 hover:rotate-3 transition-transform border-2 border-orange-200 shrink-0">
+                    <img src="/logo.png" alt="Chao Piojos" className="w-10 h-10 md:w-14 md:h-14 object-contain" />
                   </div>
-                  <div>
-                    <h1 className="text-4xl font-black tracking-wide drop-shadow-sm">
+                  <div className="min-w-0">
+                    <h1 className="text-3xl md:text-4xl font-black tracking-wide drop-shadow-sm leading-none">
                       <span className="text-orange-500">Chao</span>{' '}
                       <span className="text-blue-500">Piojos</span>
                     </h1>
-                    <p className="text-lg text-gray-500 font-bold bg-orange-100 px-3 py-1 rounded-full inline-block mt-1">
+                    <p className="text-xs md:text-lg text-gray-500 font-bold bg-orange-100 px-2 md:px-3 py-0.5 md:py-1 rounded-full inline-block mt-1 truncate max-w-[10.5rem] sm:max-w-none">
                       Hola, {currentUser.name} 👋
                     </p>
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-4 relative z-50">
+                <div className="flex items-center gap-2 md:gap-4 relative z-50 shrink-0">
                   {/* Notification Bell */}
                   <div className="relative notification-container" id="notification-bell">
                     <Button
@@ -958,11 +968,11 @@ function App() {
                           markAllAsRead();
                         }
                       }}
-                      className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-2xl px-5 py-6 font-bold text-lg shadow-md hover:shadow-lg transition-all border-b-4 border-yellow-600 hover:border-yellow-700 active:border-b-0 active:translate-y-1 relative"
+                      className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-xl md:rounded-2xl px-3 md:px-5 py-3 md:py-6 font-bold text-base md:text-lg shadow-md hover:shadow-lg transition-all border-b-4 border-yellow-600 hover:border-yellow-700 active:border-b-0 active:translate-y-1 relative"
                     >
-                      <Bell className="w-6 h-6" />
+                      <Bell className="w-5 h-5 md:w-6 md:h-6" />
                       {getFilteredNotifications().filter(n => !n.read).length > 0 && (
-                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
+                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 md:w-6 md:h-6 flex items-center justify-center animate-pulse">
                           {getFilteredNotifications().filter(n => !n.read).length}
                         </span>
                       )}
@@ -972,10 +982,10 @@ function App() {
 
                   <Button 
                     onClick={handleLogout}
-                    className="bg-red-400 hover:bg-red-500 text-white rounded-2xl px-6 py-6 font-bold text-lg shadow-md hover:shadow-lg transition-all border-b-4 border-red-600 hover:border-red-700 active:border-b-0 active:translate-y-1"
+                    className="bg-red-400 hover:bg-red-500 text-white rounded-xl md:rounded-2xl px-3 md:px-6 py-3 md:py-6 font-bold text-sm md:text-lg shadow-md hover:shadow-lg transition-all border-b-4 border-red-600 hover:border-red-700 active:border-b-0 active:translate-y-1"
                   >
-                    <LogOut className="w-6 h-6 mr-2" />
-                    Salir
+                    <LogOut className="w-5 h-5 md:w-6 md:h-6 mr-0 md:mr-2" />
+                    <span className="text-xs sm:text-sm md:text-lg">Salir</span>
                   </Button>
                 </div>
               </div>
@@ -1185,3 +1195,4 @@ function App() {
 }
 
 export default App;
+

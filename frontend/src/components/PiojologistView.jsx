@@ -1,6 +1,6 @@
-import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, Check, X, Zap, DollarSign, Clock3, CalendarClock, Users, BarChart3, LineChart, Menu } from 'lucide-react';
+import { Calendar, Check, X, Zap, DollarSign, Clock3, CalendarClock, Users, BarChart3, LineChart, Menu, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -52,6 +52,29 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     } catch (e) {
       return time24; // Retorna el formato original si hay error
     }
+  };
+
+  const parseServiceDate = (dateValue) => {
+    if (!dateValue) return null;
+    if (dateValue instanceof Date) return Number.isNaN(dateValue.getTime()) ? null : dateValue;
+
+    if (typeof dateValue === 'string') {
+      const trimmed = dateValue.trim();
+      const dateOnlyMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (dateOnlyMatch) {
+        const [, year, month, day] = dateOnlyMatch;
+        return new Date(Number(year), Number(month) - 1, Number(day), 12, 0, 0);
+      }
+    }
+
+    const parsed = new Date(dateValue);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const formatServiceDate = (dateValue, locale) => {
+    const parsed = parseServiceDate(dateValue);
+    if (!parsed) return 'Sin fecha';
+    return locale ? parsed.toLocaleDateString(locale) : parsed.toLocaleDateString();
   };
 
   const [selectedProducts, setSelectedProducts] = useState([]);
@@ -271,7 +294,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
 
   const getServicePrice = (apt = {}) => {
     // Priorizar siempre el valor confirmado/guardado en la reserva
-    const raw = apt.price ?? apt.price_confirmed ?? apt.estimatedPrice;
+    const raw = apt.price_confirmed ?? apt.price ?? apt.estimatedPrice;
     const num = Number(raw);
     if (Number.isFinite(num) && num > 0) return num;
 
@@ -288,8 +311,23 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   const getPerServiceBreakdown = (apt = {}, rate = 0) => {
     const servicesPerPerson = Array.isArray(apt.services_per_person) ? apt.services_per_person : [];
     if (servicesPerPerson.length > 0) {
-      const breakdown = servicesPerPerson.map((serviceName, idx) => {
-        const basePrice = Number(serviceCatalog?.[serviceName] || 0);
+      const confirmedTotal = Number(getServicePrice(apt) || 0);
+      const catalogPrices = servicesPerPerson.map((serviceName) => Number(serviceCatalog?.[serviceName] || 0));
+      const catalogTotal = catalogPrices.reduce((acc, value) => acc + value, 0);
+
+      const resolvedPrices = (() => {
+        if (confirmedTotal > 0 && catalogTotal > 0) {
+          return catalogPrices.map((value) => (value / catalogTotal) * confirmedTotal);
+        }
+        if (catalogTotal > 0) {
+          return catalogPrices;
+        }
+        const fallbackPerPerson = servicesPerPerson.length > 0 ? confirmedTotal / servicesPerPerson.length : 0;
+        return servicesPerPerson.map(() => fallbackPerPerson);
+      })();
+
+      return servicesPerPerson.map((serviceName, idx) => {
+        const basePrice = Number(resolvedPrices[idx] || 0);
         return {
           idx,
           serviceName,
@@ -297,16 +335,6 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
           commission: basePrice * rate
         };
       });
-
-      const sumBase = breakdown.reduce((acc, item) => acc + item.basePrice, 0);
-      if (sumBase > 0) return breakdown;
-
-      const fallbackPerPerson = Number(getServicePrice(apt) || 0) / servicesPerPerson.length;
-      return breakdown.map((item) => ({
-        ...item,
-        basePrice: fallbackPerPerson,
-        commission: fallbackPerPerson * rate
-      }));
     }
 
     const fallbackPrice = Number(getServicePrice(apt) || 0);
@@ -410,6 +438,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
         description: "¡A cazar piojitos!",
         className: "bg-green-100 border-2 border-green-200 text-green-700 rounded-2xl font-bold"
       });
+      setServicesView('assigned');
       clearAssignmentFallback(appointmentId);
     } catch (error) {
       console.error('Error al aceptar agendamiento:', error);
@@ -494,7 +523,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
       }
       
       toast({ 
-        title: "Misión rechazada 🙅", 
+        title: "Misión rechazada 🙆", 
         description: "El agendamiento regresó a pendientes para reasignación.",
         className: "bg-red-100 rounded-2xl border-2 border-red-200 text-red-700 font-bold" 
       });
@@ -704,7 +733,21 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     [appointments, currentUser.id]
   );
   const myRejectedServices = useMemo(
-    () => appointments.filter((apt) => normalizeHistory(apt.rejectionHistory || apt.rejection_history || apt.rejections).includes(currentUser.name)),
+    () => appointments.filter((apt) => {
+      const history = normalizeHistory(apt.rejectionHistory || apt.rejection_history || apt.rejections);
+      if (!history.includes(currentUser.name)) return false;
+
+      const status = String(apt.status || '').toLowerCase();
+      const isCurrentlyMine = Number(apt.piojologistId) === Number(currentUser.id);
+
+      // Si hoy el servicio está asignado/aceptado/completado por esta misma piojóloga,
+      // no debe mostrarse en "Mis rechazos" aunque exista rechazo histórico.
+      if (isCurrentlyMine && ['assigned', 'accepted', 'confirmed', 'completed'].includes(status)) {
+        return false;
+      }
+
+      return true;
+    }),
     [appointments, currentUser.name]
   );
   const visibleServices = useMemo(
@@ -742,7 +785,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
 
   const earningsBarData = useMemo(() => {
     const earningsByMonthMap = completedHistory.reduce((acc, apt) => {
-      const date = apt.date ? new Date(apt.date) : new Date();
+      const date = parseServiceDate(apt.date) || new Date();
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       const net = getPiojologistShareByService(apt, commissionRate) - (Number(apt.deductions) || 0);
       acc[key] = (acc[key] || 0) + net;
@@ -878,7 +921,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                   )}
                   <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                     <span>📅 Fecha:</span>
-                    <span className="text-emerald-700">{new Date(apt.date).toLocaleDateString()}</span>
+                    <span className="text-emerald-700">{formatServiceDate(apt.date)}</span>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                     <span>⏰ Hora:</span>
@@ -991,7 +1034,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                   )}
                   <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                     <span>📅 Fecha:</span>
-                    <span className="text-green-700">{new Date(apt.date).toLocaleDateString()}</span>
+                    <span className="text-green-700">{formatServiceDate(apt.date)}</span>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                     <span>⏰ Hora:</span>
@@ -1144,7 +1187,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                             </div>
                             <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
                               <p className="text-amber-600 text-[11px] font-black uppercase">Fecha</p>
-                              <p className="text-base">{new Date(apt.date).toLocaleDateString()}</p>
+                              <p className="text-base">{formatServiceDate(apt.date)}</p>
                             </div>
                             <div className="bg-purple-50 border border-purple-100 rounded-xl p-3">
                               <p className="text-purple-600 text-[11px] font-black uppercase">Hora</p>
@@ -1249,39 +1292,68 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
       )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <div className="flex items-center justify-between md:justify-start gap-3 mb-4 md:mb-6">
-          <h2 className="text-xl font-black text-gray-800 md:hidden">Módulos</h2>
-          <Button
-            type="button"
-            variant="outline"
-            className="md:hidden rounded-2xl border-2 border-green-200 text-green-600 bg-white/90"
-            onClick={() => setIsNavOpen(prev => !prev)}
-            aria-expanded={isNavOpen}
-            aria-label="Abrir menú de módulos"
-          >
-            <Menu className="w-5 h-5 mr-2" />
-            {isNavOpen ? 'Cerrar' : 'Abrir'}
-          </Button>
-        </div>
-
-        <TabsList className={`w-full bg-white/50 p-2 rounded-[2rem] border-2 border-green-100 mb-8 h-auto gap-2 ${isNavOpen ? 'grid grid-cols-2' : 'hidden'} sm:flex sm:flex-wrap md:flex`}>
-          <TabsTrigger value="panel" className="flex-1 min-w-[120px] sm:min-w-[150px] w-full rounded-3xl py-2 sm:py-3 font-bold text-base sm:text-lg text-center data-[state=active]:bg-amber-400 data-[state=active]:text-white transition-all">
-            📊 Mi Panel
-          </TabsTrigger>
-          <TabsTrigger value="agenda" className="flex-1 min-w-[120px] sm:min-w-[150px] w-full rounded-3xl py-2 sm:py-3 font-bold text-base sm:text-lg text-center data-[state=active]:bg-green-400 data-[state=active]:text-white transition-all">
-            📅 Mis Servicios ({assignedToMe.length})
-          </TabsTrigger>
-          <TabsTrigger value="history" className="flex-1 min-w-[120px] sm:min-w-[150px] w-full rounded-3xl py-2 sm:py-3 font-bold text-base sm:text-lg text-center data-[state=active]:bg-blue-400 data-[state=active]:text-white transition-all">
-            📜 Historial
-          </TabsTrigger>
-          <TabsTrigger value="products" className="flex-1 min-w-[120px] sm:min-w-[150px] w-full rounded-3xl py-2 sm:py-3 font-bold text-base sm:text-lg text-center data-[state=active]:bg-purple-400 data-[state=active]:text-white transition-all">
-            📦 Productos
-          </TabsTrigger>
-          <TabsTrigger value="referrals" className="flex-1 min-w-[120px] sm:min-w-[150px] w-full rounded-3xl py-2 sm:py-3 font-bold text-base sm:text-lg text-center data-[state=active]:bg-pink-400 data-[state=active]:text-white transition-all">
-            🎁 Referidos
-          </TabsTrigger>
-        </TabsList>
-
+        <div className="grid grid-cols-1 lg:grid-cols-[225px_minmax(0,1fr)] gap-4">
+          <aside className={`${isNavOpen ? 'block' : 'hidden'} lg:block`}>
+            <div className="bg-white/60 border-2 border-green-100 rounded-[1.5rem] p-3 sticky top-4">
+              <p className="text-xs font-black text-gray-500 uppercase tracking-wide mb-2">Modulos</p>
+              <TabsList className="w-full h-auto flex flex-col items-stretch bg-transparent p-0 gap-2">
+                <TabsTrigger value="panel" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-amber-400 data-[state=active]:text-white transition-all">
+                  📊 Mi Panel
+                </TabsTrigger>
+                <TabsTrigger value="agenda" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-green-400 data-[state=active]:text-white transition-all">
+                  📅 Mis Servicios ({assignedToMe.length})
+                </TabsTrigger>
+                <TabsTrigger value="history" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-blue-400 data-[state=active]:text-white transition-all">
+                  📜 Historial
+                </TabsTrigger>
+                <TabsTrigger value="products" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-purple-400 data-[state=active]:text-white transition-all">
+                  📦 Productos
+                </TabsTrigger>
+                <TabsTrigger value="referrals" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-pink-400 data-[state=active]:text-white transition-all">
+                  🎁 Referidos
+                </TabsTrigger>
+              </TabsList>
+            </div>
+          </aside>
+          <section className="space-y-6">
+            <div className="md:hidden flex items-center justify-between">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 rounded-full text-green-700 bg-green-100/90 hover:bg-green-200 px-3 shadow-sm"
+                onClick={() => setIsNavOpen(prev => !prev)}
+                aria-expanded={isNavOpen}
+                aria-label="Mostrar u ocultar modulos"
+              >
+                <Menu className="w-4 h-4 mr-2" />
+                {isNavOpen ? 'Ocultar modulos' : 'Mostrar modulos'}
+              </Button>
+            </div>
+            <div className="hidden md:flex bg-white/60 border-2 border-green-100 rounded-[1.25rem] px-3 py-2 items-center justify-between">
+              <div className="flex items-center gap-3 min-w-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="lg:hidden h-9 rounded-lg border-2 border-green-200 text-green-600 bg-white/90 px-3"
+                  onClick={() => setIsNavOpen(prev => !prev)}
+                  aria-expanded={isNavOpen}
+                  aria-label="Abrir menu lateral"
+                >
+                  <Menu className="w-5 h-5 mr-2" />
+                  {isNavOpen ? 'Cerrar' : 'Modulos'}
+                </Button>
+                <h2 className="text-base sm:text-lg font-black text-gray-800 truncate">Panel de Piojologa</h2>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 rounded-lg border-2 border-green-200 text-green-600 bg-white/90 px-3"
+                onClick={() => setForceUpdate((prev) => prev + 1)}
+                title="Actualizar vista"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </Button>
+            </div>
         <TabsContent value="panel">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <div className="rounded-[1.75rem] p-4 sm:p-6 bg-gradient-to-br from-blue-50 to-blue-100 border-4 border-blue-200 shadow-xl flex items-center gap-3 sm:gap-4">
@@ -1433,7 +1505,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                       </div>
                       <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                         <span>📅 Fecha:</span>
-                        <span className="text-green-600">{new Date(apt.date).toLocaleDateString()}</span>
+                        <span className="text-green-600">{formatServiceDate(apt.date)}</span>
                       </div>
                       <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-gray-600 [&>span:last-child]:basis-full sm:[&>span:last-child]:basis-auto [&>span:last-child]:text-right [&>span:last-child]:break-words">
                         <span>⏰ Hora:</span>
@@ -1603,7 +1675,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                                 </div>
                                 <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
                                   <p className="text-amber-600 text-[11px] font-black uppercase">Fecha</p>
-                                  <p className="text-base">{new Date(apt.date).toLocaleDateString()}</p>
+                                  <p className="text-base">{formatServiceDate(apt.date)}</p>
                                 </div>
                                 <div className="bg-purple-50 border border-purple-100 rounded-xl p-3">
                                   <p className="text-purple-600 text-[11px] font-black uppercase">Hora</p>
@@ -1770,6 +1842,8 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
           </Suspense>
         </TabsContent>
 
+          </section>
+        </div>
       </Tabs>
       
       {/* Diálogo de Confirmación de Rechazo */}
@@ -1814,7 +1888,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                   <div className="grid grid-cols-2 gap-2 mb-3">
                     <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-2">
                       <p className="text-[10px] font-bold text-gray-500 uppercase">Fecha</p>
-                      <p className="text-sm font-bold text-gray-800">{new Date(appointmentToReject.date).toLocaleDateString()}</p>
+                      <p className="text-sm font-bold text-gray-800">{formatServiceDate(appointmentToReject.date)}</p>
                     </div>
                     <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-2">
                       <p className="text-[10px] font-bold text-gray-500 uppercase">Hora</p>
@@ -1971,5 +2045,6 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
 };
 
 export default PiojologistView;
+
 
 

@@ -55,6 +55,7 @@ const ScheduleManagement = ({
   const [isServiceDialogOpen, setIsServiceDialogOpen] = useState(false);
   const [isServiceDetailOpen, setIsServiceDetailOpen] = useState(false);
   const [selectedService, setSelectedService] = useState(null);
+  const [editingService, setEditingService] = useState(null);
   const [assignPiojologistId, setAssignPiojologistId] = useState('');
   const [servicesPage, setServicesPage] = useState(1);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -94,6 +95,9 @@ const ScheduleManagement = ({
     servicesPerPerson: [defaultServiceType],
     hasAlergias: false,
     detalleAlergias: '',
+    referidoPor: '',
+    paymentMethod: 'pay_later',
+    status: 'assigned',
     terminosAceptados: false
   });
   const [serviceFormData, setServiceFormData] = useState(buildInitialFormData);
@@ -172,6 +176,61 @@ const ScheduleManagement = ({
     setFieldErrors({});
     setReferralCode('');
     setReferralValidation({ isValid: false, isValidating: false, message: '', referrerName: '' });
+    setEditingService(null);
+  };
+
+  const isEditingService = !!editingService;
+
+  const normalizeServiceToFormData = (service) => {
+    const numPersonas = Math.max(1, parseInt(service?.numPersonas, 10) || 1);
+    const existingServices = Array.isArray(service?.services_per_person)
+      ? service.services_per_person
+      : (Array.isArray(service?.servicesPerPerson) ? service.servicesPerPerson : []);
+    const servicesPerPerson = Array.from({ length: numPersonas }, (_, idx) =>
+      existingServices[idx] || service?.serviceType || defaultServiceType
+    );
+
+    return {
+      clientName: service?.clientName || '',
+      date: service?.date || '',
+      time: service?.time || '',
+      piojologistId: service?.piojologistId ? String(service.piojologistId) : '',
+      whatsapp: (service?.whatsapp || '').toString().replace(/\D/g, ''),
+      email: service?.email || '',
+      direccion: service?.direccion || service?.address || '',
+      barrio: service?.barrio || '',
+      descripcionUbicacion: service?.descripcionUbicacion || service?.descripcion_ubicacion || '',
+      lat: service?.lat ?? null,
+      lng: service?.lng ?? null,
+      numPersonas: String(numPersonas),
+      edad: service?.edad || '',
+      servicesPerPerson,
+      hasAlergias: !!service?.hasAlergias,
+      detalleAlergias: service?.detalleAlergias || '',
+      referidoPor: service?.referidoPor || '',
+      paymentMethod: service?.paymentMethod || service?.payment_method || 'pay_later',
+      status: service?.status || 'assigned',
+      terminosAceptados: true
+    };
+  };
+
+  const startEditingService = (service) => {
+    setEditingService(service);
+    setServiceFormData(normalizeServiceToFormData(service));
+    setFieldErrors({});
+    const code = (service?.referralCode || service?.referral_code || '').toString().trim().toUpperCase();
+    setReferralCode(code);
+    if (code && service?.referidoPor) {
+      setReferralValidation({
+        isValid: true,
+        isValidating: false,
+        message: `Codigo valido. Referido por ${service.referidoPor}`,
+        referrerName: service.referidoPor
+      });
+    } else {
+      setReferralValidation({ isValid: false, isValidating: false, message: '', referrerName: '' });
+    }
+    setIsServiceDialogOpen(true);
   };
 
   const validateReferralCode = async (code) => {
@@ -232,7 +291,7 @@ const ScheduleManagement = ({
     if (!serviceFormData.barrio?.trim()) errors.barrio = 'El barrio es obligatorio';
     if (!serviceFormData.edad?.trim()) errors.edad = 'La edad es obligatoria';
     if (servicesPerPerson.some((svc) => !svc)) errors.servicesPerPerson = 'Selecciona un nivel de infestacion para cada persona';
-    if (!serviceFormData.terminosAceptados) errors.terminosAceptados = 'Debes aceptar los terminos y condiciones';
+    if (!isEditingService && !serviceFormData.terminosAceptados) errors.terminosAceptados = 'Debes aceptar los terminos y condiciones';
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -269,7 +328,7 @@ const ScheduleManagement = ({
       setIsSubmittingService(true);
       setFieldErrors({});
 
-      const createPayload = {
+      const basePayload = {
         fecha: serviceFormData.date,
         hora: serviceFormData.time,
         clientName: serviceFormData.clientName.trim(),
@@ -286,12 +345,52 @@ const ScheduleManagement = ({
         edad: serviceFormData.edad.trim(),
         hasAlergias: !!serviceFormData.hasAlergias,
         detalleAlergias: serviceFormData.hasAlergias ? (serviceFormData.detalleAlergias?.trim() || null) : null,
-        referidoPor: referralValidation.isValid ? (referralValidation.referrerName || null) : null,
-        paymentMethod: 'pay_later',
-        referralCode: referralValidation.isValid ? referralCode : null
+        referidoPor: serviceFormData.referidoPor?.trim() ? serviceFormData.referidoPor.trim() : null,
+        paymentMethod: serviceFormData.paymentMethod || 'pay_later',
+        referralCode: referralValidation.isValid ? referralCode : (referralCode?.trim() ? referralCode.trim() : null)
       };
 
-      const createResult = await bookingService.create(createPayload);
+      if (isEditingService) {
+        const backendId = editingService?.backendId || editingService?.bookingId || editingService?.id?.toString().replace('booking-', '');
+        if (!backendId || Number.isNaN(Number(backendId))) {
+          toast({
+            title: 'No se pudo actualizar',
+            description: 'Solo se pueden editar agendamientos sincronizados con backend',
+            variant: 'destructive'
+          });
+          return;
+        }
+        const updateResult = await bookingService.update(backendId, {
+          ...basePayload,
+          piojologistId: Number(serviceFormData.piojologistId),
+          status: serviceFormData.status || 'assigned'
+        });
+
+        if (!updateResult.success) {
+          toast({
+            title: 'No se pudo actualizar el agendamiento',
+            description: updateResult.message || 'Verifica los datos del formulario',
+            variant: 'destructive'
+          });
+          return;
+        }
+
+        if (typeof reloadBookings === 'function') {
+          await reloadBookings();
+        }
+
+        setSelectedService(null);
+        setIsServiceDetailOpen(false);
+        setIsServiceDialogOpen(false);
+        resetServiceForm();
+        toast({
+          title: 'Agendamiento actualizado',
+          className: 'bg-green-100 text-green-800 rounded-2xl border-2 border-green-200'
+        });
+        return;
+      }
+
+      const createResult = await bookingService.create(basePayload);
       if (!createResult.success || !createResult.booking?.id) {
         toast({
           title: 'No se pudo crear el agendamiento',
@@ -304,7 +403,7 @@ const ScheduleManagement = ({
       const bookingId = createResult.booking.id;
       const assignResult = await bookingService.update(bookingId, {
         piojologistId: Number(serviceFormData.piojologistId),
-        status: 'assigned'
+        status: serviceFormData.status || 'assigned'
       });
 
       if (!assignResult.success) {
@@ -375,7 +474,7 @@ const ScheduleManagement = ({
 
     setIsServiceDetailOpen(false);
     toast({
-      title: wasReassignment ? '?? Reasignado con éxito' : '? Asignado con éxito',
+      title: wasReassignment ? 'Reasignado con éxito' : 'Asignado con éxito',
       description: selectedPio ? `${wasReassignment ? 'Reasignado' : 'Asignado'} a ${selectedPio.name}` : 'Asignación guardada',
       className: 'rounded-2xl border-2 border-green-200 bg-green-50 text-green-700 font-bold'
     });
@@ -416,9 +515,23 @@ const ScheduleManagement = ({
               Regla global (aplica admin y /agenda)
             </p>
           </div>
-          <Dialog open={isServiceDialogOpen} onOpenChange={setIsServiceDialogOpen}>
+          <Dialog
+            open={isServiceDialogOpen}
+            onOpenChange={(open) => {
+              setIsServiceDialogOpen(open);
+              if (!open) {
+                resetServiceForm();
+              }
+            }}
+          >
             <DialogTrigger asChild>
-              <Button className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-2xl px-4 sm:px-6 py-4 sm:py-6 font-bold text-base sm:text-lg shadow-md hover:shadow-lg border-b-4 border-yellow-600 active:border-b-0 active:translate-y-1 w-full sm:w-auto justify-center">
+              <Button
+                onClick={() => {
+                  resetServiceForm();
+                  setIsServiceDetailOpen(false);
+                }}
+                className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-2xl px-4 sm:px-6 py-4 sm:py-6 font-bold text-base sm:text-lg shadow-md hover:shadow-lg border-b-4 border-yellow-600 active:border-b-0 active:translate-y-1 w-full sm:w-auto justify-center"
+              >
                 <Calendar className="w-6 h-6 mr-2" />
                 Crear Servicio
               </Button>
@@ -431,7 +544,7 @@ const ScheduleManagement = ({
                 <div className="flex items-center justify-center gap-3 mb-2">
                   <Calendar className="w-6 h-6 text-yellow-600" />
                   <h2 className="text-2xl font-black text-yellow-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
-                    NUEVO SERVICIO
+                    {isEditingService ? 'EDITAR AGENDAMIENTO' : 'NUEVO SERVICIO'}
                   </h2>
                 </div>
               </div>
@@ -653,6 +766,15 @@ const ScheduleManagement = ({
                       </p>
                     )}
                   </div>
+                  <div>
+                    <Label className="font-bold text-gray-600 ml-2 mb-1 block">Referido por (opcional)</Label>
+                    <input
+                      value={serviceFormData.referidoPor}
+                      onChange={(e) => setServiceFormData({ ...serviceFormData, referidoPor: e.target.value })}
+                      className="w-full border-2 border-gray-200 bg-white rounded-2xl p-4 font-bold outline-none focus:border-yellow-400"
+                      placeholder="Nombre de quien refiere"
+                    />
+                  </div>
 
                   <div>
                     <Label className="font-bold text-gray-600 ml-2 mb-1 block">Asignar a Piojologa *</Label>
@@ -668,35 +790,66 @@ const ScheduleManagement = ({
                       ))}
                     </select>
                   </div>
-                  <div className={`md:col-span-2 p-4 rounded-2xl border-2 ${fieldErrors.terminosAceptados ? 'bg-red-50 border-red-300' : 'bg-green-50 border-green-200'}`}>
-                    <label className="flex items-start gap-3 font-bold text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={serviceFormData.terminosAceptados}
-                        onChange={(e) => setServiceFormData({ ...serviceFormData, terminosAceptados: e.target.checked })}
-                        className={`w-5 h-5 mt-1 ${fieldErrors.terminosAceptados ? 'border-red-400' : 'border-green-300'}`}
-                      />
-                      Acepto los terminos y condiciones del servicio y la politica de bioseguridad.
-                    </label>
+
+                  <div>
+                    <Label className="font-bold text-gray-600 ml-2 mb-1 block">Metodo de pago</Label>
+                    <select
+                      value={serviceFormData.paymentMethod}
+                      onChange={(e) => setServiceFormData({ ...serviceFormData, paymentMethod: e.target.value })}
+                      className="w-full border-2 border-gray-200 bg-white rounded-2xl p-4 font-bold outline-none cursor-pointer focus:border-yellow-400"
+                    >
+                      <option value="pay_later">Paga despues del servicio</option>
+                      <option value="pay_now">Paga en linea</option>
+                    </select>
                   </div>
+
+                  <div>
+                    <Label className="font-bold text-gray-600 ml-2 mb-1 block">Estado</Label>
+                    <select
+                      value={serviceFormData.status}
+                      onChange={(e) => setServiceFormData({ ...serviceFormData, status: e.target.value })}
+                      className="w-full border-2 border-gray-200 bg-white rounded-2xl p-4 font-bold outline-none cursor-pointer focus:border-yellow-400"
+                    >
+                      <option value="pending">Pendiente</option>
+                      <option value="assigned">Asignado</option>
+                      <option value="accepted">Aceptado</option>
+                      <option value="completed">Completado</option>
+                      <option value="cancelado">Cancelado</option>
+                    </select>
+                  </div>
+                  {!isEditingService && (
+                    <div className={`md:col-span-2 p-4 rounded-2xl border-2 ${fieldErrors.terminosAceptados ? 'bg-red-50 border-red-300' : 'bg-green-50 border-green-200'}`}>
+                      <label className="flex items-start gap-3 font-bold text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={serviceFormData.terminosAceptados}
+                          onChange={(e) => setServiceFormData({ ...serviceFormData, terminosAceptados: e.target.checked })}
+                          className={`w-5 h-5 mt-1 ${fieldErrors.terminosAceptados ? 'border-red-400' : 'border-green-300'}`}
+                        />
+                        Acepto los terminos y condiciones del servicio y la politica de bioseguridad.
+                      </label>
+                    </div>
+                  )}
 
                 </div>
 
                 <div className="space-y-3 mt-4">
-                  <Button
-                    type="button"
-                    disabled={isSubmittingService}
-                    onClick={(e) => handleServiceSubmit(e, false)}
-                    className="w-full bg-green-500 hover:bg-green-600 text-white rounded-2xl py-6 font-bold shadow-md border-b-4 border-green-700 disabled:opacity-60"
-                  >
-                    {isSubmittingService ? 'Guardando...' : 'Crear y Agregar Otro'}
-                  </Button>
+                  {!isEditingService && (
+                    <Button
+                      type="button"
+                      disabled={isSubmittingService}
+                      onClick={(e) => handleServiceSubmit(e, false)}
+                      className="w-full bg-green-500 hover:bg-green-600 text-white rounded-2xl py-6 font-bold shadow-md border-b-4 border-green-700 disabled:opacity-60"
+                    >
+                      {isSubmittingService ? 'Guardando...' : 'Crear y Agregar Otro'}
+                    </Button>
+                  )}
                   <Button
                     type="submit"
                     disabled={isSubmittingService}
                     className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-2xl py-6 font-bold shadow-md border-b-4 border-yellow-700 disabled:opacity-60"
                   >
-                    {isSubmittingService ? 'Guardando...' : 'Crear y Cerrar'}
+                    {isSubmittingService ? 'Guardando...' : (isEditingService ? 'Guardar cambios' : 'Crear y Cerrar')}
                   </Button>
                 </div>
               </form>
@@ -1004,6 +1157,21 @@ const ScheduleManagement = ({
                         <span className="text-white font-black text-2xl">{formatCurrency(calculateServiceTotal(selectedService))}</span>
                       </div>
                     </div>
+
+                    {(selectedService?.isPublicBooking || selectedService?.backendId || selectedService?.id?.toString().startsWith('booking-')) && (
+                      <div className="mt-4">
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            setIsServiceDetailOpen(false);
+                            startEditingService(selectedService);
+                          }}
+                          className="bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl px-6 py-3 font-bold border-b-4 border-yellow-700 active:border-b-0 active:translate-y-1"
+                        >
+                          Editar agendamiento
+                        </Button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-4">
@@ -1115,7 +1283,7 @@ const ScheduleManagement = ({
                 {(selectedService.status === 'pending' || selectedService.status === 'assigned' || selectedService.status === 'accepted') && (
                   <div className="bg-white border-2 border-gray-200 rounded-xl p-3 space-y-2">
                     <p className="text-xs font-black text-gray-600 uppercase">
-                      {selectedService.piojologistName ? '?? Reasignar a otra piojóloga' : 'Asignar a piojóloga'}
+                      {selectedService.piojologistName ? 'Reasignar a otra piojóloga' : 'Asignar a piojóloga'}
                     </p>
                     <div className="flex flex-col gap-2">
                       <select
@@ -1133,7 +1301,7 @@ const ScheduleManagement = ({
                         onClick={handleAssignService}
                         className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-xl px-4 py-2 font-bold border-b-4 border-yellow-600 active:border-b-0 active:translate-y-1"
                       >
-                        {selectedService.piojologistName ? '?? Reasignar' : 'Asignar'}
+                        {selectedService.piojologistName ? 'Reasignar' : 'Asignar'}
                       </Button>
                     </div>
                   </div>

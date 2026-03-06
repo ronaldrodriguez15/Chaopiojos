@@ -17,6 +17,10 @@ import PiojologistMap from '@/components/PiojologistMap';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { geocodeAddress } from '@/lib/geocoding';
 import { bookingService, referralService, settingsService } from '@/lib/api';
+import {
+  DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE,
+  SMS_TEMPLATE_VARIABLES
+} from '@/lib/bookingSmsTemplate';
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement);
@@ -78,6 +82,8 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
   const [openHistoryDialog, setOpenHistoryDialog] = useState(null); // ID de la piojóloga para ver historial
   const [bookingRequireAdvance12h, setBookingRequireAdvance12h] = useState(true);
   const [bookingSettingsLoading, setBookingSettingsLoading] = useState(false);
+  const [whatsappTemplateDraft, setWhatsappTemplateDraft] = useState(DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE);
+  const [smsSettingsSaving, setSmsSettingsSaving] = useState(false);
 
 
   // Persist active tab across refresh
@@ -144,6 +150,13 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
       const result = await settingsService.getBookingSettings();
       if (isMounted && result.success) {
         setBookingRequireAdvance12h(!!result.settings?.requireAdvance12h);
+        const template = result.settings?.whatsappConfirmationTemplate || DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE;
+        setWhatsappTemplateDraft(template);
+        try {
+          localStorage.setItem('booking_whatsapp_template', template);
+        } catch (e) {
+          // ignore storage sync errors
+        }
       }
       if (isMounted) setBookingSettingsLoading(false);
     };
@@ -157,7 +170,10 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
     try {
       localStorage.setItem('booking_require_12h', checked ? '1' : '0');
       window.dispatchEvent(new CustomEvent('booking-settings-updated', {
-        detail: { requireAdvance12h: checked }
+        detail: {
+          requireAdvance12h: checked,
+          whatsappConfirmationTemplate: whatsappTemplateDraft
+        }
       }));
     } catch (e) {
       // ignore storage sync errors
@@ -168,7 +184,10 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
       try {
         localStorage.setItem('booking_require_12h', previous ? '1' : '0');
         window.dispatchEvent(new CustomEvent('booking-settings-updated', {
-          detail: { requireAdvance12h: previous }
+          detail: {
+            requireAdvance12h: previous,
+            whatsappConfirmationTemplate: whatsappTemplateDraft
+          }
         }));
       } catch (e) {
         // ignore storage sync errors
@@ -186,6 +205,57 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
         ? "Se exige anticipación mínima de 12 horas."
         : "Se permite agendar sin anticipación mínima de 12 horas."
     });
+  };
+
+  const handleSaveSmsSettings = async () => {
+    const nextTemplate = (whatsappTemplateDraft || '').trim();
+    if (!nextTemplate) {
+      toast({
+        title: "❌ Plantilla vacía",
+        description: "Debes escribir un mensaje para guardar la configuración.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setSmsSettingsSaving(true);
+    const result = await settingsService.updateBookingSettings({
+      whatsappConfirmationTemplate: nextTemplate
+    });
+    setSmsSettingsSaving(false);
+
+    if (!result.success) {
+      toast({
+        title: "❌ Error",
+        description: result.message || "No se pudo actualizar la plantilla de WhatsApp",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const savedTemplate = result.settings?.whatsappConfirmationTemplate || nextTemplate;
+    setWhatsappTemplateDraft(savedTemplate);
+
+    try {
+      localStorage.setItem('booking_whatsapp_template', savedTemplate);
+      window.dispatchEvent(new CustomEvent('booking-settings-updated', {
+        detail: {
+          requireAdvance12h: bookingRequireAdvance12h,
+          whatsappConfirmationTemplate: savedTemplate
+        }
+      }));
+    } catch (e) {
+      // ignore storage sync errors
+    }
+
+    toast({
+      title: "✅ Configuración actualizada",
+      description: "La plantilla SMS/WhatsApp fue guardada correctamente."
+    });
+  };
+
+  const handleResetSmsTemplate = () => {
+    setWhatsappTemplateDraft(DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE);
   };
 
   // Mobile nav toggle for tabs
@@ -223,7 +293,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
 
   const getServicePrice = (apt = {}) => {
     // Priorizar siempre el valor confirmado/guardado en la reserva
-    const raw = apt.price ?? apt.price_confirmed ?? apt.estimatedPrice;
+    const raw = apt.price_confirmed ?? apt.price ?? apt.estimatedPrice;
     const num = Number(raw);
     if (Number.isFinite(num) && num > 0) return num;
 
@@ -927,48 +997,55 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
   return (
     <div className="w-full space-y-8 overflow-x-hidden">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <div className="flex items-center justify-between md:justify-start gap-3 mb-4 md:mb-6">
-          <h2 className="text-xl font-black text-gray-800 md:hidden">Módulos</h2>
-          <Button
-            type="button"
-            variant="outline"
-            className="md:hidden rounded-2xl border-2 border-orange-200 text-orange-600 bg-white/90"
-            onClick={() => setIsNavOpen(prev => !prev)}
-            aria-expanded={isNavOpen}
-            aria-label="Abrir menú de módulos"
-          >
-            <Menu className="w-5 h-5 mr-2" />
-            {isNavOpen ? 'Cerrar' : 'Abrir'}
-          </Button>
-        </div>
-
-        <TabsList className={`w-full bg-white/50 p-2 rounded-[2rem] border-2 border-orange-100 mb-8 flex-wrap h-auto gap-2 ${isNavOpen ? 'flex' : 'hidden'} md:flex`}>
-          <TabsTrigger value="dashboard" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-orange-400 data-[state=active]:text-white transition-all">
-            📊 Panel
-          </TabsTrigger>
-          <TabsTrigger value="schedule" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-yellow-400 data-[state=active]:text-white transition-all">
-            📅 Agendamientos
-          </TabsTrigger>
-          <TabsTrigger value="users" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-blue-400 data-[state=active]:text-white transition-all">
-            👥 Usuarios
-          </TabsTrigger>
-          <TabsTrigger value="map" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-cyan-400 data-[state=active]:text-white transition-all">
-            🗺️ Mapa
-          </TabsTrigger>
-          <TabsTrigger value="products" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-pink-400 data-[state=active]:text-white transition-all">
-            🛍️ Productos
-          </TabsTrigger>
-          <TabsTrigger value="services" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-emerald-400 data-[state=active]:text-white transition-all">
-            💼 Servicios
-          </TabsTrigger>
-          <TabsTrigger value="earnings" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-green-400 data-[state=active]:text-white transition-all">
-            💰 Ganancias
-          </TabsTrigger>
-          <TabsTrigger value="requests" className="flex-1 min-w-[150px] rounded-3xl py-3 font-bold text-lg data-[state=active]:bg-purple-400 data-[state=active]:text-white transition-all">
-            📦 Solicitudes
-          </TabsTrigger>
-        </TabsList>
-
+        <div className="grid grid-cols-1 lg:grid-cols-[235px_minmax(0,1fr)] gap-4">
+          <aside className={`${isNavOpen ? 'block' : 'hidden'} lg:block`}>
+            <div className="bg-white/60 border-2 border-orange-100 rounded-[1.5rem] p-3 sticky top-4">
+              <p className="text-xs font-black text-gray-500 uppercase tracking-wide mb-2">Modulos</p>
+              <TabsList className="w-full h-auto flex flex-col items-stretch bg-transparent p-0 gap-2">
+                <TabsTrigger value="dashboard" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-orange-400 data-[state=active]:text-white transition-all">
+                  📊 Panel
+                </TabsTrigger>
+                <TabsTrigger value="schedule" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-yellow-400 data-[state=active]:text-white transition-all">
+                  📅 Agendamientos
+                </TabsTrigger>
+                <TabsTrigger value="users" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-blue-400 data-[state=active]:text-white transition-all">
+                  👥 Usuarios
+                </TabsTrigger>
+                <TabsTrigger value="map" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-cyan-400 data-[state=active]:text-white transition-all">
+                  🗺️ Mapa
+                </TabsTrigger>
+                <TabsTrigger value="products" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-pink-400 data-[state=active]:text-white transition-all">
+                  🛍️ Productos
+                </TabsTrigger>
+                <TabsTrigger value="services" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-emerald-400 data-[state=active]:text-white transition-all">
+                  💼 Servicios
+                </TabsTrigger>
+                <TabsTrigger value="earnings" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-green-400 data-[state=active]:text-white transition-all">
+                  💰 Ganancias
+                </TabsTrigger>
+                <TabsTrigger value="requests" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-purple-400 data-[state=active]:text-white transition-all">
+                  📦 Solicitudes
+                </TabsTrigger>
+                <TabsTrigger value="settings" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-slate-500 data-[state=active]:text-white transition-all">
+                  ⚙️ Configuración
+                </TabsTrigger>
+              </TabsList>
+            </div>
+          </aside>
+          <section className="space-y-6">
+            <div className="md:hidden flex items-center justify-between">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 rounded-full text-orange-700 bg-orange-100/90 hover:bg-orange-200 px-3 shadow-sm"
+                onClick={() => setIsNavOpen(prev => !prev)}
+                aria-expanded={isNavOpen}
+                aria-label="Mostrar u ocultar modulos"
+              >
+                <Menu className="w-4 h-4 mr-2" />
+                {isNavOpen ? 'Ocultar modulos' : 'Mostrar modulos'}
+              </Button>
+            </div>
         <TabsContent value="dashboard" className="space-y-6">
             {/* Stats Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1377,6 +1454,64 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
             />
           </Suspense>
         </TabsContent>
+
+        <TabsContent value="settings" className="space-y-6">
+          <div className="bg-white rounded-[2.5rem] p-4 sm:p-6 md:p-8 shadow-xl border-4 border-slate-100">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center text-xl">
+                ⚙️
+              </div>
+              <div>
+                <h3 className="text-2xl font-black text-gray-800">Configuración</h3>
+                <p className="text-sm font-bold text-gray-500">Control global de mensajes y reglas del sistema.</p>
+              </div>
+            </div>
+
+            <div className="bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-4 md:p-5 space-y-4">
+              <div>
+                <p className="text-xs font-black text-emerald-600 uppercase tracking-wide">Submódulo</p>
+                <h4 className="text-xl font-black text-emerald-800">SMS</h4>
+                <p className="text-sm font-bold text-emerald-700">
+                  Este mensaje se usa en el botón de WhatsApp del agendamiento público confirmado.
+                </p>
+              </div>
+
+              <div className="bg-white border-2 border-emerald-200 rounded-2xl p-4 space-y-3">
+                <label className="block text-sm font-black text-gray-700">Plantilla del mensaje</label>
+                <textarea
+                  value={whatsappTemplateDraft}
+                  onChange={(e) => setWhatsappTemplateDraft(e.target.value)}
+                  className="w-full min-h-[320px] rounded-2xl border-2 border-emerald-200 bg-white px-4 py-3 text-sm font-bold text-gray-800 focus:outline-none focus:border-emerald-400 resize-y"
+                  placeholder="Escribe el mensaje que se enviará por WhatsApp"
+                />
+                <p className="text-xs text-gray-500 font-bold">
+                  Variables disponibles: {SMS_TEMPLATE_VARIABLES.join(', ')}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  type="button"
+                  onClick={handleSaveSmsSettings}
+                  disabled={smsSettingsSaving}
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-xl px-5"
+                >
+                  {smsSettingsSaving ? 'Guardando...' : 'Guardar configuración SMS'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleResetSmsTemplate}
+                  className="border-2 border-emerald-200 text-emerald-700 hover:bg-emerald-100 font-black rounded-xl px-5"
+                >
+                  Restaurar plantilla predeterminada
+                </Button>
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+          </section>
+        </div>
       </Tabs>
 
       {/* User Dialog Modal */}

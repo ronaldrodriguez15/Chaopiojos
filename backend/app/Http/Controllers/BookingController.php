@@ -152,6 +152,26 @@ class BookingController extends Controller
             ]);
 
             $validator = Validator::make($request->all(), [
+                'fecha' => ['nullable', 'date'],
+                'hora' => ['nullable', 'string'],
+                'clientName' => ['nullable', 'string', 'max:255'],
+                'serviceType' => ['nullable', 'string'],
+                'servicesPerPerson' => ['nullable', 'array'],
+                'servicesPerPerson.*' => ['nullable', 'string'],
+                'whatsapp' => ['nullable', 'string', 'max:255'],
+                'email' => ['nullable', 'email', 'max:255'],
+                'direccion' => ['nullable', 'string'],
+                'barrio' => ['nullable', 'string', 'max:255'],
+                'descripcionUbicacion' => ['nullable', 'string'],
+                'lat' => ['nullable', 'numeric', 'between:-90,90'],
+                'lng' => ['nullable', 'numeric', 'between:-180,180'],
+                'numPersonas' => ['nullable', 'integer', 'min:1'],
+                'edad' => ['nullable', 'string', 'max:100'],
+                'hasAlergias' => ['nullable', 'boolean'],
+                'detalleAlergias' => ['nullable', 'string'],
+                'referidoPor' => ['nullable', 'string', 'max:255'],
+                'referralCode' => ['nullable', 'string', 'max:20'],
+                'referred_by_user_id' => ['nullable', 'exists:users,id'],
                 'estado' => ['nullable', 'string', Rule::in(['pendiente', 'confirmado', 'completado', 'cancelado', 'assigned', 'accepted', 'rejected', 'completed'])],
                 'piojologist_id' => ['nullable', 'exists:users,id'],
                 'piojologistId' => ['nullable', 'exists:users,id'],
@@ -178,6 +198,90 @@ class BookingController extends Controller
                 'message' => 'Error de validación',
                 'errors' => $validator->errors()
             ], 422);
+        }
+
+        if ($request->has('fecha')) {
+            $booking->fecha = $request->fecha;
+        }
+        if ($request->has('hora')) {
+            $booking->hora = $request->hora;
+        }
+        if ($request->has('clientName')) {
+            $booking->clientName = $request->clientName;
+        }
+        if ($request->has('serviceType')) {
+            $booking->serviceType = $request->serviceType;
+        }
+        if ($request->has('servicesPerPerson')) {
+            $booking->services_per_person = $request->servicesPerPerson;
+            // Si actualizan servicios por persona y no envían serviceType, usar el primero para compatibilidad.
+            if (!$request->has('serviceType') && is_array($request->servicesPerPerson) && !empty($request->servicesPerPerson[0])) {
+                $booking->serviceType = $request->servicesPerPerson[0];
+            }
+        }
+        if ($request->has('whatsapp')) {
+            $booking->whatsapp = $request->whatsapp;
+        }
+        if ($request->has('email')) {
+            $booking->email = $request->email;
+        }
+        if ($request->has('direccion')) {
+            $booking->direccion = $request->direccion;
+        }
+        if ($request->has('barrio')) {
+            $booking->barrio = $request->barrio;
+        }
+        if ($request->has('descripcionUbicacion')) {
+            $booking->descripcion_ubicacion = $request->descripcionUbicacion;
+        }
+        if ($request->has('lat')) {
+            $booking->lat = $request->lat;
+        }
+        if ($request->has('lng')) {
+            $booking->lng = $request->lng;
+        }
+        if ($request->has('numPersonas')) {
+            $booking->numPersonas = $request->numPersonas;
+        }
+        if ($request->has('edad')) {
+            $booking->edad = $request->edad;
+        }
+        if ($request->has('hasAlergias')) {
+            $booking->hasAlergias = $request->boolean('hasAlergias');
+        }
+        if ($request->has('detalleAlergias')) {
+            $booking->detalleAlergias = $request->detalleAlergias;
+        }
+        if ($request->has('referidoPor')) {
+            $booking->referidoPor = $request->referidoPor;
+        }
+        if ($request->has('referred_by_user_id')) {
+            $booking->referred_by_user_id = $request->referred_by_user_id;
+        }
+        if ($request->has('referralCode')) {
+            $incomingCode = trim((string) $request->referralCode);
+            if ($incomingCode === '') {
+                $booking->referral_code = null;
+                $booking->referred_by_user_id = null;
+            } else {
+                $referrer = User::where('referral_code', $incomingCode)
+                    ->where('role', 'piojologa')
+                    ->first();
+
+                if (!$referrer) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Error de validación',
+                        'errors' => [
+                            'referralCode' => ['El código de referido no es válido']
+                        ]
+                    ], 422);
+                }
+
+                $booking->referral_code = $incomingCode;
+                $booking->referred_by_user_id = $referrer->id;
+                $booking->referidoPor = $referrer->name;
+            }
         }
 
         // Actualizar estado (acepta tanto 'estado' como 'status')

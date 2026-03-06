@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_URL } from '@/lib/config';
+import { DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE } from '@/lib/bookingSmsTemplate';
 
 // Crear instancia de axios con configuración
 const api = axios.create({
@@ -434,23 +435,44 @@ export const referralService = {
 // Configuración de aplicación
 export const settingsService = {
   async getBookingSettings() {
+    const defaultSettings = {
+      requireAdvance12h: true,
+      whatsappConfirmationTemplate: DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE
+    };
     try {
       const response = await api.get('/booking-settings');
-      return { success: true, settings: response.data?.settings || { requireAdvance12h: true } };
+      return {
+        success: true,
+        settings: {
+          ...defaultSettings,
+          ...(response.data?.settings || {})
+        }
+      };
     } catch (error) {
       console.error('Error obteniendo configuración de agendamiento:', error.response?.data);
       return {
         success: false,
         message: error.response?.data?.message || 'Error al obtener configuración',
-        settings: { requireAdvance12h: true }
+        settings: defaultSettings
       };
     }
   },
 
   async updateBookingSettings(payload) {
+    const defaultSettings = {
+      requireAdvance12h: true,
+      whatsappConfirmationTemplate: DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE
+    };
     try {
       const response = await api.put('/booking-settings', payload);
-      return { success: true, settings: response.data?.settings || payload };
+      return {
+        success: true,
+        settings: {
+          ...defaultSettings,
+          ...payload,
+          ...(response.data?.settings || {})
+        }
+      };
     } catch (error) {
       console.error('Error actualizando configuración de agendamiento:', error.response?.data);
       return {

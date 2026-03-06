@@ -52,8 +52,22 @@ const EarningsModule = React.memo(({
   const getServiceCommissionBreakdown = (apt = {}, commissionRate = 0.5) => {
     const servicesPerPerson = Array.isArray(apt.services_per_person) ? apt.services_per_person : [];
     if (servicesPerPerson.length > 0) {
-      const breakdown = servicesPerPerson.map((serviceName, idx) => {
-        const basePrice = Number(serviceCatalog?.[serviceName] || 0);
+      const confirmedTotal = Number(getServicePrice(apt) || 0);
+      const catalogPrices = servicesPerPerson.map((serviceName) => Number(serviceCatalog?.[serviceName] || 0));
+      const catalogTotal = catalogPrices.reduce((acc, value) => acc + value, 0);
+      const resolvedPrices = (() => {
+        if (confirmedTotal > 0 && catalogTotal > 0) {
+          return catalogPrices.map((value) => (value / catalogTotal) * confirmedTotal);
+        }
+        if (catalogTotal > 0) {
+          return catalogPrices;
+        }
+        const fallbackPerPerson = servicesPerPerson.length > 0 ? confirmedTotal / servicesPerPerson.length : 0;
+        return servicesPerPerson.map(() => fallbackPerPerson);
+      })();
+
+      return servicesPerPerson.map((serviceName, idx) => {
+        const basePrice = Number(resolvedPrices[idx] || 0);
         return {
           idx,
           serviceName,
@@ -61,16 +75,6 @@ const EarningsModule = React.memo(({
           commission: basePrice * commissionRate
         };
       });
-
-      const sumBase = breakdown.reduce((acc, item) => acc + item.basePrice, 0);
-      if (sumBase > 0) return breakdown;
-
-      const fallbackPerPerson = Number(getServicePrice(apt) || 0) / servicesPerPerson.length;
-      return breakdown.map((item) => ({
-        ...item,
-        basePrice: fallbackPerPerson,
-        commission: fallbackPerPerson * commissionRate
-      }));
     }
 
     const fallbackPrice = Number(getServicePrice(apt) || 0);
