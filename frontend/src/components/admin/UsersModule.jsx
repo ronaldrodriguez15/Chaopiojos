@@ -1,24 +1,23 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { UserPlus, Eye, Edit, Trash2, DollarSign } from 'lucide-react';
+import { UserPlus, Eye, Edit, UserX, UserCheck, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import Pagination from './Pagination';
 
-const UsersModule = React.memo(({ 
-  users, 
-  handleOpenUserDialog, 
-  handleOpenUserDetail, 
-  handleDeleteUser,
+const UsersModule = React.memo(({
+  users,
+  handleOpenUserDialog,
+  handleOpenUserDetail,
+  handleToggleUserActive,
   handleOpenEarningsModal
 }) => {
   const { toast } = useToast();
   const [currentPage, setCurrentPage] = useState(1);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [userToDelete, setUserToDelete] = useState(null);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [userToToggle, setUserToToggle] = useState(null);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // Reset page cuando cambia cantidad
   useEffect(() => {
     const maxPage = Math.ceil(users.length / itemsPerPage);
     if (currentPage > maxPage && maxPage > 0) setCurrentPage(maxPage);
@@ -29,36 +28,38 @@ const UsersModule = React.memo(({
     setCurrentPage(1);
   }, [itemsPerPage]);
 
-  const handleDelete = useCallback((user) => {
-    setUserToDelete(user);
-    setShowDeleteModal(true);
+  const openToggleModal = useCallback((user) => {
+    setUserToToggle(user);
+    setShowStatusModal(true);
   }, []);
 
-  const confirmDelete = useCallback(async () => {
-    if (!userToDelete) return;
-    
-    const result = await handleDeleteUser(userToDelete.id);
+  const confirmToggleStatus = useCallback(async () => {
+    if (!userToToggle) return;
+
+    const nextState = !userToToggle.is_active;
+    const result = await handleToggleUserActive(userToToggle.id, nextState);
+
     if (result.success) {
       toast({
-        title: "Usuario Eliminado!",
-        description: result.message,
-        className: "bg-orange-100 text-orange-800 rounded-2xl border-2 border-orange-200"
+        title: nextState ? 'Usuario activado' : 'Usuario inactivado',
+        description: result.message || `${userToToggle.name} fue ${nextState ? 'activado' : 'inactivado'} correctamente`,
+        className: `${nextState ? 'bg-green-100 text-green-800 border-green-200' : 'bg-orange-100 text-orange-800 border-orange-200'} rounded-2xl border-2`
       });
     } else {
       toast({
-        title: "Error al eliminar",
-        description: result.message || "No se pudo eliminar el usuario",
-        variant: "destructive",
-        className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+        title: 'Error al actualizar estado',
+        description: result.message || 'No se pudo actualizar el estado del usuario',
+        variant: 'destructive',
+        className: 'rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold'
       });
     }
-    
-    setShowDeleteModal(false);
-    setUserToDelete(null);
-  }, [handleDeleteUser, toast, userToDelete]);
+
+    setShowStatusModal(false);
+    setUserToToggle(null);
+  }, [handleToggleUserActive, toast, userToToggle]);
 
   const paginatedUsers = users.slice(
-    (currentPage - 1) * itemsPerPage, 
+    (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
@@ -69,14 +70,14 @@ const UsersModule = React.memo(({
           <span className="text-3xl">👥</span> La Familia <span className="text-orange-500">Chao</span><span className="text-blue-500">Piojos</span>
         </h3>
         <div className="flex flex-col sm:flex-row gap-3">
-          <Button 
+          <Button
             onClick={handleOpenEarningsModal}
             className="bg-pink-400 hover:bg-pink-500 text-white rounded-2xl px-4 sm:px-6 py-4 sm:py-6 font-bold text-base sm:text-lg shadow-md hover:shadow-lg border-b-4 border-pink-600 active:border-b-0 active:translate-y-1 w-full sm:w-auto justify-center"
           >
             <DollarSign className="w-6 h-6 mr-2" />
             Ganancias Referidos
           </Button>
-          <Button 
+          <Button
             onClick={() => handleOpenUserDialog()}
             className="bg-blue-400 hover:bg-blue-500 text-white rounded-2xl px-4 sm:px-6 py-4 sm:py-6 font-bold text-base sm:text-lg shadow-md hover:shadow-lg border-b-4 border-blue-600 active:border-b-0 active:translate-y-1 w-full sm:w-auto justify-center"
           >
@@ -106,61 +107,77 @@ const UsersModule = React.memo(({
               <th className="p-4 font-black text-gray-400">Nombre</th>
               <th className="p-4 font-black text-gray-400">Rol</th>
               <th className="p-4 font-black text-gray-400">Email</th>
+              <th className="p-4 font-black text-gray-400">Estado</th>
               <th className="p-4 font-black text-gray-400 text-right">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {paginatedUsers.map(user => (
+            {paginatedUsers.map((user) => (
               <tr key={user.id} className="group hover:bg-blue-50/50 transition-colors">
                 <td className="p-4">
                   <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-sm
-                      ${user.role === 'admin' ? 'bg-purple-100' : user.role === 'piojologa' ? 'bg-green-100' : 'bg-orange-100'}
-                    `}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-sm ${
+                      user.role === 'admin' ? 'bg-purple-100' : user.role === 'piojologa' ? 'bg-green-100' : 'bg-orange-100'
+                    }`}>
                       {user.role === 'admin' ? '👑' : user.role === 'piojologa' ? '👩‍⚕️' : '👤'}
                     </div>
                     <span className="font-bold text-gray-700">{user.name}</span>
                   </div>
                 </td>
                 <td className="p-4">
-                  <span className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider
-                    ${user.role === 'admin' ? 'bg-purple-100 text-purple-600' : 
-                      user.role === 'piojologa' ? 'bg-green-100 text-green-600' : 
-                      'bg-orange-100 text-orange-600'}
-                  `}>
+                  <span className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider ${
+                    user.role === 'admin'
+                      ? 'bg-purple-100 text-purple-600'
+                      : user.role === 'piojologa'
+                      ? 'bg-green-100 text-green-600'
+                      : 'bg-orange-100 text-orange-600'
+                  }`}>
                     {user.role === 'admin' ? 'admin' : user.role === 'piojologa' ? 'piojóloga' : user.role}
                   </span>
                 </td>
                 <td className="p-4 font-medium text-gray-500">{user.email}</td>
+                <td className="p-4">
+                  <span className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider ${
+                    user.role === 'admin'
+                      ? 'bg-purple-100 text-purple-600'
+                      : user.is_active === false
+                      ? 'bg-red-100 text-red-600'
+                      : 'bg-green-100 text-green-600'
+                  }`}>
+                    {user.role === 'admin' ? 'siempre activo' : user.is_active === false ? 'inactivo' : 'activo'}
+                  </span>
+                </td>
                 <td className="p-4 text-right">
                   <div className="flex justify-end gap-2">
-                    <Button 
-                      size="icon" 
-                      variant="ghost" 
+                    <Button
+                      size="icon"
+                      variant="ghost"
                       onClick={() => handleOpenUserDetail(user)}
                       className="h-10 w-10 rounded-xl bg-purple-100 text-purple-500 hover:bg-purple-200"
                       title="Ver Detalles"
                     >
                       <Eye className="w-5 h-5" />
                     </Button>
-                    <Button 
-                      size="icon" 
-                      variant="ghost" 
+                    <Button
+                      size="icon"
+                      variant="ghost"
                       onClick={() => handleOpenUserDialog(user)}
                       className="h-10 w-10 rounded-xl bg-blue-100 text-blue-500 hover:bg-blue-200"
                       title="Editar"
                     >
                       <Edit className="w-5 h-5" />
                     </Button>
-                    <Button 
-                      size="icon" 
-                      variant="ghost" 
-                      onClick={() => handleDelete(user)}
-                      className="h-10 w-10 rounded-xl bg-red-100 text-red-500 hover:bg-red-200"
-                      title="Eliminar"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </Button>
+                    {user.role !== 'admin' && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => openToggleModal(user)}
+                        className={`h-10 w-10 rounded-xl ${user.is_active === false ? 'bg-green-100 text-green-600 hover:bg-green-200' : 'bg-red-100 text-red-500 hover:bg-red-200'}`}
+                        title={user.is_active === false ? 'Activar' : 'Inactivar'}
+                      >
+                        {user.is_active === false ? <UserCheck className="w-5 h-5" /> : <UserX className="w-5 h-5" />}
+                      </Button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -168,7 +185,7 @@ const UsersModule = React.memo(({
           </tbody>
         </table>
       </div>
-      
+
       <Pagination
         currentPage={currentPage}
         totalItems={users.length}
@@ -177,51 +194,51 @@ const UsersModule = React.memo(({
         colorScheme="blue"
       />
 
-      {/* Modal de Confirmación de Eliminación */}
-      <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+      <Dialog open={showStatusModal} onOpenChange={setShowStatusModal}>
         <DialogContent className="rounded-[3rem] border-4 border-yellow-400 p-0 sm:max-w-md bg-yellow-50 shadow-2xl">
-          {/* Title */}
           <div className="text-center pt-8 pb-6">
             <div className="flex items-center justify-center gap-3 mb-2">
-              <Trash2 className="w-6 h-6 text-yellow-600" />
-              <h2 className="text-2xl font-black text-yellow-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
-                CONFIRMAR ELIMINACIÓN
+              {userToToggle?.is_active === false ? <UserCheck className="w-6 h-6 text-yellow-600" /> : <UserX className="w-6 h-6 text-yellow-600" />}
+              <h2 className="text-2xl font-black text-yellow-600 uppercase tracking-wide" style={{ WebkitTextStroke: '0.5px currentColor' }}>
+                {userToToggle?.is_active === false ? 'CONFIRMAR ACTIVACIÓN' : 'CONFIRMAR INACTIVACIÓN'}
               </h2>
             </div>
           </div>
-          
+
           <div className="px-8 pb-8 text-center space-y-6">
             <h3 className="text-lg font-medium text-gray-700 mb-4">
-              ¿Estás seguro de eliminar a este usuario?
+              {userToToggle?.is_active === false ? '¿Activar este usuario?' : '¿Inactivar este usuario?'}
             </h3>
-            {userToDelete && (
+            {userToToggle && (
               <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400">
-                <p className="text-lg font-bold text-gray-800">{userToDelete.name}</p>
-                <p className="text-sm text-gray-600">{userToDelete.email}</p>
-                <p className="text-sm text-yellow-600 font-bold capitalize">{userToDelete.role}</p>
+                <p className="text-lg font-bold text-gray-800">{userToToggle.name}</p>
+                <p className="text-sm text-gray-600">{userToToggle.email}</p>
+                <p className="text-sm text-yellow-600 font-bold capitalize">{userToToggle.role}</p>
               </div>
             )}
             <p className="text-gray-600 text-sm">
-              Esta acción no se puede deshacer. Todos los datos asociados se perderán permanentemente.
+              {userToToggle?.is_active === false
+                ? 'El registro se mantendrá y el usuario volverá a poder ingresar al sistema.'
+                : 'El registro se mantendrá, pero el usuario no podrá acceder al sistema mientras esté inactivo.'}
             </p>
-            
+
             <div className="flex gap-4 pt-4">
-              <Button 
-                type="button" 
-                variant="ghost" 
+              <Button
+                type="button"
+                variant="ghost"
                 onClick={() => {
-                  setShowDeleteModal(false);
-                  setUserToDelete(null);
+                  setShowStatusModal(false);
+                  setUserToToggle(null);
                 }}
                 className="flex-1 rounded-2xl py-3 px-6 font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 border-2 border-gray-300 transition-all"
               >
                 Cancelar
               </Button>
-              <Button 
-                onClick={confirmDelete}
-                className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-2xl py-3 px-6 font-bold shadow-lg transition-all"
+              <Button
+                onClick={confirmToggleStatus}
+                className={`flex-1 ${userToToggle?.is_active === false ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'} text-white rounded-2xl py-3 px-6 font-bold shadow-lg transition-all`}
               >
-                Sí, Eliminar
+                {userToToggle?.is_active === false ? 'Sí, Activar' : 'Sí, Inactivar'}
               </Button>
             </div>
           </div>

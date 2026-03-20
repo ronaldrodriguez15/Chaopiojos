@@ -617,8 +617,8 @@ function App() {
     return result;
   };
 
-  const handleDeleteUser = async (userId) => {
-    const result = await userService.delete(userId);
+  const handleToggleUserActive = async (userId, isActive) => {
+    const result = await userService.update(userId, { is_active: isActive });
     if (result.success) {
       await loadUsers(); // Recargar lista de usuarios
       return result;
@@ -801,6 +801,9 @@ function App() {
         await bookingService.update(backendId, { 
           status: 'completed',
           plan_type: completionData.planType || appointment.serviceType,
+          serviceType: completionData.servicesPerPerson?.[0] || completionData.planType || appointment.serviceType,
+          servicesPerPerson: completionData.servicesPerPerson || appointment.services_per_person || [],
+          numPersonas: completionData.numPersonas || appointment.numPersonas || 1,
           price_confirmed: completionData.priceConfirmed ?? servicePrice,
           service_notes: completionData.notes || null,
           additional_costs: completionData.additionalCosts || 0,
@@ -827,14 +830,14 @@ function App() {
     if (appointment.isPublicBooking || isBookingId || bookingMatch) {
       const updatedBookings = bookings.map(apt => 
         (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId || (isBookingId && apt.backendId === Number(appointmentId.replace('booking-',''))))
-          ? { ...apt, status: 'completed', price: effectiveServicePrice, price_confirmed: effectiveServicePrice, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions, payment_status_to_piojologist: 'pending', paymentStatusToPiojologist: 'pending' }
+          ? { ...apt, status: 'completed', price: effectiveServicePrice, price_confirmed: effectiveServicePrice, serviceType: completionData.servicesPerPerson?.[0] || completionData.planType || apt.serviceType, services_per_person: completionData.servicesPerPerson || apt.services_per_person, numPersonas: completionData.numPersonas || apt.numPersonas || 1, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions, payment_status_to_piojologist: 'pending', paymentStatusToPiojologist: 'pending' }
           : apt
       );
       setBookings(updatedBookings);
     } else {
       const updatedAppointments = appointments.map(apt => 
         (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId)
-          ? { ...apt, status: 'completed', price: effectiveServicePrice, price_confirmed: effectiveServicePrice, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions, payment_status_to_piojologist: 'pending', paymentStatusToPiojologist: 'pending' }
+          ? { ...apt, status: 'completed', price: effectiveServicePrice, price_confirmed: effectiveServicePrice, serviceType: completionData.servicesPerPerson?.[0] || completionData.planType || apt.serviceType, services_per_person: completionData.servicesPerPerson || apt.services_per_person, numPersonas: completionData.numPersonas || apt.numPersonas || 1, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions, payment_status_to_piojologist: 'pending', paymentStatusToPiojologist: 'pending' }
           : apt
       );
       setAppointments(updatedAppointments);
@@ -1014,7 +1017,7 @@ function App() {
                     users={users}
                     handleCreateUser={handleCreateUser}
                     handleUpdateUser={handleUpdateUser}
-                    handleDeleteUser={handleDeleteUser}
+              handleToggleUserActive={handleToggleUserActive}
                     appointments={allAppointments}
                     baseAppointments={appointments}
                     bookings={bookings}

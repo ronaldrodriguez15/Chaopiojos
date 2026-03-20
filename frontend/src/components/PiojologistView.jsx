@@ -79,6 +79,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
 
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [finishingAppointmentId, setFinishingAppointmentId] = useState(null);
+  const [finishingPeopleCount, setFinishingPeopleCount] = useState(1);
   const [finishingPlansPerPerson, setFinishingPlansPerPerson] = useState([]);
   const [finishingPricesPerPerson, setFinishingPricesPerPerson] = useState([]);
   const [finishingNotes, setFinishingNotes] = useState('');
@@ -564,14 +565,15 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   const onCompleteService = async () => {
     if (!finishingAppointmentId) return;
 
+    const peopleCount = Math.min(6, Math.max(1, Number(finishingPeopleCount) || 1));
     const priceValue = finishingTotalPrice;
     const additionalCostsValue = parseFloat(finishingAdditionalCosts || '0');
-    if (!finishingPlansPerPerson.length || finishingPlansPerPerson.some((plan) => !plan)) {
+    if (finishingPlansPerPerson.length !== peopleCount || finishingPlansPerPerson.some((plan) => !plan)) {
       toast({ title: 'Selecciona un plan por persona', className: 'bg-red-100 border-2 border-red-200 text-red-700 font-bold' });
       return;
     }
     if (
-      finishingPricesPerPerson.length !== finishingPlansPerPerson.length ||
+      finishingPricesPerPerson.length !== peopleCount ||
       finishingPricesPerPerson.some((price) => isNaN(Number(price)) || Number(price) <= 0)
     ) {
       toast({ title: 'Ingresa un valor valido por persona', className: 'bg-red-100 border-2 border-red-200 text-red-700 font-bold' });
@@ -584,6 +586,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     await handleCompleteService(finishingAppointmentId, selectedProducts, {
       planType: resolvedPlanType,
       priceConfirmed: priceValue,
+      numPersonas: peopleCount,
       servicesPerPerson: finishingPlansPerPerson,
       pricesPerPerson: finishingPricesPerPerson.map((price) => Number(price) || 0),
       notes: finishingNotes,
@@ -591,6 +594,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
     });
     
     setFinishingAppointmentId(null);
+    setFinishingPeopleCount(1);
     setSelectedProducts([]);
     setFinishingPlansPerPerson([]);
     setFinishingPricesPerPerson([]);
@@ -708,6 +712,18 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   };
   const buildInitialPricesFromPlans = (plans = []) => plans.map((planName) => String(getPlanPrice(planName)));
   const finishingTotalPrice = finishingPricesPerPerson.reduce((sum, price) => sum + (Number(price) || 0), 0);
+  const syncFinishingPeopleCount = (nextCount, fallbackPlan = servicePlanOptions[0]) => {
+    const safeCount = Math.min(6, Math.max(1, Number(nextCount) || 1));
+    const nextPlans = Array.from({ length: safeCount }, (_, idx) => finishingPlansPerPerson[idx] || fallbackPlan);
+    const nextPrices = Array.from({ length: safeCount }, (_, idx) => {
+      if (typeof finishingPricesPerPerson[idx] !== 'undefined') return finishingPricesPerPerson[idx];
+      return String(getPlanPrice(nextPlans[idx]));
+    });
+
+    setFinishingPeopleCount(safeCount);
+    setFinishingPlansPerPerson(nextPlans);
+    setFinishingPricesPerPerson(nextPrices);
+  };
   const setPersonPlanAndPrice = (index, selectedPlan) => {
     setFinishingPlansPerPerson((prev) => {
       const nextPlans = [...prev];
@@ -1143,13 +1159,14 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                     <DialogTrigger asChild>
                       <button
                         onClick={() => {
-                          setFinishingAppointmentId(apt.id);
-                          setSelectedProducts([]);
-                          const initialPlans = buildInitialPlansForAppointment(apt);
-                          const initialPrices = buildInitialPricesFromPlans(initialPlans);
-                          setFinishingPlansPerPerson(initialPlans);
-                          setFinishingPricesPerPerson(initialPrices);
-                          setFinishingNotes(apt.serviceNotes || '');
+                              setFinishingAppointmentId(apt.id);
+                              setSelectedProducts([]);
+                              const initialPlans = buildInitialPlansForAppointment(apt);
+                              const initialPrices = buildInitialPricesFromPlans(initialPlans);
+                              setFinishingPeopleCount(getPeopleCount(apt));
+                              setFinishingPlansPerPerson(initialPlans);
+                              setFinishingPricesPerPerson(initialPrices);
+                              setFinishingNotes(apt.serviceNotes || '');
                           setFinishingAdditionalCosts('');
                         }}
                         className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-black py-3 px-4 rounded-2xl transition-all shadow-lg hover:shadow-xl active:scale-95 flex items-center justify-center gap-2"
@@ -1218,11 +1235,29 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                             <Label className="font-black text-blue-700 text-sm mb-2 block">
                               Valor del Servicio
                             </Label>
-                            <p className="text-xs text-blue-600 font-semibold mb-2">
-                              {apt.numPersonas > 1 ? `${apt.numPersonas} personas` : apt.serviceType}
-                            </p>
+                            <div className="space-y-3 mb-3">
+                              <div>
+                                <Label className="font-black text-blue-700 text-sm mb-1 block">
+                                  Numero de cabezas atendidas
+                                </Label>
+                                <select
+                                  value={finishingPeopleCount}
+                                  onChange={(e) => syncFinishingPeopleCount(e.target.value, apt.planType || apt.serviceType || servicePlanOptions[0])}
+                                  className="w-full bg-white border-2 border-blue-200 rounded-xl p-3 text-sm font-black text-blue-700 focus:border-blue-400 outline-none"
+                                >
+                                  {[1, 2, 3, 4, 5, 6].map((count) => (
+                                    <option key={`heads-option-top-${count}`} value={count}>
+                                      {count}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <p className="text-xs text-blue-600 font-semibold">
+                                {Number(finishingPeopleCount) > 1 ? `${finishingPeopleCount} personas` : apt.serviceType}
+                              </p>
+                            </div>
                             <div className="space-y-2">
-                              {Array.from({ length: getPeopleCount(apt) }, (_, idx) => (
+                              {Array.from({ length: Math.min(6, Math.max(1, Number(finishingPeopleCount) || 1)) }, (_, idx) => (
                                 <div key={`finish-person-${apt.id}-${idx}`} className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white border-2 border-blue-200 rounded-xl p-2">
                                   <select
                                     value={finishingPlansPerPerson[idx] || servicePlanOptions[0]}
@@ -1636,6 +1671,7 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                                setSelectedProducts([]);
                                 const initialPlans = buildInitialPlansForAppointment(apt);
                                 const initialPrices = buildInitialPricesFromPlans(initialPlans);
+                                setFinishingPeopleCount(getPeopleCount(apt));
                                 setFinishingPlansPerPerson(initialPlans);
                                 setFinishingPricesPerPerson(initialPrices);
                                 setFinishingNotes(apt.serviceNotes || '');
@@ -1706,11 +1742,29 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                               <Label className="font-black text-blue-700 text-sm mb-2 block">
                                 Valor del Servicio
                               </Label>
-                              <p className="text-xs text-blue-600 font-semibold mb-2">
-                                {apt.numPersonas > 1 ? `${apt.numPersonas} personas` : apt.serviceType}
-                              </p>
+                              <div className="space-y-3 mb-3">
+                                <div>
+                                  <Label className="font-black text-blue-700 text-sm mb-1 block">
+                                    Numero de cabezas atendidas
+                                  </Label>
+                                  <select
+                                    value={finishingPeopleCount}
+                                    onChange={(e) => syncFinishingPeopleCount(e.target.value, apt.planType || apt.serviceType || servicePlanOptions[0])}
+                                    className="w-full bg-white border-2 border-blue-200 rounded-xl p-3 text-sm font-black text-blue-700 focus:border-blue-400 outline-none"
+                                  >
+                                    {[1, 2, 3, 4, 5, 6].map((count) => (
+                                      <option key={`heads-option-bottom-${count}`} value={count}>
+                                        {count}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <p className="text-xs text-blue-600 font-semibold">
+                                  {Number(finishingPeopleCount) > 1 ? `${finishingPeopleCount} personas` : apt.serviceType}
+                                </p>
+                              </div>
                               <div className="space-y-2">
-                                {Array.from({ length: getPeopleCount(apt) }, (_, idx) => (
+                                {Array.from({ length: Math.min(6, Math.max(1, Number(finishingPeopleCount) || 1)) }, (_, idx) => (
                                   <div key={`finish-person-${apt.id}-${idx}`} className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white border-2 border-blue-200 rounded-xl p-2">
                                     <select
                                       value={finishingPlansPerPerson[idx] || servicePlanOptions[0]}
@@ -2045,6 +2099,3 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
 };
 
 export default PiojologistView;
-
-
-

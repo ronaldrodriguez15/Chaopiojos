@@ -24,6 +24,7 @@ class User extends Authenticatable
         'role',
         'specialty',
         'available',
+        'is_active',
         'earnings',
         'address',
         'lat',
@@ -51,6 +52,8 @@ class User extends Authenticatable
      */
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'available' => 'boolean',
+        'is_active' => 'boolean',
         'referral_value' => 'decimal:2',
     ];
 

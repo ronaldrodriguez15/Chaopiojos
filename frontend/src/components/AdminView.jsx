@@ -39,7 +39,7 @@ const DeleteConfirmDialog = lazy(() => import('@/components/admin/dialogs/Delete
 const UserDetailDialog = lazy(() => import('@/components/admin/dialogs/UserDetailDialog'));
 const EarningsDialog = lazy(() => import('@/components/admin/dialogs/EarningsDialog'));
 
-const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser, appointments, baseAppointments = [], bookings = [], updateAppointments, updateBookings, reloadBookings, onDeleteBooking, piojologists, products, updateProducts, services = [], onCreateService, onUpdateService, onDeleteService, serviceCatalog, formatCurrency, syncICalEvents, productRequests, onApproveRequest, onRejectRequest, onNotify }) => {
+const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUserActive, appointments, baseAppointments = [], bookings = [], updateAppointments, updateBookings, reloadBookings, onDeleteBooking, piojologists, products, updateProducts, services = [], onCreateService, onUpdateService, onDeleteService, serviceCatalog, formatCurrency, syncICalEvents, productRequests, onApproveRequest, onRejectRequest, onNotify }) => {
   const { toast } = useToast();
   
   // User Management State
@@ -348,6 +348,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
       role: 'piojologa',
       specialty: '',
       available: true,
+      is_active: true,
       address: '',
       referral_value: 15000,
       referral_code_used: '',
@@ -1348,7 +1349,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
               users={users}
               handleOpenUserDialog={handleOpenUserDialog}
               handleOpenUserDetail={handleOpenUserDetail}
-              handleDeleteUser={handleDeleteUser}
+              handleToggleUserActive={handleToggleUserActive}
               handleOpenEarningsModal={handleOpenEarningsModal}
             />
           </Suspense>
@@ -1814,10 +1815,6 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleDeleteUser
           onEdit={(user) => {
             setIsUserDetailOpen(false);
             handleOpenUserDialog(user);
-          }}
-          onDelete={(userId) => {
-            handleDeleteUser(userId);
-            setIsUserDetailOpen(false);
           }}
         />
       </Suspense>

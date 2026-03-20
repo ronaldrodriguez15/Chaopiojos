@@ -32,7 +32,7 @@ Route::post('/validate-referral-code', [UserController::class, 'validateReferral
 Route::get('/booking-settings', [AppSettingController::class, 'bookingSettings']);
 
 // Protected routes
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active.user'])->group(function () {
     // Auth
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);

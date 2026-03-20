@@ -9,12 +9,26 @@ use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
+    protected function ensureAdmin(Request $request)
+    {
+        $authUser = $request->user();
+
+        if (!$authUser || $authUser->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Solo un administrador puede realizar esta acción'
+            ], 403);
+        }
+
+        return null;
+    }
+
     /**
      * Display a listing of the resource.
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
         try {
             $users = User::orderBy('created_at', 'desc')->get();
@@ -40,6 +54,10 @@ class UserController extends Controller
     public function store(Request $request)
     {
         try {
+            if ($response = $this->ensureAdmin($request)) {
+                return $response;
+            }
+
             $validated = $request->validate([
                 'name' => 'required|string|max:255',
                 'email' => 'required|email|unique:users,email',
@@ -47,12 +65,13 @@ class UserController extends Controller
                 'role' => ['required', Rule::in(['admin', 'piojologa'])],
                 'specialty' => 'nullable|string|max:255',
                 'available' => 'nullable|boolean',
+                'is_active' => 'nullable|boolean',
                 'address' => 'nullable|string|max:255',
                 'lat' => 'nullable|numeric',
                 'lng' => 'nullable|numeric',
                 'referral_value' => 'nullable|numeric|min:0|max:99999999',
-                'referral_code_used' => 'nullable|string|max:20', // Código de referido ingresado
-                'referral_code' => 'nullable|string|max:20|unique:users,referral_code', // Código único generado
+                'referral_code_used' => 'nullable|string|max:20',
+                'referral_code' => 'nullable|string|max:20|unique:users,referral_code',
             ]);
 
             $validated['password'] = Hash::make($validated['password']);
@@ -60,6 +79,10 @@ class UserController extends Controller
 
             if (!isset($validated['available'])) {
                 $validated['available'] = true;
+            }
+
+            if (!isset($validated['is_active'])) {
+                $validated['is_active'] = true;
             }
 
             if (($validated['role'] ?? null) === 'piojologa') {
@@ -70,7 +93,6 @@ class UserController extends Controller
                 unset($validated['referral_value']);
             }
 
-            // Si es piojóloga y se proporcionó un código de referido
             if ($validated['role'] === 'piojologa' && !empty($validated['referral_code_used'])) {
                 $referrer = User::where('referral_code', $validated['referral_code_used'])
                     ->where('role', 'piojologa')
@@ -86,7 +108,6 @@ class UserController extends Controller
                 }
             }
 
-            // Remover el código usado de los datos validados (no es parte del modelo)
             unset($validated['referral_code_used']);
 
             $user = User::create($validated);
@@ -116,7 +137,7 @@ class UserController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
         try {
             $user = User::findOrFail($id);
@@ -148,6 +169,10 @@ class UserController extends Controller
     public function update(Request $request, $id)
     {
         try {
+            if ($response = $this->ensureAdmin($request)) {
+                return $response;
+            }
+
             $user = User::findOrFail($id);
 
             $validated = $request->validate([
@@ -157,6 +182,7 @@ class UserController extends Controller
                 'role' => ['sometimes', 'required', Rule::in(['admin', 'piojologa'])],
                 'specialty' => 'nullable|string|max:255',
                 'available' => 'nullable|boolean',
+                'is_active' => 'nullable|boolean',
                 'earnings' => 'nullable|numeric',
                 'commission_rate' => 'nullable|numeric|min:0|max:100',
                 'referral_value' => 'nullable|numeric|min:0|max:99999999',
@@ -166,7 +192,6 @@ class UserController extends Controller
                 'referral_code' => ['nullable', 'string', 'max:20', Rule::unique('users')->ignore($id)],
             ]);
 
-            // Si se proporciona una nueva contraseña, hashearla
             $incomingRole = $validated['role'] ?? $user->role;
             if ($incomingRole === 'piojologa') {
                 if (!array_key_exists('referral_value', $validated)) {
@@ -181,11 +206,21 @@ class UserController extends Controller
             if (isset($validated['password']) && !empty($validated['password'])) {
                 $validated['password'] = Hash::make($validated['password']);
             } else {
-                // Si no se proporciona contraseña, no actualizarla
                 unset($validated['password']);
             }
 
+            if (array_key_exists('is_active', $validated) && $user->role === 'admin' && !$validated['is_active']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Los administradores no pueden ser inactivados'
+                ], 422);
+            }
+
             $user->update($validated);
+
+            if (array_key_exists('is_active', $validated) && !$validated['is_active']) {
+                $user->tokens()->delete();
+            }
 
             return response()->json([
                 'success' => true,
@@ -217,12 +252,15 @@ class UserController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         try {
+            if ($response = $this->ensureAdmin($request)) {
+                return $response;
+            }
+
             $user = User::findOrFail($id);
 
-            // No permitir eliminar al usuario autenticado
             if (auth()->check() && auth()->id() === $user->id) {
                 return response()->json([
                     'success' => false,
@@ -299,6 +337,13 @@ class UserController extends Controller
     public function regenerateReferralCode($id)
     {
         try {
+            if (request()->user()?->role !== 'admin') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Solo un administrador puede realizar esta acción'
+                ], 403);
+            }
+
             $user = User::findOrFail($id);
 
             if ($user->role !== 'piojologa') {
@@ -308,7 +353,6 @@ class UserController extends Controller
                 ], 400);
             }
 
-            // Generar nuevo código único
             $newCode = User::generateUniqueReferralCode();
             $user->referral_code = $newCode;
             $user->save();
@@ -332,4 +376,3 @@ class UserController extends Controller
         }
     }
 }
-

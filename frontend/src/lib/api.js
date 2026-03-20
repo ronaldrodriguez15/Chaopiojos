@@ -33,9 +33,16 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const requestUrl = error.config?.url || '';
     const hasToken = !!localStorage.getItem('auth_token');
+    const message = error.response?.data?.message || '';
 
     // Evita redirigir en intentos de login fallidos; solo actúa cuando hay sesión previa
     if (status === 401 && hasToken && !requestUrl.includes('/login')) {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('current_user');
+      window.location.href = '/';
+    }
+
+    if (status === 403 && hasToken && typeof message === 'string' && message.toLowerCase().includes('inactiva')) {
       localStorage.removeItem('auth_token');
       localStorage.removeItem('current_user');
       window.location.href = '/';

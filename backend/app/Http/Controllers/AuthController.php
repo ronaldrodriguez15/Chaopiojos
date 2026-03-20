@@ -26,6 +26,13 @@ class AuthController extends Controller
                 ], 401);
             }
 
+            if ($user->role !== 'admin' && isset($user->is_active) && !$user->is_active) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tu cuenta está inactiva. Comunícate con administración.'
+                ], 403);
+            }
+
             // Eliminar tokens anteriores del usuario (opcional)
             $user->tokens()->delete();
 
@@ -63,9 +70,22 @@ class AuthController extends Controller
 
     public function me(Request $request)
     {
+        $user = $request->user();
+        if ($user && $user->role !== 'admin' && isset($user->is_active) && !$user->is_active) {
+            $token = $user->currentAccessToken();
+            if ($token) {
+                $token->delete();
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Tu cuenta está inactiva. Comunícate con administración.'
+            ], 403);
+        }
+
         return response()->json([
             'success' => true,
-            'user' => $request->user()
+            'user' => $user
         ]);
     }
 }
