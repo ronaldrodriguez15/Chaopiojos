@@ -439,6 +439,103 @@ export const referralService = {
   }
 };
 
+export const sellerReferralService = {
+  async resolveLink(token) {
+    try {
+      const response = await api.get(`/seller-referrals/link/${encodeURIComponent(token)}`);
+      return { success: true, referral: response.data.referral };
+    } catch (error) {
+      console.error('Error resolviendo link de peluqueria:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al validar el link de peluqueria'
+      };
+    }
+  },
+
+  async getAll() {
+    try {
+      const response = await api.get('/seller-referrals');
+      return { success: true, referrals: response.data.referrals || [] };
+    } catch (error) {
+      console.error('Error obteniendo referidos del vendedor:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al obtener referidos del vendedor'
+      };
+    }
+  },
+
+  async getStatistics() {
+    try {
+      const response = await api.get('/seller-referrals/statistics');
+      return { success: true, statistics: response.data.statistics || {} };
+    } catch (error) {
+      console.error('Error obteniendo estadísticas del vendedor:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al obtener estadísticas del vendedor'
+      };
+    }
+  },
+
+  async getEarnings() {
+    try {
+      const response = await api.get('/seller-referrals/earnings');
+      return {
+        success: true,
+        earnings: response.data.earnings || null,
+        sellers: response.data.sellers || [],
+        summary: response.data.summary || {},
+      };
+    } catch (error) {
+      console.error('Error obteniendo ganancias del vendedor:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al obtener ganancias del vendedor'
+      };
+    }
+  },
+
+  async create(payload) {
+    try {
+      const formData = new FormData();
+      Object.entries(payload || {}).forEach(([key, value]) => {
+        if (value === null || value === undefined || value === '') return;
+        formData.append(key, value);
+      });
+
+      const response = await api.post('/seller-referrals', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      return { success: true, referral: response.data.referral };
+    } catch (error) {
+      console.error('Error creando referido de vendedor:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al registrar referido',
+        errors: error.response?.data?.errors
+      };
+    }
+  },
+
+  async review(referralId, payload) {
+    try {
+      const response = await api.put(`/seller-referrals/${referralId}/review`, payload);
+      return { success: true, referral: response.data.referral, message: response.data.message };
+    } catch (error) {
+      console.error('Error revisando referido de vendedor:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al revisar referido',
+        errors: error.response?.data?.errors
+      };
+    }
+  }
+};
+
 // Configuración de aplicación
 export const settingsService = {
   async getBookingSettings() {

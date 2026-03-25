@@ -29,6 +29,7 @@ class Booking extends Model
         'referidoPor',
         'referral_code',
         'referred_by_user_id',
+        'seller_referral_id',
         'payment_method',
         'estado',
         'piojologist_id',
@@ -46,6 +47,7 @@ class Booking extends Model
         'numPersonas' => 'integer',
         'piojologist_id' => 'integer',
         'referred_by_user_id' => 'integer',
+        'seller_referral_id' => 'integer',
         'price_confirmed' => 'decimal:2',
         'additional_costs' => 'decimal:2',
         'lat' => 'decimal:7',
@@ -67,5 +69,10 @@ class Booking extends Model
     public function referredBy()
     {
         return $this->belongsTo(User::class, 'referred_by_user_id');
+    }
+
+    public function sellerReferral()
+    {
+        return $this->belongsTo(SellerReferral::class, 'seller_referral_id');
     }
 }

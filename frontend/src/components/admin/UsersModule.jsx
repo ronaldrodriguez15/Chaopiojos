@@ -117,7 +117,7 @@ const UsersModule = React.memo(({
                 <td className="p-4">
                   <div className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-sm ${
-                      user.role === 'admin' ? 'bg-purple-100' : user.role === 'piojologa' ? 'bg-green-100' : 'bg-orange-100'
+                      user.role === 'admin' ? 'bg-purple-100' : user.role === 'piojologa' ? 'bg-green-100' : user.role === 'vendedor' ? 'bg-cyan-100' : 'bg-orange-100'
                     }`}>
                       {user.role === 'admin' ? '👑' : user.role === 'piojologa' ? '👩‍⚕️' : '👤'}
                     </div>
@@ -130,6 +130,8 @@ const UsersModule = React.memo(({
                       ? 'bg-purple-100 text-purple-600'
                       : user.role === 'piojologa'
                       ? 'bg-green-100 text-green-600'
+                      : user.role === 'vendedor'
+                      ? 'bg-cyan-100 text-cyan-600'
                       : 'bg-orange-100 text-orange-600'
                   }`}>
                     {user.role === 'admin' ? 'admin' : user.role === 'piojologa' ? 'piojóloga' : user.role}

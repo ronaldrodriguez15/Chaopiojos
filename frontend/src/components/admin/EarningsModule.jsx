@@ -3,6 +3,7 @@ import { DollarSign, Eye, CheckCircle2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import Pagination from './Pagination';
+import { formatTime12Hour } from '@/lib/utils';
 
 const EarningsModule = React.memo(({ 
   piojologists,
@@ -385,7 +386,7 @@ const EarningsModule = React.memo(({
                           </div>
                           <div className="flex justify-between items-center text-xs text-gray-500 mb-3">
                             <span> {new Date(apt.date).toLocaleDateString('es-ES')}</span>
-                            <span> {apt.time}</span>
+                            <span> {formatTime12Hour(apt.time) || 'Sin hora'}</span>
                           </div>
                           {commissionBreakdown.length > 0 && (
                             <div className="mb-3 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 space-y-1.5">
@@ -564,7 +565,7 @@ const EarningsModule = React.memo(({
                             </div>
                             <div className="flex justify-between items-center text-xs text-gray-500 gap-2">
                               <span>📅 {new Date(apt.date).toLocaleDateString('es-ES')}</span>
-                              <span>⏰ {apt.time}</span>
+                              <span>⏰ {formatTime12Hour(apt.time) || 'Sin hora'}</span>
                             </div>
                             {isPaid && (
                               <div className="mt-3 pt-3 border-t border-green-200">
@@ -650,7 +651,7 @@ const EarningsModule = React.memo(({
                       confirmPayment.clientName,
                       confirmPayment.serviceType,
                       confirmPayment.date,
-                      confirmPayment.time
+                      formatTime12Hour(confirmPayment.time) || 'Sin hora'
                     );
                     setConfirmPayment(null);
                     // No cerrar el modal principal para que el usuario vea la lista actualizada
@@ -713,7 +714,7 @@ const EarningsModule = React.memo(({
                       confirmRevertPayment.clientName,
                       confirmRevertPayment.serviceType,
                       confirmRevertPayment.date,
-                      confirmRevertPayment.time
+                      formatTime12Hour(confirmRevertPayment.time) || 'Sin hora'
                     );
                     setConfirmRevertPayment(null);
                   }

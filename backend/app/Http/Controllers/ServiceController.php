@@ -23,7 +23,7 @@ class ServiceController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Error de validaciÃ³n',
+                'message' => 'Error de validación',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -56,7 +56,7 @@ class ServiceController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Error de validaciÃ³n',
+                'message' => 'Error de validación',
                 'errors' => $validator->errors(),
             ], 422);
         }

@@ -11,6 +11,7 @@ use App\Http\Controllers\ProductRequestController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\AppSettingController;
+use App\Http\Controllers\SellerReferralController;
 
 /*
 |--------------------------------------------------------------------------
@@ -26,10 +27,12 @@ use App\Http\Controllers\AppSettingController;
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/ical-proxy', [ICalProxyController::class, 'fetchICalFeed']);
+Route::get('/qr-proxy', [ICalProxyController::class, 'fetchQrImage']);
 Route::post('/bookings', [BookingController::class, 'store']); // Ruta publica para crear reservas
 Route::get('/services', [ServiceController::class, 'index']);
 Route::post('/validate-referral-code', [UserController::class, 'validateReferralCode']); // Validar código de referido
 Route::get('/booking-settings', [AppSettingController::class, 'bookingSettings']);
+Route::get('/seller-referrals/link/{token}', [SellerReferralController::class, 'resolveLink']);
 
 // Protected routes
 Route::middleware(['auth:sanctum', 'active.user'])->group(function () {
@@ -68,6 +71,11 @@ Route::middleware(['auth:sanctum', 'active.user'])->group(function () {
     Route::get('/referral-payment-history', [ReferralController::class, 'paymentHistory']); // Admin
     Route::put('/referral-commissions/{id}/mark-paid', [ReferralController::class, 'markAsPaid']); // Admin
     Route::put('/referral-commissions/mark-all-paid/{referrerId}', [ReferralController::class, 'markAllAsPaid']); // Admin
+    Route::get('/seller-referrals', [SellerReferralController::class, 'index']);
+    Route::get('/seller-referrals/statistics', [SellerReferralController::class, 'statistics']);
+    Route::get('/seller-referrals/earnings', [SellerReferralController::class, 'earnings']);
+    Route::post('/seller-referrals', [SellerReferralController::class, 'store']);
+    Route::put('/seller-referrals/{id}/review', [SellerReferralController::class, 'review']);
     Route::delete('/product-requests/{productRequest}', [ProductRequestController::class, 'destroy']);
 
     // App settings (admin)

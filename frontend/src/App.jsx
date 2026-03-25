@@ -3,6 +3,7 @@ import { Helmet } from 'react-helmet';
 import { Toaster } from '@/components/ui/toaster';
 import PiojologistView from '@/components/PiojologistView';
 import AdminView from '@/components/AdminView';
+import SellerView from '@/components/SellerView';
 import Login from '@/components/Login';
 import { LogOut, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { motion, AnimatePresence } from 'framer-motion';
 import { authService, userService, bookingService, serviceService } from '@/lib/api';
 import { API_URL } from '@/lib/config';
+import { formatTime12Hour } from '@/lib/utils';
 
 const normalizeRejectionHistory = (value) => {
   if (Array.isArray(value)) return value;
@@ -332,6 +334,9 @@ function App() {
               referidoPor: booking.referidoPor,
               referral_code: booking.referral_code,
               referred_by_user_id: booking.referred_by_user_id,
+              seller_referral_id: booking.seller_referral_id,
+              seller_referral_name: booking.seller_referral_name,
+              seller_referral: booking.seller_referral,
               payment_method: booking.payment_method,
               paymentMethod: booking.payment_method,
               price_confirmed: booking.price_confirmed,
@@ -1041,6 +1046,12 @@ function App() {
                     onNotify={handleNotify}
                   />
                 )}
+
+                {currentUser.role === 'vendedor' && (
+                  <SellerView
+                    currentUser={currentUser}
+                  />
+                )}
               </div>
             </motion.div>
           )}
@@ -1114,7 +1125,8 @@ function App() {
                           month: '2-digit',
                           year: 'numeric',
                           hour: '2-digit',
-                          minute: '2-digit'
+                          minute: '2-digit',
+                          hour12: true
                         })}
                       </p>
                     </div>
@@ -1143,7 +1155,7 @@ function App() {
               <p className="text-gray-800 font-bold text-sm sm:text-base">{selectedNotification?.message}</p>
               <p className="text-[10px] sm:text-[11px] text-gray-500 mt-2">
                 {selectedNotification?.timestamp ? new Date(selectedNotification.timestamp).toLocaleString('es-ES', {
-                  day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                  day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true
                 }) : ''}
               </p>
               <p className="text-[10px] sm:text-[11px] text-gray-500 mt-1">Tipo: <span className="font-bold uppercase">{selectedNotification?.type}</span></p>
@@ -1161,7 +1173,7 @@ function App() {
                 </div>
                 <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
                   📅 Fecha<br />
-                  <span className="font-bold text-gray-900">{selectedNotification.appointment.date || 'N/A'} {selectedNotification.appointment.time ? `- ${selectedNotification.appointment.time}` : ''}</span>
+                  <span className="font-bold text-gray-900">{selectedNotification.appointment.date || 'N/A'} {selectedNotification.appointment.time ? `- ${formatTime12Hour(selectedNotification.appointment.time)}` : ''}</span>
                 </div>
                 <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
                   👩‍⚕️ Piojóloga<br />

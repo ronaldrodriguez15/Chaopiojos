@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 import { motion } from 'framer-motion';
-import { bookingService, serviceService, referralService, settingsService } from '@/lib/api';
+import { bookingService, serviceService, referralService, sellerReferralService, settingsService } from '@/lib/api';
 import {
   DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE,
   BUSINESS_WHATSAPP_NUMBER,
@@ -19,6 +19,7 @@ import {
   DialogDescription
 } from '@/components/ui/dialog';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { formatTime12Hour } from '@/lib/utils';
 
 const WEEK_DAYS = ['Lun', 'Mar', 'Mi', 'Jue', 'Vie', 'Sb', 'Dom'];
 
@@ -105,6 +106,8 @@ const loadServiceCatalog = () => {
 };
 
 const PublicBooking = () => {
+  const modalScrollRef = React.useRef(null);
+  const touchStartYRef = React.useRef(null);
   const [serviceOptions, setServiceOptions] = useState(() => loadServiceCatalog());
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('es-CO', {
@@ -128,6 +131,7 @@ const PublicBooking = () => {
   const [confirmedBooking, setConfirmedBooking] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [isEmbeddedMobile, setIsEmbeddedMobile] = useState(false);
   const [requireAdvance12h, setRequireAdvance12h] = useState(() => {
     try {
       const raw = localStorage.getItem('booking_require_12h');
@@ -150,7 +154,8 @@ const PublicBooking = () => {
   
   // Estados para código de referido
   const [referralCode, setReferralCode] = useState('');
-  const [referralValidation, setReferralValidation] = useState({ isValid: false, isValidating: false, message: '', referrerName: '' });
+  const [referralValidation, setReferralValidation] = useState({ isValid: false, isValidating: false, message: '', referrerName: '', referrerRoleLabel: '' });
+  const [sellerReferralContext, setSellerReferralContext] = useState({ isActive: false, token: '', businessName: '', sellerName: '', sellerReferralId: null });
   
   const [form, setForm] = useState({
     name: '',
@@ -264,18 +269,118 @@ const PublicBooking = () => {
   useEffect(() => {
     const previousBodyBackgroundColor = document.body.style.backgroundColor;
     const previousBodyBackgroundImage = document.body.style.backgroundImage;
-    document.body.style.backgroundColor = '#8bb6d9';
-    document.body.style.backgroundImage = 'none';
+
+    const applyResponsiveBackground = () => {
+      const isMobile = window.innerWidth < 768;
+      document.body.style.backgroundColor = isMobile ? '#6EC1E4' : '#ffffff';
+      document.body.style.backgroundImage = 'none';
+    };
+
+    applyResponsiveBackground();
+    window.addEventListener('resize', applyResponsiveBackground);
 
     return () => {
+      window.removeEventListener('resize', applyResponsiveBackground);
       document.body.style.backgroundColor = previousBodyBackgroundColor;
       document.body.style.backgroundImage = previousBodyBackgroundImage;
     };
   }, []);
 
+  useEffect(() => {
+    const detectEmbeddedMobile = () => {
+      let embedded = false;
+      try {
+        embedded = window.self !== window.top;
+      } catch (e) {
+        embedded = true;
+      }
+      setIsEmbeddedMobile(embedded && window.innerWidth < 768);
+    };
+
+    detectEmbeddedMobile();
+    window.addEventListener('resize', detectEmbeddedMobile);
+
+    return () => {
+      window.removeEventListener('resize', detectEmbeddedMobile);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isModalOpen || !isEmbeddedMobile) return;
+
+    const scrollElement = modalScrollRef.current;
+    if (!scrollElement) return;
+
+    const forwardScrollToParent = (deltaY) => {
+      if (!deltaY) return;
+
+      try {
+        if (window.parent && window.parent !== window && typeof window.parent.scrollBy === 'function') {
+          window.parent.scrollBy({ top: deltaY, behavior: 'auto' });
+        }
+      } catch (e) {
+        // ignore same-origin restrictions
+      }
+
+      try {
+        window.parent?.postMessage({
+          type: 'chaopiojos-scroll-parent',
+          deltaY
+        }, '*');
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    const tryBubbleScroll = (deltaY) => {
+      const { scrollTop, scrollHeight, clientHeight } = scrollElement;
+      const maxScrollTop = Math.max(0, scrollHeight - clientHeight);
+      const atTop = scrollTop <= 0;
+      const atBottom = scrollTop >= maxScrollTop - 1;
+
+      if ((deltaY < 0 && atTop) || (deltaY > 0 && atBottom)) {
+        forwardScrollToParent(deltaY);
+      }
+    };
+
+    const handleWheel = (event) => {
+      tryBubbleScroll(event.deltaY);
+    };
+
+    const handleTouchStart = (event) => {
+      touchStartYRef.current = event.touches?.[0]?.clientY ?? null;
+    };
+
+    const handleTouchMove = (event) => {
+      const currentY = event.touches?.[0]?.clientY;
+      if (typeof currentY !== 'number' || touchStartYRef.current === null) return;
+
+      const deltaY = touchStartYRef.current - currentY;
+      tryBubbleScroll(deltaY);
+      touchStartYRef.current = currentY;
+    };
+
+    scrollElement.addEventListener('wheel', handleWheel, { passive: true });
+    scrollElement.addEventListener('touchstart', handleTouchStart, { passive: true });
+    scrollElement.addEventListener('touchmove', handleTouchMove, { passive: true });
+
+    return () => {
+      scrollElement.removeEventListener('wheel', handleWheel);
+      scrollElement.removeEventListener('touchstart', handleTouchStart);
+      scrollElement.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, [isModalOpen, isEmbeddedMobile]);
+
   // Leer código de referido desde la URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const sellerReferralToken = params.get('sr');
+
+    if (sellerReferralToken) {
+      resolveSellerReferralLink(sellerReferralToken.trim());
+      return;
+    }
+
     const refCode = params.get('ref');
     if (refCode) {
       const normalizedCode = refCode.trim().toUpperCase();
@@ -284,10 +389,63 @@ const PublicBooking = () => {
     }
   }, []);
 
+  const resolveSellerReferralLink = async (token) => {
+    if (!token) {
+      setSellerReferralContext({ isActive: false, token: '', businessName: '', sellerName: '', sellerReferralId: null });
+      return;
+    }
+
+    setReferralValidation((prev) => ({ ...prev, isValidating: true }));
+
+    try {
+      const result = await sellerReferralService.resolveLink(token);
+      if (!result.success || !result.referral) {
+        setSellerReferralContext({ isActive: false, token: '', businessName: '', sellerName: '', sellerReferralId: null });
+        setReferralValidation({
+          isValid: false,
+          isValidating: false,
+          message: result.message || 'Link de peluquería no válido',
+          referrerName: '',
+          referrerRoleLabel: ''
+        });
+        return;
+      }
+
+      const sellerName = result.referral?.seller?.name || '';
+      const sellerCode = result.referral?.seller?.referral_code || '';
+      const businessName = result.referral?.business_name || '';
+
+      setSellerReferralContext({
+        isActive: true,
+        token,
+        businessName,
+        sellerName,
+        sellerReferralId: result.referral.id || null
+      });
+      setReferralCode(sellerCode);
+      setReferralValidation({
+        isValid: true,
+        isValidating: false,
+        message: `Link activo de ${businessName} referido por vendedor ${sellerName}`,
+        referrerName: sellerName,
+        referrerRoleLabel: 'vendedor'
+      });
+    } catch (error) {
+      setSellerReferralContext({ isActive: false, token: '', businessName: '', sellerName: '', sellerReferralId: null });
+      setReferralValidation({
+        isValid: false,
+        isValidating: false,
+        message: 'Error al validar link de peluquería',
+        referrerName: '',
+        referrerRoleLabel: ''
+      });
+    }
+  };
+
   // Función para validar código de referido
   const validateReferralCode = async (code) => {
     if (!code || code.trim() === '') {
-      setReferralValidation({ isValid: false, isValidating: false, message: '', referrerName: '' });
+      setReferralValidation({ isValid: false, isValidating: false, message: '', referrerName: '', referrerRoleLabel: '' });
       return;
     }
 
@@ -300,8 +458,9 @@ const PublicBooking = () => {
         setReferralValidation({
           isValid: true,
           isValidating: false,
-          message: `¡Código válido! Referido por la piojóloga ${result.data.referrer.name}`,
-          referrerName: result.data.referrer.name
+          message: `¡Código válido! Referido por ${result.data.referrer.roleLabel || 'referido'} ${result.data.referrer.name}`,
+          referrerName: result.data.referrer.name,
+          referrerRoleLabel: result.data.referrer.roleLabel || 'referido'
         });
         toast({
           title: "✨ ¡Código aplicado!",
@@ -313,7 +472,8 @@ const PublicBooking = () => {
           isValid: false,
           isValidating: false,
           message: 'Código no válido',
-          referrerName: ''
+          referrerName: '',
+          referrerRoleLabel: ''
         });
       }
     } catch (error) {
@@ -321,7 +481,8 @@ const PublicBooking = () => {
         isValid: false,
         isValidating: false,
         message: 'Error al validar código',
-        referrerName: ''
+        referrerName: '',
+        referrerRoleLabel: ''
       });
     }
   };
@@ -560,7 +721,8 @@ const PublicBooking = () => {
         detalleAlergias: form.detalleAlergias || null,
         referidoPor: form.referidoPor || null,
         paymentMethod: form.paymentMethod,
-        referralCode: referralValidation.isValid ? referralCode : null // Enviar código si es válido
+        referralCode: referralValidation.isValid ? referralCode : null, // Enviar código si es válido
+        sellerReferralToken: sellerReferralContext.isActive ? sellerReferralContext.token : null
       };
 
       const result = await bookingService.create(bookingData);
@@ -629,7 +791,9 @@ const PublicBooking = () => {
         finalTotal: finalTotal,
         hasReferral: referralValidation.isValid,
         referrerName: referralValidation.referrerName,
+        referrerRoleLabel: referralValidation.referrerRoleLabel,
         referralCode: referralCode,
+        sellerReferralBusinessName: sellerReferralContext.businessName,
         whatsapp: form.whatsapp,
         direccion: form.direccion,
         barrio: form.barrio,
@@ -872,7 +1036,7 @@ const PublicBooking = () => {
                         <div className="text-left">
                           <p className="text-xs font-bold text-green-500 uppercase">Fecha</p>
                           <p className="text-sm md:text-base font-black text-gray-800">{confirmedBooking?.fecha}</p>
-                          <p className="text-base md:text-lg font-black text-green-600">{confirmedBooking?.hora}</p>
+                          <p className="text-base md:text-lg font-black text-green-600">{formatTime12Hour(confirmedBooking?.hora)}</p>
                         </div>
                       </div>
                     </div>
@@ -898,8 +1062,13 @@ const PublicBooking = () => {
                         Código: {confirmedBooking?.referralCode}
                       </p>
                       <p className="text-sm md:text-base font-bold text-slate-700">
-                        Referido por la piojóloga {confirmedBooking?.referrerName}
+                        Referido por {confirmedBooking?.referrerRoleLabel || 'referido'} {confirmedBooking?.referrerName}
                       </p>
+                      {confirmedBooking?.sellerReferralBusinessName && (
+                        <p className="text-sm md:text-base font-bold text-slate-700">
+                          Peluquería origen: {confirmedBooking.sellerReferralBusinessName}
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -983,8 +1152,12 @@ const PublicBooking = () => {
           setSelectedSlot('');
         }
       }}>
-        <DialogContent className="sm:max-w-4xl rounded-2xl md:rounded-[3rem] p-0 text-[20px] md:text-xl leading-relaxed md:leading-normal bg-gradient-to-b from-blue-50 to-white font-sans">
-          <DialogHeader className="pt-8 pb-6 text-center bg-gradient-to-b from-blue-100 to-blue-50">
+        <DialogContent className={`text-[20px] md:text-xl leading-relaxed md:leading-normal bg-gradient-to-b from-blue-50 to-white font-sans ${
+          isEmbeddedMobile
+            ? '!fixed !inset-0 !translate-x-0 !translate-y-0 !w-full !max-w-none !h-[100dvh] !max-h-[100dvh] !rounded-none flex flex-col overflow-hidden'
+            : 'flex flex-col w-screen max-w-none h-[100dvh] max-h-[100dvh] rounded-none p-0 sm:w-[90%] sm:max-w-4xl sm:h-auto sm:max-h-[90vh] sm:rounded-2xl md:rounded-[3rem]'
+        }`}>
+          <DialogHeader className="pt-8 pb-6 text-center bg-gradient-to-b from-blue-100 to-blue-50 shrink-0">
             <div className="flex items-center justify-center gap-3 mb-2">
               <CalendarDays className="w-8 h-8 text-blue-700" strokeWidth={2.5} />
               <DialogTitle className="text-2xl md:text-3xl font-black uppercase text-blue-700 tracking-wide" style={{ WebkitTextStroke: '1px rgba(30, 64, 175, 0.25)' }}>
@@ -993,7 +1166,11 @@ const PublicBooking = () => {
             </div>
             <DialogDescription className="sr-only">{dialogDescriptionText}</DialogDescription>
           </DialogHeader>
-          <div className="relative max-h-[calc(90vh-180px)] overflow-y-auto">
+          <div
+            ref={modalScrollRef}
+            className={`relative ${isEmbeddedMobile ? 'flex-1 overflow-y-auto min-h-0 overscroll-contain' : 'flex-1 overflow-y-auto min-h-0'}`}
+            style={isEmbeddedMobile ? { WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' } : undefined}
+          >
             <div className="p-4 md:p-6 lg:p-8 space-y-4 md:space-y-5">
             {!showForm ? (
               /* Slot selection */
@@ -1068,14 +1245,14 @@ const PublicBooking = () => {
               </div>
             ) : (
               /* Booking form */
-              <form className="space-y-5 md:space-y-6 text-[20px] md:text-xl pt-2" onSubmit={handleSubmit}>
+              <form id="public-booking-form" className="space-y-5 md:space-y-6 text-[20px] md:text-xl pt-2 pb-4" onSubmit={handleSubmit}>
                 {/* Hora seleccionada */}
                 <div className="bg-blue-50 border-4 border-blue-200 rounded-2xl p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Clock className="w-6 h-6 text-blue-700" />
                     <div>
                       <p className="text-xs font-bold text-blue-600 uppercase">Hora seleccionada</p>
-                      <p className="text-lg md:text-xl font-black text-gray-800">{selectedSlot}</p>
+                      <p className="text-lg md:text-xl font-black text-gray-800">{formatTime12Hour(selectedSlot)}</p>
                     </div>
                   </div>
                   <button
@@ -1226,55 +1403,70 @@ const PublicBooking = () => {
                   </div>
                   
                   {/* Código de Referido */}
-                  <div className="space-y-1">
-                    <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">
-                      🎁 Código de Referido <span className="text-sm text-gray-500 font-normal">(opcional)</span>
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        className={`w-full rounded-xl md:rounded-2xl border-2 ${
-                          referralValidation.isValid 
-                            ? 'border-green-400 bg-green-50' 
-                            : referralCode && !referralValidation.isValid && !referralValidation.isValidating
-                            ? 'border-red-400 bg-red-50'
-                            : 'border-slate-200 bg-slate-50'
-                        } px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none ${
-                          referralValidation.isValid 
-                            ? 'focus:border-green-500' 
-                            : 'focus:border-slate-500'
-                        } text-base md:text-lg uppercase`}
-                        value={referralCode}
-                        onChange={(e) => {
-                          const code = e.target.value.toUpperCase();
-                          setReferralCode(code);
-                          if (code.length >= 4) {
-                            validateReferralCode(code);
-                          } else {
-                            setReferralValidation({ isValid: false, isValidating: false, message: '', referrerName: '' });
-                          }
-                        }}
-                        placeholder="Ingresa el código de referido"
-                      />
-                      {referralValidation.isValidating && (
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                          <div className="animate-spin rounded-full h-5 w-5 border-2 border-slate-300 border-t-slate-600"></div>
-                        </div>
-                      )}
-                      {referralValidation.isValid && (
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-green-600">
-                          ✓
-                        </div>
+                  {sellerReferralContext.isActive ? (
+                    <div className="space-y-2 rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-4">
+                      <p className="text-base md:text-lg font-black text-emerald-700">Peluquería vinculada al link</p>
+                      <p className="text-sm md:text-base font-bold text-gray-700">
+                        Peluquería: <span className="text-emerald-700">{sellerReferralContext.businessName}</span>
+                      </p>
+                      <p className="text-sm md:text-base font-bold text-gray-700">
+                        Vendedor: <span className="text-emerald-700">{sellerReferralContext.sellerName}</span>
+                      </p>
+                      <p className="text-xs md:text-sm font-bold text-emerald-700">
+                        Este agendamiento quedará asociado automáticamente a esa peluquería y a ese vendedor.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">
+                        🎁 Código de Referido <span className="text-sm text-gray-500 font-normal">(opcional)</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          className={`w-full rounded-xl md:rounded-2xl border-2 ${
+                            referralValidation.isValid 
+                              ? 'border-green-400 bg-green-50' 
+                              : referralCode && !referralValidation.isValid && !referralValidation.isValidating
+                              ? 'border-red-400 bg-red-50'
+                              : 'border-slate-200 bg-slate-50'
+                          } px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none ${
+                            referralValidation.isValid 
+                              ? 'focus:border-green-500' 
+                              : 'focus:border-slate-500'
+                          } text-base md:text-lg uppercase`}
+                          value={referralCode}
+                          onChange={(e) => {
+                            const code = e.target.value.toUpperCase();
+                            setReferralCode(code);
+                            if (code.length >= 4) {
+                              validateReferralCode(code);
+                            } else {
+                              setReferralValidation({ isValid: false, isValidating: false, message: '', referrerName: '', referrerRoleLabel: '' });
+                            }
+                          }}
+                          placeholder="Ingresa el código de referido"
+                        />
+                        {referralValidation.isValidating && (
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-slate-300 border-t-slate-600"></div>
+                          </div>
+                        )}
+                        {referralValidation.isValid && (
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 text-green-600">
+                            ✓
+                          </div>
+                        )}
+                      </div>
+                      {referralValidation.message && (
+                        <p className={`text-sm font-bold ml-2 mt-1 flex items-center gap-1 ${
+                          referralValidation.isValid ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          <span>{referralValidation.isValid ? '✨' : '❌'}</span> {referralValidation.message}
+                        </p>
                       )}
                     </div>
-                    {referralValidation.message && (
-                      <p className={`text-sm font-bold ml-2 mt-1 flex items-center gap-1 ${
-                        referralValidation.isValid ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        <span>{referralValidation.isValid ? '✨' : '❌'}</span> {referralValidation.message}
-                      </p>
-                    )}
-                  </div>
+                  )}
                   
                   <div className="space-y-1">
                     <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">📍 Dirección *</label>
@@ -1404,14 +1596,6 @@ const PublicBooking = () => {
                   )}
                 </div>
 
-                <Button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full bg-blue-500 hover:bg-blue-700 disabled:hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-base md:text-lg py-4 md:py-5 rounded-xl md:rounded-2xl shadow-lg hover:shadow-xl border-b-4 border-blue-800 active:border-b-0 active:translate-y-0.5"
-                >
-                  <Check className="w-5 h-5 md:w-6 md:h-6 mr-2" /> {isSubmitting ? 'Procesando...' : 'Confirmar Reserva'}
-                </Button>
-
                 <p className="text-sm md:text-base text-gray-500 font-bold text-center">
                   Al reservar aceptas ser contactado por WhatsApp para confirmar la visita.
                 </p>
@@ -1419,6 +1603,18 @@ const PublicBooking = () => {
             )}
             </div>
           </div>
+          {showForm && (
+            <div className={`${isEmbeddedMobile ? '' : 'shrink-0'} border-t border-blue-200 bg-white px-4 md:px-6 lg:px-8 py-4 shadow-[0_-8px_24px_rgba(59,130,246,0.12)]`}>
+              <Button
+                form="public-booking-form"
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full bg-blue-500 hover:bg-blue-700 disabled:hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-base md:text-lg py-4 md:py-5 rounded-xl md:rounded-2xl shadow-lg hover:shadow-xl border-b-4 border-blue-800 active:border-b-0 active:translate-y-0.5"
+              >
+                <Check className="w-5 h-5 md:w-6 md:h-6 mr-2" /> {isSubmitting ? 'Procesando...' : 'Confirmar Reserva'}
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
       </div>

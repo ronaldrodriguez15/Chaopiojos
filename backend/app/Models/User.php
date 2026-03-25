@@ -7,6 +7,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Support\Str;
+use App\Models\SellerReferral;
 
 class User extends Authenticatable
 {
@@ -65,8 +66,8 @@ class User extends Authenticatable
         parent::boot();
 
         static::creating(function ($user) {
-            if ($user->role === 'piojologa' && empty($user->referral_code)) {
-                $user->referral_code = self::generateUniqueReferralCode();
+            if (in_array($user->role, ['piojologa', 'vendedor'], true) && empty($user->referral_code)) {
+                $user->referral_code = self::generateUniqueReferralCode($user->role);
             }
         });
     }
@@ -74,10 +75,12 @@ class User extends Authenticatable
     /**
      * Genera un código de referido único
      */
-    public static function generateUniqueReferralCode()
+    public static function generateUniqueReferralCode($role = null)
     {
+        $prefix = $role === 'vendedor' ? 'VEND' : 'PIOJO';
+
         do {
-            $code = 'PIOJO' . strtoupper(Str::random(6));
+            $code = $prefix . strtoupper(Str::random(6));
         } while (self::where('referral_code', $code)->exists());
 
         return $code;
@@ -113,5 +116,10 @@ class User extends Authenticatable
     public function commissionsGenerated()
     {
         return $this->hasMany(ReferralCommission::class, 'referred_id');
+    }
+
+    public function sellerReferrals()
+    {
+        return $this->hasMany(SellerReferral::class, 'seller_user_id');
     }
 }

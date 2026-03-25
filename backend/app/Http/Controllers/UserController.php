@@ -9,6 +9,17 @@ use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
+    protected function normalizeRoleValue($role)
+    {
+        $normalized = strtolower(trim((string) $role));
+
+        return match ($normalized) {
+            'piojologist' => 'piojologa',
+            'seller' => 'vendedor',
+            default => $normalized,
+        };
+    }
+
     protected function ensureAdmin(Request $request)
     {
         $authUser = $request->user();
@@ -58,11 +69,17 @@ class UserController extends Controller
                 return $response;
             }
 
+            if ($request->has('role')) {
+                $request->merge([
+                    'role' => $this->normalizeRoleValue($request->input('role'))
+                ]);
+            }
+
             $validated = $request->validate([
                 'name' => 'required|string|max:255',
                 'email' => 'required|email|unique:users,email',
                 'password' => 'required|string|min:3',
-                'role' => ['required', Rule::in(['admin', 'piojologa'])],
+                'role' => ['required', Rule::in(['admin', 'piojologa', 'vendedor'])],
                 'specialty' => 'nullable|string|max:255',
                 'available' => 'nullable|boolean',
                 'is_active' => 'nullable|boolean',
@@ -173,13 +190,19 @@ class UserController extends Controller
                 return $response;
             }
 
+            if ($request->has('role')) {
+                $request->merge([
+                    'role' => $this->normalizeRoleValue($request->input('role'))
+                ]);
+            }
+
             $user = User::findOrFail($id);
 
             $validated = $request->validate([
                 'name' => 'sometimes|required|string|max:255',
                 'email' => ['sometimes', 'required', 'email', Rule::unique('users')->ignore($id)],
                 'password' => 'sometimes|nullable|string|min:3',
-                'role' => ['sometimes', 'required', Rule::in(['admin', 'piojologa'])],
+                'role' => ['sometimes', 'required', Rule::in(['admin', 'piojologa', 'vendedor'])],
                 'specialty' => 'nullable|string|max:255',
                 'available' => 'nullable|boolean',
                 'is_active' => 'nullable|boolean',
@@ -214,6 +237,14 @@ class UserController extends Controller
                     'success' => false,
                     'message' => 'Los administradores no pueden ser inactivados'
                 ], 422);
+            }
+
+            if (
+                in_array($incomingRole, ['piojologa', 'vendedor'], true)
+                && empty($validated['referral_code'])
+                && empty($user->referral_code)
+            ) {
+                $validated['referral_code'] = User::generateUniqueReferralCode($incomingRole);
             }
 
             $user->update($validated);
@@ -301,7 +332,7 @@ class UserController extends Controller
             ]);
 
             $user = User::where('referral_code', $validated['code'])
-                ->where('role', 'piojologa')
+                ->whereIn('role', ['piojologa', 'vendedor'])
                 ->first();
 
             if ($user) {
@@ -311,6 +342,8 @@ class UserController extends Controller
                     'referrer' => [
                         'id' => $user->id,
                         'name' => $user->name,
+                        'role' => $user->role,
+                        'roleLabel' => $user->role === 'vendedor' ? 'vendedor' : 'piojologa',
                     ]
                 ]);
             }
@@ -346,14 +379,14 @@ class UserController extends Controller
 
             $user = User::findOrFail($id);
 
-            if ($user->role !== 'piojologa') {
+            if (!in_array($user->role, ['piojologa', 'vendedor'], true)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Solo las piojólogas pueden tener código de referido'
+                    'message' => 'Solo las piojologas y vendedores pueden tener codigo de referido'
                 ], 400);
             }
 
-            $newCode = User::generateUniqueReferralCode();
+            $newCode = User::generateUniqueReferralCode($user->role);
             $user->referral_code = $newCode;
             $user->save();
 

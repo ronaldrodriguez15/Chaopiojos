@@ -1,6 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DollarSign, Loader } from "lucide-react";
+import { formatTime12Hour } from "@/lib/utils";
 
 export const PayAllDialog = ({
   isOpen,
@@ -92,7 +93,7 @@ export const PaymentConfirmDialog = ({
                 <p className="font-bold text-gray-800">{paymentData.clientName}</p>
                 <p className="text-sm text-gray-600">{paymentData.serviceType}</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {new Date(paymentData.date).toLocaleDateString()} • {paymentData.time}
+                  {new Date(paymentData.date).toLocaleDateString()} • {formatTime12Hour(paymentData.time) || 'Sin hora'}
                 </p>
               </div>
 

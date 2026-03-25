@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Calendar, CalendarDays, Trash2, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -13,6 +13,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import ScheduleCalendar from '@/components/ScheduleCalendar';
+import { formatTime12Hour } from '@/lib/utils';
 
 const ScheduleManagement = ({
   appointments,
@@ -57,6 +58,7 @@ const ScheduleManagement = ({
   const [selectedService, setSelectedService] = useState(null);
   const [editingService, setEditingService] = useState(null);
   const [assignPiojologistId, setAssignPiojologistId] = useState('');
+  const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
   const [servicesPage, setServicesPage] = useState(1);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [bookingToDelete, setBookingToDelete] = useState(null);
@@ -71,6 +73,11 @@ const ScheduleManagement = ({
   });
   const serviceTypeOptions = Object.keys(serviceCatalog || {});
   const defaultServiceType = serviceTypeOptions[0] || '';
+  const sortedPiojologists = useMemo(() => (
+    [...(piojologists || [])].sort((a, b) =>
+      String(a?.name || '').localeCompare(String(b?.name || ''), 'es', { sensitivity: 'base' })
+    )
+  ), [piojologists]);
   const timeSlotOptions = [
     { value: '08:00', label: '08:00 AM' },
     { value: '10:00', label: '10:00 AM' },
@@ -785,7 +792,7 @@ const ScheduleManagement = ({
                       className={`w-full border-2 rounded-2xl p-4 font-bold outline-none cursor-pointer ${fieldErrors.piojologistId ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white focus:border-yellow-400'}`}
                     >
                       <option value="">Seleccionar piojologa...</option>
-                      {piojologists.map((p) => (
+                      {sortedPiojologists.map((p) => (
                         <option key={p.id} value={p.id}>{p.name} - {p.specialty}</option>
                       ))}
                     </select>
@@ -1044,7 +1051,7 @@ const ScheduleManagement = ({
                       )}
                     </p>
                     <p className="text-lg text-purple-600 mb-2 font-black">{formatCurrency(calculateServiceTotal(apt))}</p>
-                    <p className="text-sm text-gray-500 mb-3 font-medium"> {apt.date} - {apt.time}</p>
+                    <p className="text-sm text-gray-500 mb-3 font-medium"> {apt.date} - {formatTime12Hour(apt.time) || 'Sin hora'}</p>
                     <div className="bg-green-50 p-2 rounded-xl border border-green-200">
                       <p className="text-xs font-bold text-green-700">
                          {apt.piojologistName || 'Sin asignar'}
@@ -1177,7 +1184,7 @@ const ScheduleManagement = ({
                   <div className="space-y-4">
                 <div className="grid grid-cols-1 gap-3">
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3 text-sm font-bold text-gray-700">
-                    ?? {selectedService.date} - {selectedService.time}
+                    ?? {selectedService.date} - {formatTime12Hour(selectedService.time) || 'Sin hora'}
                   </div>
                 </div>
 
@@ -1286,16 +1293,49 @@ const ScheduleManagement = ({
                       {selectedService.piojologistName ? 'Reasignar a otra piojóloga' : 'Asignar a piojóloga'}
                     </p>
                     <div className="flex flex-col gap-2">
-                      <select
-                        value={assignPiojologistId}
-                        onChange={(e) => setAssignPiojologistId(e.target.value)}
-                        className="w-full bg-gray-50 border-2 border-gray-200 rounded-xl p-2 text-sm font-semibold text-gray-700 focus:border-yellow-400 outline-none"
-                      >
-                        <option value="">Seleccionar...</option>
-                        {piojologists.map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setAssignDropdownOpen((prev) => !prev)}
+                          className="w-full bg-gray-50 border-2 border-gray-200 rounded-xl p-2 text-sm font-semibold text-gray-700 text-left focus:border-yellow-400 outline-none flex items-center justify-between"
+                        >
+                          <span>
+                            {assignPiojologistId
+                              ? (sortedPiojologists.find((p) => String(p.id) === String(assignPiojologistId))?.name || 'Seleccionar...')
+                              : 'Seleccionar...'}
+                          </span>
+                          <span className="text-xs">▼</span>
+                        </button>
+                        {assignDropdownOpen && (
+                          <div className="absolute bottom-full left-0 z-30 mb-1 w-full bg-white border-2 border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                            <div className="max-h-60 overflow-y-auto">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAssignPiojologistId('');
+                                  setAssignDropdownOpen(false);
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-yellow-50 border-b border-gray-100"
+                              >
+                                Seleccionar...
+                              </button>
+                              {sortedPiojologists.map((p) => (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setAssignPiojologistId(String(p.id));
+                                    setAssignDropdownOpen(false);
+                                  }}
+                                  className="w-full px-3 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-yellow-50 border-b border-gray-100 last:border-b-0"
+                                >
+                                  {p.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                       <Button
                         type="button"
                         onClick={handleAssignService}
@@ -1315,6 +1355,7 @@ const ScheduleManagement = ({
                       onClick={() => {
                         setBookingToDelete(selectedService);
                         setDeleteConfirmOpen(true);
+                        setAssignDropdownOpen(false);
                       }}
                       className="w-full bg-red-500 hover:bg-red-600 text-white rounded-xl px-4 py-3 font-bold border-b-4 border-red-700 active:border-b-0 active:translate-y-1 flex items-center justify-center gap-2"
                     >
@@ -1368,7 +1409,7 @@ const ScheduleManagement = ({
                 {bookingToDelete && (
                   <div className="bg-white rounded-2xl p-4 border-2 border-red-200 mt-4">
                     <p className="text-sm font-bold text-gray-700">
-                      ?? {bookingToDelete.date} - {bookingToDelete.time}
+                      ?? {bookingToDelete.date} - {formatTime12Hour(bookingToDelete.time) || 'Sin hora'}
                     </p>
                     <p className="text-sm text-gray-600 mt-1">
                       {bookingToDelete.serviceType}

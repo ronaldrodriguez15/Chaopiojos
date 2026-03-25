@@ -1,3 +1,5 @@
+import { formatTime12Hour } from '@/lib/utils';
+
 export const BUSINESS_WHATSAPP_NUMBER = '3227932394';
 export const BUSINESS_WHATSAPP_API_NUMBER = '573227932394';
 
@@ -77,6 +79,7 @@ export const buildBookingWhatsappMessage = (template, data = {}) => {
     .replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key) => {
       const value = data[key];
       if (value === null || value === undefined) return '';
+      if (key === 'hora') return formatTime12Hour(value);
       return String(value);
     })
     .replace(/\n{3,}/g, '\n\n')

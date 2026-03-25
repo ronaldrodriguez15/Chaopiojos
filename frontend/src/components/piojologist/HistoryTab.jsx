@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Check, Clock, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { formatTime12Hour } from '@/lib/utils';
 
 const HistoryTab = ({
   completedHistory,
@@ -320,7 +321,7 @@ const HistoryTab = ({
                 <p className="font-black text-gray-800">{revertTarget.clientName}</p>
                 <p className="text-sm text-gray-600">{revertTarget.serviceType}</p>
                 <p className="text-sm text-gray-500 mt-1">
-                  {formatServiceDate(revertTarget.date)} - {revertTarget.time}
+                  {formatServiceDate(revertTarget.date)} - {formatTime12Hour(revertTarget.time) || 'Sin hora'}
                 </p>
               </div>
             )}

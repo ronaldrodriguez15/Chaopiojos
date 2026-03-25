@@ -7,6 +7,7 @@ import {
   DialogTitle,
   DialogDescription
 } from '@/components/ui/dialog';
+import { formatTime12Hour } from '@/lib/utils';
 
 const WEEK_DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -112,6 +113,12 @@ const ScheduleCalendar = ({
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [assignments, setAssignments] = useState({});
   const [viewMode, setViewMode] = useState('month'); // 'month', 'week', 'day'
+  const [openAssignmentDropdownId, setOpenAssignmentDropdownId] = useState(null);
+  const sortedPiojologists = useMemo(() => (
+    [...(piojologists || [])].sort((a, b) =>
+      String(a?.name || '').localeCompare(String(b?.name || ''), 'es', { sensitivity: 'base' })
+    )
+  ), [piojologists]);
 
   const monthLabel = useMemo(() => {
     return new Intl.DateTimeFormat('es-ES', {
@@ -219,11 +226,8 @@ const ScheduleCalendar = ({
     : '';
 
   const formatTimeRange = (appointment) => {
-    if (!appointment?.dateObj) return appointment?.time || 'Sin hora';
-    return new Intl.DateTimeFormat('es-ES', {
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(appointment.dateObj);
+    if (!appointment?.dateObj) return formatTime12Hour(appointment?.time) || 'Sin hora';
+    return formatTime12Hour(appointment.dateObj) || 'Sin hora';
   };
 
   const getViewLabel = () => {
@@ -366,7 +370,7 @@ const ScheduleCalendar = ({
               className="w-full bg-white border-2 border-orange-200 rounded-2xl px-3 sm:px-4 py-2 sm:py-3 font-bold text-xs sm:text-base text-gray-700 focus:outline-none focus:border-orange-400"
             >
               <option value="all">Todas las piojólogas</option>
-              {piojologists.map((piojologist) => (
+              {sortedPiojologists.map((piojologist) => (
                 <option key={piojologist.id} value={piojologist.id}>
                   {piojologist.name}
                 </option>
@@ -447,7 +451,7 @@ const ScheduleCalendar = ({
                       {dayAppointments.map((appointment) => {
                         const statusKey = appointment.isExternal ? 'external' : appointment.status;
                         const color = statusColors[statusKey] || 'bg-blue-100 text-blue-700 border-blue-200';
-                        const time = appointment.time || 'Sin hora';
+                        const time = formatTime12Hour(appointment.time) || 'Sin hora';
                         const piojologist = piojologists.find((p) => Number(p.id) === Number(appointment.piojologistId));
                         const isPublicBooking = appointment.isPublicBooking === true;
 
@@ -536,7 +540,7 @@ const ScheduleCalendar = ({
                           <div className="flex justify-between items-start">
                             <div>
                               <p className="font-bold text-sm">{apt.clientName}</p>
-                              <p className="text-xs text-gray-600 font-semibold mt-1">{apt.serviceType} • {apt.time || 'Sin hora'}</p>
+                              <p className="text-xs text-gray-600 font-semibold mt-1">{apt.serviceType} • {formatTime12Hour(apt.time) || 'Sin hora'}</p>
                             </div>
                             <span className="text-xs font-black bg-white/70 px-2 py-1 rounded">{statusLabels[statusKey]}</span>
                           </div>
@@ -575,7 +579,7 @@ const ScheduleCalendar = ({
                             <div className="flex-1">
                               <p className="font-black text-lg">{apt.clientName}</p>
                               <p className="text-sm text-gray-600 font-semibold mt-2">{apt.serviceType}</p>
-                              <p className="text-sm font-bold mt-1">⏰ {apt.time || 'Sin hora'}</p>
+                              <p className="text-sm font-bold mt-1">⏰ {formatTime12Hour(apt.time) || 'Sin hora'}</p>
                             </div>
                             <span className="text-xs font-black bg-white/70 px-3 py-1.5 rounded-full">{statusLabels[statusKey]}</span>
                           </div>
@@ -684,20 +688,54 @@ const ScheduleCalendar = ({
                         {assignedPiojologist ? '🔄 Reasignar a otra piojóloga' : 'Asignar a piojóloga'}
                       </p>
                       <div className="flex flex-col sm:flex-row gap-2">
-                        <select
-                          value={assignValue}
-                          onChange={(e) => setAssignments((prev) => ({ ...prev, [appointment.id]: e.target.value }))}
-                          className="flex-1 bg-gray-50 border-2 border-gray-200 rounded-xl p-2 text-sm font-semibold text-gray-700 focus:border-orange-400 outline-none"
-                        >
-                          <option value="">Seleccionar...</option>
-                          {piojologists.map((p) => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                          ))}
-                        </select>
+                        <div className="relative flex-1">
+                          <button
+                            type="button"
+                            onClick={() => setOpenAssignmentDropdownId((prev) => (prev === appointment.id ? null : appointment.id))}
+                            className="w-full bg-gray-50 border-2 border-gray-200 rounded-xl p-2 text-sm font-semibold text-gray-700 text-left focus:border-orange-400 outline-none flex items-center justify-between"
+                          >
+                            <span>
+                              {assignValue
+                                ? (sortedPiojologists.find((p) => String(p.id) === String(assignValue))?.name || 'Seleccionar...')
+                                : 'Seleccionar...'}
+                            </span>
+                            <span className="text-xs">▼</span>
+                          </button>
+                          {openAssignmentDropdownId === appointment.id && (
+                            <div className="absolute bottom-full left-0 z-30 mb-1 w-full bg-white border-2 border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                              <div className="max-h-60 overflow-y-auto">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAssignments((prev) => ({ ...prev, [appointment.id]: '' }));
+                                    setOpenAssignmentDropdownId(null);
+                                  }}
+                                  className="w-full px-3 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-orange-50 border-b border-gray-100"
+                                >
+                                  Seleccionar...
+                                </button>
+                                {sortedPiojologists.map((p) => (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setAssignments((prev) => ({ ...prev, [appointment.id]: String(p.id) }));
+                                      setOpenAssignmentDropdownId(null);
+                                    }}
+                                    className="w-full px-3 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-orange-50 border-b border-gray-100 last:border-b-0"
+                                  >
+                                    {p.name}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                         <button
                           type="button"
                           onClick={() => {
                             onAssign(appointment, assignValue);
+                            setOpenAssignmentDropdownId(null);
                             handleDialogChange(false);
                           }}
                           disabled={!assignValue}

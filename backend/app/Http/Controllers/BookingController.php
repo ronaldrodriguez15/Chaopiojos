@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Booking;
+use App\Models\SellerReferral;
 use App\Models\User;
 use App\Models\ReferralCommission;
 use Illuminate\Support\Facades\Validator;
@@ -19,7 +20,11 @@ class BookingController extends Controller
      */
     public function index()
     {
-        $bookings = Booking::with('referredBy:id,name')
+        $bookings = Booking::with([
+                'referredBy:id,name',
+                'sellerReferral:id,business_name,seller_user_id',
+                'sellerReferral.seller:id,name,email',
+            ])
             ->orderBy('fecha', 'asc')
             ->orderBy('hora', 'asc')
             ->get()
@@ -35,6 +40,21 @@ class BookingController extends Controller
                 if (!isset($bookingArray['referidoPor']) && isset($bookingArray['referido_por'])) {
                     $bookingArray['referidoPor'] = $bookingArray['referido_por'];
                 }
+
+                $bookingArray['seller_referral_name'] = $booking->sellerReferral?->business_name;
+                $bookingArray['seller_referral'] = $booking->sellerReferral
+                    ? [
+                        'id' => $booking->sellerReferral->id,
+                        'business_name' => $booking->sellerReferral->business_name,
+                        'seller' => $booking->sellerReferral->seller
+                            ? [
+                                'id' => $booking->sellerReferral->seller->id,
+                                'name' => $booking->sellerReferral->seller->name,
+                                'email' => $booking->sellerReferral->seller->email,
+                            ]
+                            : null,
+                    ]
+                    : null;
 
                 return $bookingArray;
             });
@@ -68,6 +88,7 @@ class BookingController extends Controller
             'detalleAlergias' => 'nullable|string',
             'referidoPor' => 'nullable|string|max:255',
             'referralCode' => 'nullable|string|max:20',
+            'sellerReferralToken' => 'nullable|string|max:64',
             'paymentMethod' => ['nullable', Rule::in(['pay_now', 'pay_later'])],
         ]);
 
@@ -84,7 +105,7 @@ class BookingController extends Controller
 
         if ($request->referralCode) {
             $referrer = User::where('referral_code', $request->referralCode)
-                ->where('role', 'piojologa')
+                ->whereIn('role', ['piojologa', 'vendedor'])
                 ->first();
 
             if ($referrer) {
@@ -93,6 +114,24 @@ class BookingController extends Controller
                 $referidoPorName = $referrer->name;
             }
         }
+
+        $referralSource = $this->resolveReferralSource(
+            $request->input('referralCode'),
+            $request->input('sellerReferralToken'),
+            $request->input('referidoPor')
+        );
+
+        if (!$referralSource['success']) {
+            return response()->json([
+                'message' => 'Error de validaciÃ³n',
+                'errors' => $referralSource['errors']
+            ], 422);
+        }
+
+        $referredByUserId = $referralSource['referredByUserId'];
+        $referidoPorName = $referralSource['referidoPor'];
+        $resolvedReferralCode = $referralSource['referralCode'];
+        $sellerReferralId = $referralSource['sellerReferralId'];
 
         $booking = Booking::create([
             'fecha' => $request->fecha,
@@ -110,11 +149,16 @@ class BookingController extends Controller
             'hasAlergias' => $request->hasAlergias,
             'detalleAlergias' => $request->detalleAlergias,
             'referidoPor' => $referidoPorName,
-            'referral_code' => $request->referralCode,
+            'referral_code' => $resolvedReferralCode,
             'referred_by_user_id' => $referredByUserId,
+            'seller_referral_id' => $sellerReferralId,
             'payment_method' => $request->paymentMethod ?? 'pay_later',
             'estado' => 'pendiente'
         ]);
+
+        if ($referredByUserId) {
+            $this->processReferralCommission($booking, 'booking_created');
+        }
 
         return response()->json([
             'message' => 'Reserva creada exitosamente',
@@ -171,6 +215,7 @@ class BookingController extends Controller
                 'detalleAlergias' => ['nullable', 'string'],
                 'referidoPor' => ['nullable', 'string', 'max:255'],
                 'referralCode' => ['nullable', 'string', 'max:20'],
+                'sellerReferralToken' => ['nullable', 'string', 'max:64'],
                 'referred_by_user_id' => ['nullable', 'exists:users,id'],
                 'estado' => ['nullable', 'string', Rule::in(['pendiente', 'confirmado', 'completado', 'cancelado', 'assigned', 'accepted', 'rejected', 'completed'])],
                 'piojologist_id' => ['nullable', 'exists:users,id'],
@@ -258,14 +303,40 @@ class BookingController extends Controller
         if ($request->has('referred_by_user_id')) {
             $booking->referred_by_user_id = $request->referred_by_user_id;
         }
+        if ($request->has('sellerReferralToken')) {
+            $incomingToken = trim((string) $request->sellerReferralToken);
+            if ($incomingToken === '') {
+                $booking->seller_referral_id = null;
+            } else {
+                $resolvedSource = $this->resolveReferralSource(
+                    $request->input('referralCode', $booking->referral_code),
+                    $incomingToken,
+                    $request->input('referidoPor', $booking->referidoPor)
+                );
+
+                if (!$resolvedSource['success']) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Error de validaciÃ³n',
+                        'errors' => $resolvedSource['errors']
+                    ], 422);
+                }
+
+                $booking->seller_referral_id = $resolvedSource['sellerReferralId'];
+                $booking->referral_code = $resolvedSource['referralCode'];
+                $booking->referred_by_user_id = $resolvedSource['referredByUserId'];
+                $booking->referidoPor = $resolvedSource['referidoPor'];
+            }
+        }
         if ($request->has('referralCode')) {
             $incomingCode = trim((string) $request->referralCode);
             if ($incomingCode === '') {
                 $booking->referral_code = null;
                 $booking->referred_by_user_id = null;
+                $booking->seller_referral_id = null;
             } else {
                 $referrer = User::where('referral_code', $incomingCode)
-                    ->where('role', 'piojologa')
+                    ->whereIn('role', ['piojologa', 'vendedor'])
                     ->first();
 
                 if (!$referrer) {
@@ -281,6 +352,9 @@ class BookingController extends Controller
                 $booking->referral_code = $incomingCode;
                 $booking->referred_by_user_id = $referrer->id;
                 $booking->referidoPor = $referrer->name;
+                if ($referrer->role !== 'vendedor') {
+                    $booking->seller_referral_id = null;
+                }
             }
         }
 
@@ -372,7 +446,7 @@ class BookingController extends Controller
 
         // Si el booking acaba de completarse, verificar si genera comisión por referido
         if ($wasCompleted && $booking->piojologist_id) {
-            $this->processReferralCommission($booking);
+            $this->processReferralCommission($booking, 'booking_completed');
         }
 
         return response()->json([
@@ -396,7 +470,66 @@ class BookingController extends Controller
             'message' => 'Error al actualizar: ' . $e->getMessage()
         ], 500);
     }
-}
+    }
+
+    private function resolveReferralSource(?string $referralCode, ?string $sellerReferralToken, ?string $referidoPor): array
+    {
+        $resolvedReferralCode = $referralCode ? trim((string) $referralCode) : null;
+        $resolvedSellerToken = $sellerReferralToken ? trim((string) $sellerReferralToken) : null;
+        $resolvedReferidoPor = $referidoPor;
+        $referredByUserId = null;
+        $sellerReferralId = null;
+
+        if ($resolvedSellerToken) {
+            $sellerReferral = SellerReferral::with('seller:id,name,email,role,referral_code')
+                ->where('link_token', $resolvedSellerToken)
+                ->where('status', 'approved')
+                ->first();
+
+            if (!$sellerReferral || !$sellerReferral->seller || $sellerReferral->seller->role !== 'vendedor') {
+                return [
+                    'success' => false,
+                    'errors' => [
+                        'sellerReferralToken' => ['El link de peluqueria no es valido o no esta aprobado']
+                    ]
+                ];
+            }
+
+            if (empty($sellerReferral->seller->referral_code)) {
+                $sellerReferral->seller->referral_code = User::generateUniqueReferralCode('vendedor');
+                $sellerReferral->seller->save();
+            }
+
+            $referredByUserId = $sellerReferral->seller->id;
+            $resolvedReferidoPor = $sellerReferral->seller->name;
+            $resolvedReferralCode = $sellerReferral->seller->referral_code;
+            $sellerReferralId = $sellerReferral->id;
+        } elseif ($resolvedReferralCode) {
+            $referrer = User::where('referral_code', $resolvedReferralCode)
+                ->whereIn('role', ['piojologa', 'vendedor'])
+                ->first();
+
+            if (!$referrer) {
+                return [
+                    'success' => false,
+                    'errors' => [
+                        'referralCode' => ['El codigo de referido no es valido']
+                    ]
+                ];
+            }
+
+            $referredByUserId = $referrer->id;
+            $resolvedReferidoPor = $referrer->name;
+        }
+
+        return [
+            'success' => true,
+            'referidoPor' => $resolvedReferidoPor,
+            'referralCode' => $resolvedReferralCode ?: null,
+            'referredByUserId' => $referredByUserId,
+            'sellerReferralId' => $sellerReferralId,
+        ];
+    }
 
     /**
      * Procesar comisión por referido si aplica
@@ -404,7 +537,7 @@ class BookingController extends Controller
      * @param  Booking  $booking
      * @return void
      */
-    private function processReferralCommission($booking)
+    private function processReferralCommission($booking, $trigger = 'booking_completed')
     {
         try {
             // Verificar si el cliente usó un código de referido
@@ -424,8 +557,8 @@ class BookingController extends Controller
             // Obtener la piojóloga que proporcionó el código de referido
             $referrer = User::find($booking->referred_by_user_id);
 
-            if (!$referrer || $referrer->role !== 'piojologa') {
-                // El referrer no es válido o no es piojóloga
+            if (!$referrer || !in_array($referrer->role, ['piojologa', 'vendedor'], true)) {
+                // El referrer no es válido o no soporta comisiones
                 return;
             }
 
@@ -439,8 +572,21 @@ class BookingController extends Controller
                 $serviceAmount = 0;
             }
 
-            // Comision configurable por piojologa referidora (fallback: 15,000)
-            $commissionAmount = (float) ($referrer->referral_value ?? 15000);
+            if ($referrer->role === 'vendedor') {
+                if ($trigger !== 'booking_created') {
+                    return;
+                }
+
+                $peopleCount = max(1, (int) ($booking->numPersonas ?? 1));
+                $commissionAmount = $peopleCount * 5000;
+            } else {
+                if ($trigger !== 'booking_completed') {
+                    return;
+                }
+
+                // Comision configurable por piojologa referidora (fallback: 15,000)
+                $commissionAmount = (float) ($referrer->referral_value ?? 15000);
+            }
 
             // Crear la comisión SIEMPRE que haya un referido válido, independientemente del monto del servicio
             ReferralCommission::create([

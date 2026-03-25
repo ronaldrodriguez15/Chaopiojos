@@ -44,4 +44,43 @@ class ICalProxyController extends Controller
             ], 500);
         }
     }
+
+    public function fetchQrImage(Request $request)
+    {
+        $data = $request->query('data');
+        $size = $request->query('size', '320x320');
+
+        if (!$data) {
+            return response()->json([
+                'error' => 'data parameter is required'
+            ], 400);
+        }
+
+        try {
+            $response = Http::timeout(15)
+                ->withHeaders([
+                    'Accept' => 'image/png',
+                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                ])
+                ->get('https://api.qrserver.com/v1/create-qr-code/', [
+                    'size' => $size,
+                    'data' => $data,
+                ]);
+
+            if ($response->successful()) {
+                return response($response->body())
+                    ->header('Content-Type', 'image/png')
+                    ->header('Cache-Control', 'public, max-age=3600')
+                    ->header('Access-Control-Allow-Origin', '*');
+            }
+
+            return response()->json([
+                'error' => 'Failed to fetch QR image'
+            ], $response->status());
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to fetch QR image: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }

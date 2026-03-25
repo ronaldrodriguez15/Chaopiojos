@@ -31,6 +31,7 @@ const ProductsModule = lazy(() => import('@/components/admin/ProductsModule'));
 const ServicesModule = lazy(() => import('@/components/admin/ServicesModule'));
 const EarningsModule = lazy(() => import('@/components/admin/EarningsModule'));
 const RequestsModule = lazy(() => import('@/components/admin/RequestsModule'));
+const SellerReferralsModule = lazy(() => import('@/components/admin/SellerReferralsModule'));
 const ProductDetailDialog = lazy(() => import('@/components/admin/dialogs/ProductDetailDialog'));
 
 // Lazy load diálogos para mejor rendimiento
@@ -513,6 +514,23 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
     setIsGeocodifying(true);
 
     try {
+      const buildValidationMessage = (result, fallback) => {
+        const errorMap = result?.errors;
+        if (errorMap && typeof errorMap === 'object') {
+          const lines = Object.values(errorMap)
+            .flat()
+            .filter(Boolean)
+            .map((value) => String(value).trim())
+            .filter(Boolean);
+
+          if (lines.length > 0) {
+            return lines.join(' | ');
+          }
+        }
+
+        return result?.message || fallback;
+      };
+
       let userToSave = { ...userFormData };
 
       if (userToSave.role === 'piojologa') {
@@ -576,7 +594,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
         } else {
           toast({
             title: "Error al actualizar",
-            description: result.message || "No se pudo actualizar el usuario",
+            description: buildValidationMessage(result, "No se pudo actualizar el usuario"),
             variant: "destructive",
             className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
           });
@@ -611,7 +629,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
         } else {
           toast({
             title: "Error al crear",
-            description: result.message || "No se pudo crear el usuario",
+            description: buildValidationMessage(result, "No se pudo crear el usuario"),
             variant: "destructive",
             className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
           });
@@ -1026,6 +1044,9 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
                 </TabsTrigger>
                 <TabsTrigger value="requests" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-purple-400 data-[state=active]:text-white transition-all">
                   📦 Solicitudes
+                </TabsTrigger>
+                <TabsTrigger value="seller-referrals" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-cyan-500 data-[state=active]:text-white transition-all">
+                  🤝 Referidos
                 </TabsTrigger>
                 <TabsTrigger value="settings" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-slate-500 data-[state=active]:text-white transition-all">
                   ⚙️ Configuración
@@ -1456,6 +1477,12 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
           </Suspense>
         </TabsContent>
 
+        <TabsContent value="seller-referrals" className="space-y-6">
+          <Suspense fallback={<div>Cargando...</div>}>
+            <SellerReferralsModule />
+          </Suspense>
+        </TabsContent>
+
         <TabsContent value="settings" className="space-y-6">
           <div className="bg-white rounded-[2.5rem] p-4 sm:p-6 md:p-8 shadow-xl border-4 border-slate-100">
             <div className="flex items-center gap-3 mb-6">
@@ -1562,6 +1589,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
                   }}
                 >
                   <option value="piojologa">🦸 Piojóloga</option>
+                  <option value="vendedor">💼 Vendedor</option>
                   <option value="admin">👑 Administrador</option>
                 </select>
               </div>

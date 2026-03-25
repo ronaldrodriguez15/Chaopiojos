@@ -4,6 +4,7 @@ import { Calendar, Clock, User, Sparkles, CheckCircle, Smile, Activity } from 'l
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
+import { formatTime12Hour } from '@/lib/utils';
 
 const ClientView = ({ currentUser, appointments, updateAppointments, serviceCatalog }) => {
   const { toast } = useToast();
@@ -266,7 +267,7 @@ const ClientView = ({ currentUser, appointments, updateAppointments, serviceCata
                   
                   <div className="mt-3 flex items-center gap-2 text-gray-500 font-bold text-sm bg-gray-50 p-2 rounded-xl inline-block">
                     <Calendar className="w-4 h-4" />
-                    {new Date(appointment.date).toLocaleDateString()} a las {appointment.time}
+                    {new Date(appointment.date).toLocaleDateString()} a las {formatTime12Hour(appointment.time) || 'Sin hora'}
                   </div>
                   
                   {appointment.piojologistName && (
