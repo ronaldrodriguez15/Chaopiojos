@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, CalendarDays, Clock, Sparkles, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CalendarDays, Clock, Sparkles, Check, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { Toaster } from '@/components/ui/toaster';
@@ -852,75 +852,109 @@ const PublicBooking = () => {
       <motion.div
         animate={{ y: [0, -20, 0] }}
         transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute top-20 left-[10%] text-4xl opacity-20"
+        className="absolute top-20 left-[10%] text-5xl opacity-35"
       >🦠</motion.div>
       <motion.div
         animate={{ y: [0, 14, 0], x: [0, 8, 0] }}
         transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
-        className="absolute top-32 right-[18%] text-3xl opacity-20"
+        className="absolute top-32 right-[18%] text-4xl opacity-35"
       >🦠</motion.div>
       <motion.div
         animate={{ y: [0, -12, 0], x: [0, -10, 0] }}
         transition={{ duration: 5.2, repeat: Infinity, ease: "easeInOut", delay: 0.7 }}
-        className="absolute top-[42%] left-[6%] text-5xl opacity-15"
+        className="absolute top-[42%] left-[6%] text-6xl opacity-30"
       >🪳</motion.div>
       <motion.div
         animate={{ y: [0, 16, 0] }}
         transition={{ duration: 3.8, repeat: Infinity, ease: "easeInOut", delay: 1.1 }}
-        className="absolute top-[58%] right-[8%] text-4xl opacity-20"
+        className="absolute top-[58%] right-[8%] text-5xl opacity-35"
       >🦠</motion.div>
       <motion.div
         animate={{ y: [0, -18, 0], x: [0, 12, 0] }}
         transition={{ duration: 6, repeat: Infinity, ease: "easeInOut", delay: 1.4 }}
-        className="absolute bottom-24 left-[14%] text-3xl opacity-20"
+        className="absolute bottom-24 left-[14%] text-4xl opacity-30"
       >🪳</motion.div>
       <motion.div
         animate={{ y: [0, 20, 0] }}
         transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-        className="absolute bottom-20 right-[10%] w-16 h-16 opacity-30"
+        className="absolute bottom-20 right-[10%] w-20 h-20 opacity-45"
       >
         <img src="/logo.png" alt="Chao Piojos" className="w-full h-full object-contain drop-shadow" />
       </motion.div>
 
       <div className="max-w-7xl w-full mx-auto px-0 md:px-2 py-4 md:py-8 relative z-10 flex justify-center">
           <div className="relative max-w-6xl w-full mx-auto">
+            <div className="mb-3 md:mb-6 rounded-[1.5rem] md:rounded-[2rem] border-4 border-cyan-100 bg-gradient-to-r from-white via-cyan-50 to-blue-50 p-3 md:p-6 shadow-xl">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 md:w-20 md:h-20 rounded-[1rem] md:rounded-[1.5rem] bg-white border-2 border-cyan-100 p-1.5 md:p-2 shadow-md shrink-0">
+                    <img src="/logo.png" alt="Chao Piojos" className="w-full h-full object-contain" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] md:text-sm font-black uppercase tracking-[0.22em] md:tracking-[0.28em] text-cyan-600">Agenda Oficial</p>
+                    <h1 className="text-2xl md:text-5xl font-black leading-none">
+                      <span className="text-orange-500">Chao</span>{' '}
+                      <span className="text-blue-600">Piojos</span>
+                    </h1>
+                    <p className="mt-1 md:mt-2 text-xs md:text-base font-bold text-slate-600">
+                      Reserva tu cita a domicilio en pocos pasos.
+                    </p>
+                  </div>
+                </div>
+                <motion.a
+                  href="https://chaopiojos.com/"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.96 }}
+                  className="font-lobster-two inline-flex items-center justify-center gap-2 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 md:px-6 md:py-4 font-bold shadow-md border-b-4 border-orange-700 active:border-b-0 active:translate-y-1 transition-all text-base md:text-xl"
+                >
+                  <ArrowLeft className="w-4 h-4 md:w-5 md:h-5" />
+                  Volver al inicio
+                </motion.a>
+              </div>
+            </div>
             {/* Calendar o Vista de Confirmacion */}
             {!showConfirmation ? (
             <div className="bg-white rounded-2xl md:rounded-[2rem] p-5 md:p-8 shadow-xl space-y-5 md:space-y-6">
               {/* Month navigation */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                  <h3 className="text-2xl md:text-3xl font-black text-gray-800 flex items-center gap-2 capitalize">
+                  <h3 className="font-lobster-two text-3xl md:text-4xl font-bold text-gray-800 flex items-center gap-2 capitalize">
                     <span className="text-2xl md:text-3xl"></span>
                     Horarios Disponibles
                   </h3>
                   <p className="text-xs md:text-sm font-bold text-gray-500 mt-1 capitalize">{monthLabel}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button
+                  <motion.button
                     type="button"
                     onClick={goToPreviousMonth}
-                    className="flex items-center gap-1 md:gap-2 bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold px-4 md:px-5 py-2.5 md:py-3 rounded-xl md:rounded-2xl border-2 border-blue-200 transition-colors text-base md:text-lg"
+                    whileHover={{ scale: 1.03, y: -1 }}
+                    whileTap={{ scale: 0.96 }}
+                    className="flex items-center gap-1 md:gap-2 bg-orange-100 hover:bg-orange-200 text-orange-700 font-bold px-4 md:px-5 py-2.5 md:py-3 rounded-xl md:rounded-2xl border-2 border-orange-200 transition-all duration-200 text-base md:text-lg"
                   >
                     <ChevronLeft className="w-3 h-3 md:w-4 md:h-4" />
                     <span className="hidden sm:inline">Anterior</span>
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
                     type="button"
                     onClick={goToToday}
-                    className="flex items-center gap-1 md:gap-2 bg-blue-100 hover:bg-blue-200 text-blue-600 font-bold px-4 md:px-5 py-2.5 md:py-3 rounded-xl md:rounded-2xl border-2 border-blue-200 transition-colors text-base md:text-lg"
+                    whileHover={{ scale: 1.03, y: -1 }}
+                    whileTap={{ scale: 0.96 }}
+                    className="flex items-center gap-1 md:gap-2 bg-orange-100 hover:bg-orange-200 text-orange-600 font-bold px-4 md:px-5 py-2.5 md:py-3 rounded-xl md:rounded-2xl border-2 border-orange-200 transition-all duration-200 text-base md:text-lg"
                   >
                     <CalendarDays className="w-3 h-3 md:w-4 md:h-4" />
                     Hoy
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
                     type="button"
                     onClick={goToNextMonth}
-                    className="flex items-center gap-1 md:gap-2 bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold px-4 md:px-5 py-2.5 md:py-3 rounded-xl md:rounded-2xl border-2 border-blue-200 transition-colors text-base md:text-lg"
+                    whileHover={{ scale: 1.03, y: -1 }}
+                    whileTap={{ scale: 0.96 }}
+                    className="flex items-center gap-1 md:gap-2 bg-orange-100 hover:bg-orange-200 text-orange-700 font-bold px-4 md:px-5 py-2.5 md:py-3 rounded-xl md:rounded-2xl border-2 border-orange-200 transition-all duration-200 text-base md:text-lg"
                   >
                     <span className="hidden sm:inline">Siguiente</span>
                     <ChevronRight className="w-3 h-3 md:w-4 md:h-4" />
-                  </button>
+                  </motion.button>
                 </div>
               </div>
 
@@ -944,16 +978,19 @@ const PublicBooking = () => {
                   
                   const cellClasses = [
                     'rounded-xl md:rounded-2xl border-2 min-h-[82px] md:min-h-[118px] flex items-center justify-center p-2 md:p-3 transition-all',
-                    isCurrentMonth ? 'bg-white border-blue-100' : 'bg-gray-50 border-gray-100 opacity-40',
-                    isToday ? 'shadow-md md:shadow-lg border-blue-300 ring-1 md:ring-2 ring-blue-200 ring-offset-1 md:ring-offset-2' : '',
-                    hasSlots ? 'cursor-pointer hover:-translate-y-0.5 md:hover:-translate-y-1 hover:shadow-md md:hover:shadow-lg hover:border-blue-400 active:translate-y-0' : 'cursor-default',
-                    isSelected ? 'border-4 border-blue-400 shadow-lg md:shadow-xl bg-blue-50' : ''
+                    isCurrentMonth ? 'bg-white border-orange-100' : 'bg-gray-50 border-gray-100 opacity-40',
+                    isToday ? 'shadow-md md:shadow-lg border-orange-300 ring-1 md:ring-2 ring-orange-200 ring-offset-1 md:ring-offset-2' : '',
+                    hasSlots ? 'cursor-pointer hover:-translate-y-0.5 md:hover:-translate-y-1 hover:shadow-md md:hover:shadow-lg hover:border-orange-400 active:translate-y-0' : 'cursor-default',
+                    isSelected ? 'border-4 border-orange-400 shadow-lg md:shadow-xl bg-orange-50' : ''
                   ].join(' ');
 
                   return (
-                    <div
+                    <motion.div
                       key={key}
                       className={cellClasses}
+                      whileTap={hasSlots ? { scale: 0.94 } : undefined}
+                      whileHover={hasSlots ? { y: -2 } : undefined}
+                      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
                       onClick={() => {
                         if (isPast) {
                           toast({
@@ -975,16 +1012,16 @@ const PublicBooking = () => {
                     >
                       <div className={`w-12 h-12 md:w-20 md:h-20 rounded-xl md:rounded-2xl flex items-center justify-center font-black text-2xl md:text-4xl ${
                         isToday 
-                          ? 'bg-blue-500 text-white shadow-md' 
+                          ? 'bg-orange-500 text-white shadow-md' 
                           : isCurrentMonth && hasSlots
-                            ? 'bg-blue-100 text-blue-700'
+                            ? 'bg-orange-100 text-orange-700'
                             : isCurrentMonth
                               ? 'bg-gray-100 text-gray-600'
                               : 'bg-gray-50 text-gray-400'
                       }`}>
                         {dateLabel}
                       </div>
-                    </div>
+                    </motion.div>
                   );
                 })}
               </div>
@@ -1080,17 +1117,19 @@ const PublicBooking = () => {
                     </p>
                     
                     {/* Botón para enviar confirmación por WhatsApp */}
-                    <a
+                    <motion.a
                       href={`https://wa.me/${BUSINESS_WHATSAPP_API_NUMBER}?text=${encodeURIComponent(whatsappConfirmationMessage)}`}
                       target="_blank"
                       rel="noopener noreferrer"
+                      whileHover={{ scale: 1.02, y: -2 }}
+                      whileTap={{ scale: 0.97 }}
                       className="w-full inline-flex items-center justify-center gap-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-black text-sm md:text-base px-6 py-4 rounded-2xl shadow-lg border-b-4 border-green-700 active:border-b-0 active:translate-y-1 transition-all"
                     >
                       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                       </svg>
                       Enviar Confirmación por WhatsApp
-                    </a>
+                    </motion.a>
                   </div>
 
                   {/* Recomendaciones */}
@@ -1133,7 +1172,7 @@ const PublicBooking = () => {
                   {/* Botn para agendar otra cita */}
                   <Button
                     onClick={handleCloseConfirmation}
-                    className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-700 hover:to-cyan-700 text-white font-black text-base md:text-lg px-8 md:px-12 py-4 md:py-6 rounded-2xl shadow-lg border-b-4 border-blue-700 active:border-b-0 active:translate-y-1 transition-all"
+                    className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-700 hover:to-cyan-700 text-white font-black text-base md:text-lg px-8 md:px-12 py-4 md:py-6 rounded-2xl shadow-lg border-b-4 border-blue-700 active:border-b-0 active:translate-y-1 transition-all duration-200 hover:scale-[1.02]"
                   >
                     <CalendarDays className="w-5 h-5 md:w-6 md:h-6 mr-2" />
                     Agendar Otra Cita
@@ -1160,7 +1199,7 @@ const PublicBooking = () => {
           <DialogHeader className="pt-8 pb-6 text-center bg-gradient-to-b from-blue-100 to-blue-50 shrink-0">
             <div className="flex items-center justify-center gap-3 mb-2">
               <CalendarDays className="w-8 h-8 text-blue-700" strokeWidth={2.5} />
-              <DialogTitle className="text-2xl md:text-3xl font-black uppercase text-blue-700 tracking-wide" style={{ WebkitTextStroke: '1px rgba(30, 64, 175, 0.25)' }}>
+              <DialogTitle className="font-lobster-two text-3xl md:text-4xl font-bold uppercase text-blue-700 tracking-wide" style={{ WebkitTextStroke: '1px rgba(30, 64, 175, 0.25)' }}>
                 Agenda tu Cita
               </DialogTitle>
             </div>
@@ -1180,7 +1219,7 @@ const PublicBooking = () => {
                     <Clock className="w-4 h-4 text-blue-700" />
                     <span className="text-xs font-black text-blue-700 uppercase">Selecciona tu Horario</span>
                   </div>
-                  <p className="text-xl md:text-2xl font-black text-gray-800">¿A qué hora prefieres?</p>
+                  <p className="font-lobster-two text-2xl md:text-3xl font-bold text-gray-800">¿A qué hora prefieres?</p>
                   <p className="text-sm md:text-base text-gray-600 font-bold">Elige un horario disponible</p>
                 </div>
                 {selectedDaySlots.length > 0 ? (
@@ -1194,7 +1233,7 @@ const PublicBooking = () => {
                       const timeLabel = `${displayHour}:${minutes} ${period}`;
                       
                       return (
-                        <button
+                        <motion.button
                           key={slot}
                           onClick={() => {
                             if (requireAdvance12h) {
@@ -1217,12 +1256,15 @@ const PublicBooking = () => {
                             setSelectedSlot(slot);
                             setShowForm(true);
                           }}
-                          className="group relative bg-white border-4 border-blue-200 hover:border-blue-400 rounded-2xl md:rounded-3xl p-6 md:p-8 transition-all hover:-translate-y-1 hover:shadow-xl"
+                          whileHover={{ scale: 1.015, y: -4 }}
+                          whileTap={{ scale: 0.97 }}
+                          transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+                          className="group relative bg-white border-4 border-orange-200 hover:border-orange-400 rounded-2xl md:rounded-3xl p-6 md:p-8 transition-all hover:-translate-y-1 hover:shadow-xl"
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
-                              <div className="bg-blue-100 group-hover:bg-blue-500 p-4 rounded-2xl transition-colors">
-                                <Clock className="w-8 h-8 md:w-10 md:h-10 text-blue-700 group-hover:text-white transition-colors" />
+                              <div className="bg-orange-100 group-hover:bg-orange-500 p-4 rounded-2xl transition-colors">
+                                <Clock className="w-8 h-8 md:w-10 md:h-10 text-orange-700 group-hover:text-white transition-colors" />
                               </div>
                               <div className="text-left">
                                 <p className="text-sm md:text-base font-bold text-gray-500 uppercase tracking-wide">Cita</p>
@@ -1233,7 +1275,7 @@ const PublicBooking = () => {
                               <p className="text-xs md:text-sm font-black text-green-700">Disponible</p>
                             </div>
                           </div>
-                        </button>
+                        </motion.button>
                       );
                     })}
                   </div>
@@ -1255,21 +1297,22 @@ const PublicBooking = () => {
                       <p className="text-lg md:text-xl font-black text-gray-800">{formatTime12Hour(selectedSlot)}</p>
                     </div>
                   </div>
-                  <button
+                  <motion.button
                     type="button"
                     onClick={() => {
                       setShowForm(false);
                       setSelectedSlot('');
                     }}
-                    className="text-sm font-bold text-blue-700 hover:text-blue-800 underline"
+                    whileTap={{ scale: 0.95 }}
+                    className="text-sm font-bold text-blue-700 hover:text-blue-800 underline transition-colors"
                   >
                     Cambiar
-                  </button>
+                  </motion.button>
                 </div>
 
                 {/* Datos del Cliente */}
                 <div className="space-y-3">
-                  <p className="text-base md:text-lg font-black text-gray-700 uppercase tracking-wide">👤 Datos del Cliente</p>
+                  <p className="font-lobster-two text-2xl md:text-3xl font-bold text-gray-700">👤 Datos del Cliente</p>
                   <div className="space-y-1">
                     <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Nombre Completo *</label>
                     <input
@@ -1367,7 +1410,7 @@ const PublicBooking = () => {
 
                 {/* Contacto del Cliente */}
                 <div className="bg-[#eef5fb] p-4 rounded-2xl border-2 border-[#c8dceb] space-y-3">
-                  <p className="text-base md:text-lg font-black text-blue-600 uppercase">Contacto</p>
+                  <p className="font-lobster-two text-2xl md:text-3xl font-bold text-blue-600">Contacto</p>
                   <div className="space-y-1">
                     <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">WhatsApp *</label>
                     <input
@@ -1535,7 +1578,7 @@ const PublicBooking = () => {
 
                 {/* Datos de Salud */}
                 <div className="bg-[#f8f3f3] p-4 rounded-2xl border-2 border-[#e2d7d7] space-y-3">
-                  <p className="text-base md:text-lg font-bold text-red-600 uppercase"> Datos de Salud</p>
+                  <p className="font-lobster-two text-2xl md:text-3xl font-bold text-red-600">Datos de Salud</p>
                   <div className="flex items-center gap-3">
                     <input
                       type="checkbox"
@@ -1561,7 +1604,7 @@ const PublicBooking = () => {
 
                 {/* Referencias */}
                 <div className="bg-slate-50 p-4 rounded-2xl border-2 border-slate-200 space-y-3">
-                  <p className="text-base md:text-lg font-bold text-slate-700 uppercase"> Referencias</p>
+                  <p className="font-lobster-two text-2xl md:text-3xl font-bold text-slate-700">Referencias</p>
                   <div className="space-y-1">
                     <label className="text-base md:text-lg font-bold text-gray-700 ml-2 mb-1 block">Referido Por (opcional)</label>
                     <input
@@ -1609,7 +1652,7 @@ const PublicBooking = () => {
                 form="public-booking-form"
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full bg-blue-500 hover:bg-blue-700 disabled:hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-base md:text-lg py-4 md:py-5 rounded-xl md:rounded-2xl shadow-lg hover:shadow-xl border-b-4 border-blue-800 active:border-b-0 active:translate-y-0.5"
+                className="font-lobster-two w-full bg-orange-500 hover:bg-orange-600 disabled:hover:bg-orange-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-xl md:text-2xl py-4 md:py-5 rounded-xl md:rounded-2xl shadow-lg hover:shadow-xl border-b-4 border-orange-700 active:border-b-0 active:translate-y-0.5 transition-all duration-200 hover:scale-[1.01]"
               >
                 <Check className="w-5 h-5 md:w-6 md:h-6 mr-2" /> {isSubmitting ? 'Procesando...' : 'Confirmar Reserva'}
               </Button>

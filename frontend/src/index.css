@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&family=Lobster+Two:wght@400;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -23,6 +23,10 @@ body {
 
 .font-fredoka {
   font-family: 'Fredoka', cursive, sans-serif;
+}
+
+.font-lobster-two {
+  font-family: 'Lobster Two', cursive, sans-serif;
 }
 
 /* Playful Scrollbar */
