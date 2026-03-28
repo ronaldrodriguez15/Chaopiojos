@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import { Toaster } from '@/components/ui/toaster';
 import PiojologistView from '@/components/PiojologistView';
 import AdminView from '@/components/AdminView';
 import SellerView from '@/components/SellerView';
+import ReferralPartnerView from '@/components/ReferralPartnerView';
 import Login from '@/components/Login';
 import { LogOut, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -94,7 +95,7 @@ function App() {
     });
   };
 
-  // Verificar sesión al cargar la aplicación
+  // Verificar sesiÃ³n al cargar la aplicaciÃ³n
   useEffect(() => {
     // Restaurar notificaciones guardadas
     try {
@@ -123,12 +124,12 @@ function App() {
       const savedUser = authService.getCurrentUser();
       
       if (token && savedUser) {
-        // Verificar que el token siga siendo válido
+        // Verificar que el token siga siendo vÃ¡lido
         const result = await authService.me();
         if (result.success) {
           setCurrentUser(result.user);
         } else {
-          // Token inválido o expirado, limpiar sesión
+          // Token invÃ¡lido o expirado, limpiar sesiÃ³n
           authService.logout();
           setCurrentUser(null);
         }
@@ -151,8 +152,8 @@ function App() {
     const saved = localStorage.getItem('products');
     return saved ? JSON.parse(saved) : [
       { id: 1, name: 'Spray Anti-Piojos', price: 15000, stock: 50, image: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&q=80&w=200' },
-      { id: 2, name: 'Peine Metálico Fino', price: 25000, stock: 30, image: 'https://images.unsplash.com/photo-1596462502278-27bfdd403cc2?auto=format&fit=crop&q=80&w=200' },
-      { id: 3, name: 'Champú Repelente', price: 20000, stock: 40, image: 'https://images.unsplash.com/photo-1631729371254-42c2892f0e6e?auto=format&fit=crop&q=80&w=200' }
+      { id: 2, name: 'Peine MetÃ¡lico Fino', price: 25000, stock: 30, image: 'https://images.unsplash.com/photo-1596462502278-27bfdd403cc2?auto=format&fit=crop&q=80&w=200' },
+      { id: 3, name: 'ChampÃº Repelente', price: 20000, stock: 40, image: 'https://images.unsplash.com/photo-1631729371254-42c2892f0e6e?auto=format&fit=crop&q=80&w=200' }
     ];
   });
 
@@ -250,22 +251,30 @@ function App() {
     }).format(amount);
   };
 
-  // Cargar usuarios desde el backend cuando se inicia sesión
+  // Cargar usuarios desde el backend cuando se inicia sesiÃ³n
   useEffect(() => {
     if (currentUser && authService.isAuthenticated()) {
-      loadUsers();
-      loadBookings();
+      if (currentUser.role === 'admin') {
+        loadUsers();
+      }
+
+      if (currentUser.role === 'admin' || currentUser.role === 'piojologa') {
+        loadBookings();
+      }
     }
   }, [currentUser]);
 
-  // Actualización automática cada 10 segundos para reflejar cambios rápidamente
+  // ActualizaciÃ³n automÃ¡tica cada 10 segundos para reflejar cambios rÃ¡pidamente
   useEffect(() => {
     if (!currentUser || !authService.isAuthenticated()) return;
-    
+    if (currentUser.role !== 'admin' && currentUser.role !== 'piojologa') return;
+
     const intervalId = setInterval(() => {
       loadBookings();
-      loadUsers();
-    }, 10000); // 10 segundos para actualizaciones más rápidas
+      if (currentUser.role === 'admin') {
+        loadUsers();
+      }
+    }, 10000);
 
     return () => clearInterval(intervalId);
   }, [currentUser]);
@@ -361,7 +370,7 @@ function App() {
           setBookings(mergedBookings);
         }
     } catch (error) {
-      console.error('❌ Error al cargar bookings:', error);
+      console.error('âŒ Error al cargar bookings:', error);
     }
   };
 
@@ -393,7 +402,7 @@ function App() {
     const result = await bookingService.delete(bookingId);
     if (result.success) {
       await loadBookings();
-      // También actualizar el estado local de appointments
+      // TambiÃ©n actualizar el estado local de appointments
       setAppointments(prev => prev.filter(apt => {
         const aptId = apt.backendId || apt.bookingId || apt.id;
         return aptId !== bookingId;
@@ -411,7 +420,7 @@ function App() {
     localStorage.setItem('products', JSON.stringify(products));
   }, [products]);
 
-  // Combinar appointments (iCal) con bookings (reservas públicas)
+  // Combinar appointments (iCal) con bookings (reservas pÃºblicas)
   const allAppointments = useMemo(() => {
     return [...appointments, ...bookings];
   }, [appointments, bookings]);
@@ -420,7 +429,7 @@ function App() {
   useEffect(() => {
     if (!currentUser) return;
 
-    // Filtrar agendamientos relevantes según el rol
+    // Filtrar agendamientos relevantes segÃºn el rol
     let relevantAppointments = [];
     
     if (currentUser.role === 'admin') {
@@ -456,7 +465,7 @@ function App() {
     }
   }, [allAppointments, currentUser, seenAppointmentIds]);
 
-  // Marcar notificación como leída
+  // Marcar notificaciÃ³n como leÃ­da
   const markAsRead = (notificationId) => {
     setNotifications(prev => 
       prev.map(notif => 
@@ -465,7 +474,7 @@ function App() {
     );
   };
 
-  // Marcar todas como leídas
+  // Marcar todas como leÃ­das
   const markAllAsRead = () => {
     setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
   };
@@ -480,21 +489,21 @@ function App() {
     }
   };
 
-  // Filtrar notificaciones según el usuario actual
+  // Filtrar notificaciones segÃºn el usuario actual
   const getFilteredNotifications = () => {
     if (!currentUser) return [];
     
     return notifications.filter(notif => {
-      // Notificaciones de agendamientos (todos las ven según su rol)
+      // Notificaciones de agendamientos (todos las ven segÃºn su rol)
       if (notif.type === 'appointment') return true;
       
-      // Notificaciones de asignación (solo piojólogas)
+      // Notificaciones de asignaciÃ³n (solo piojÃ³logas)
       if (notif.type === 'assignment') {
         if (currentUser.role === 'admin') return true;
         return currentUser.role === 'piojologa' && notif.piojologistId === currentUser.id;
       }
       
-      // Notificaciones de aceptación/rechazo/completado (solo admins)
+      // Notificaciones de aceptaciÃ³n/rechazo/completado (solo admins)
       if (notif.type === 'accepted' || notif.type === 'rejected' || notif.type === 'completed') {
         return currentUser.role === 'admin';
       }
@@ -504,12 +513,12 @@ function App() {
         return currentUser.role === 'admin' && notif.forRole === 'admin';
       }
       
-      // Notificaciones de aprobación/rechazo (solo la piojóloga específica)
+      // Notificaciones de aprobaciÃ³n/rechazo (solo la piojÃ³loga especÃ­fica)
       if (notif.type === 'request-approved' || notif.type === 'request-rejected') {
         return notif.forUserId === currentUser.id;
       }
       
-      // Notificaciones dirigidas explícitamente a un usuario
+      // Notificaciones dirigidas explÃ­citamente a un usuario
       if (notif.forUserId && notif.forUserId === currentUser.id) return true;
       if (notif.forRole && notif.forRole === currentUser.role) return true;
 
@@ -556,7 +565,7 @@ function App() {
 
   const updateAppointments = (newAppointments) => {
     setAppointments(newAppointments);
-    // Persistir en localStorage para sincronización entre tabs
+    // Persistir en localStorage para sincronizaciÃ³n entre tabs
     try {
       localStorage.setItem('appointments', JSON.stringify(newAppointments));
     } catch (e) {
@@ -566,7 +575,7 @@ function App() {
 
   const updateBookingsState = (newBookings) => {
     setBookings(newBookings);
-    // Persistir en localStorage para sincronización entre tabs
+    // Persistir en localStorage para sincronizaciÃ³n entre tabs
     try {
       localStorage.setItem('bookings', JSON.stringify(newBookings));
     } catch (e) {
@@ -678,10 +687,10 @@ function App() {
 
     setProductRequests(prev => [newRequest, ...prev]);
 
-    // Crear notificación para administradores
+    // Crear notificaciÃ³n para administradores
     const notificationMessage = requestData.isKitCompleto 
-      ? `${currentUser.name} solicitó un Kit Completo`
-      : `${currentUser.name} solicitó ${requestData.items.length} producto${requestData.items.length > 1 ? 's' : ''}`;
+      ? `${currentUser.name} solicitÃ³ un Kit Completo`
+      : `${currentUser.name} solicitÃ³ ${requestData.items.length} producto${requestData.items.length > 1 ? 's' : ''}`;
 
     const newNotification = {
       id: `notif-request-${newRequest.id}`,
@@ -712,7 +721,7 @@ function App() {
         : req
     ));
 
-    // Notificar a la piojóloga
+    // Notificar a la piojÃ³loga
     const request = productRequests.find(r => r.id === requestId);
     if (request) {
       const newNotification = {
@@ -745,7 +754,7 @@ function App() {
         : req
     ));
 
-    // Notificar a la piojóloga
+    // Notificar a la piojÃ³loga
     const request = productRequests.find(r => r.id === requestId);
     if (request) {
       const newNotification = {
@@ -856,12 +865,12 @@ function App() {
     // Recargar bookings desde el backend para actualizar en tiempo real
     await loadBookings();
 
-    // Notificar al admin que se completó un servicio
+    // Notificar al admin que se completÃ³ un servicio
     pushNotification({
       type: 'completed',
       appointmentId,
       appointment,
-      message: `${appointment.clientName} - ${appointment.serviceType} fue completado por ${appointment.piojologistName || 'piojóloga'}`,
+      message: `${appointment.clientName} - ${appointment.serviceType} fue completado por ${appointment.piojologistName || 'piojÃ³loga'}`,
       forRole: 'admin'
     });
 
@@ -878,14 +887,18 @@ function App() {
     switch(currentUser.role) {
       case 'admin':
         return "Chao Piojos | Administrador";
-      case 'piojologist':
+      case 'piojologa':
         return "Chao Piojos | Piojóloga";
+      case 'vendedor':
+        return "Chao Piojos | Vendedor";
+      case 'referido':
+        return "Chao Piojos | Referido";
       default:
         return "Chao Piojos";
     }
   };
 
-  // Mostrar loading mientras se verifica la sesión
+  // Mostrar loading mientras se verifica la sesiÃ³n
   if (isCheckingAuth) {
     return (
       <div className="min-h-screen bg-orange-50 font-fredoka flex items-center justify-center">
@@ -904,7 +917,7 @@ function App() {
   const scrollY = typeof window !== 'undefined' ? window.scrollY : 0;
   const isMobile = viewportWidth < 768;
   
-  // Para móvil: usar coordenadas del viewport directamente (fixed positioning)
+  // Para mÃ³vil: usar coordenadas del viewport directamente (fixed positioning)
   // Para desktop: usar coordenadas del documento (absolute positioning)
   const dropdownStyle = isMobile
     ? {
@@ -928,7 +941,7 @@ function App() {
     <div className="min-h-screen bg-orange-50 font-fredoka overflow-x-hidden text-gray-800 px-2 py-1 sm:px-1 sm:py-1.5 lg:px-1.5">
       <Helmet>
         <title>{getPageTitle()}</title>
-        <meta name="description" content="El sistema más divertido para decir adiós a los piojitos." />
+        <meta name="description" content="El sistema mÃ¡s divertido para decir adiÃ³s a los piojitos." />
       </Helmet>
 
       <div className="w-full max-w-[96rem] mx-auto py-6">
@@ -960,7 +973,7 @@ function App() {
                       <span className="text-blue-500">Piojos</span>
                     </h1>
                     <p className="text-xs md:text-lg text-gray-500 font-bold bg-orange-100 px-2 md:px-3 py-0.5 md:py-1 rounded-full inline-block mt-1 truncate max-w-[10.5rem] sm:max-w-none">
-                      Hola, {currentUser.name} 👋
+                      Hola, {currentUser.name} ðŸ‘‹
                     </p>
                   </div>
                 </div>
@@ -971,7 +984,7 @@ function App() {
                     <Button
                       onClick={() => {
                         setShowNotifications(!showNotifications);
-                        // Marcar todas como leídas al abrir
+                        // Marcar todas como leÃ­das al abrir
                         if (!showNotifications) {
                           markAllAsRead();
                         }
@@ -1052,6 +1065,12 @@ function App() {
                     currentUser={currentUser}
                   />
                 )}
+
+                {currentUser.role === 'referido' && (
+                  <ReferralPartnerView
+                    currentUser={currentUser}
+                  />
+                )}
               </div>
             </motion.div>
           )}
@@ -1070,7 +1089,7 @@ function App() {
           style={dropdownStyle}
         >
           <div className="bg-yellow-100 px-4 py-3 border-b-2 border-yellow-200 flex justify-between items-center">
-            <h3 className="font-bold text-gray-800 text-lg">🔔 Notificaciones</h3>
+            <h3 className="font-bold text-gray-800 text-lg">ðŸ”” Notificaciones</h3>
             <div className="flex gap-2">
               {getFilteredNotifications().length > 0 && (
                 <>
@@ -1144,7 +1163,7 @@ function App() {
           <DialogHeader className="mb-4">
             <DialogTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
               <span className="inline-flex items-center gap-2 bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs sm:text-sm font-bold">
-                🔔 Detalle de notificación
+                ðŸ”” Detalle de notificaciÃ³n
               </span>
             </DialogTitle>
           </DialogHeader>
@@ -1164,23 +1183,23 @@ function App() {
             {selectedNotification?.appointment && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs sm:text-sm font-semibold text-gray-700">
                 <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
-                  🧑‍🤝‍🧑 Cliente<br />
+                  ðŸ§‘â€ðŸ¤â€ðŸ§‘ Cliente<br />
                   <span className="font-bold text-gray-900">{selectedNotification.appointment.clientName || 'N/A'}</span>
                 </div>
                 <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
-                  🧴 Servicio<br />
+                  ðŸ§´ Servicio<br />
                   <span className="font-bold text-gray-900">{selectedNotification.appointment.serviceType || 'N/A'}</span>
                 </div>
                 <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
-                  📅 Fecha<br />
+                  ðŸ“… Fecha<br />
                   <span className="font-bold text-gray-900">{selectedNotification.appointment.date || 'N/A'} {selectedNotification.appointment.time ? `- ${formatTime12Hour(selectedNotification.appointment.time)}` : ''}</span>
                 </div>
                 <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
-                  👩‍⚕️ Piojóloga<br />
+                  ðŸ‘©â€âš•ï¸ PiojÃ³loga<br />
                   <span className="font-bold text-gray-900">{selectedNotification.appointment.piojologistName || 'Sin asignar'}</span>
                 </div>
                 <div className="sm:col-span-2 bg-gray-50 border-2 border-gray-200 rounded-xl p-3">
-                  🏷️ Estado<br />
+                  ðŸ·ï¸ Estado<br />
                   <span className="font-bold text-gray-900">{selectedNotification.statusLabel || statusLabel(selectedNotification.appointment.status) || 'N/A'}</span>
                 </div>
               </div>
@@ -1188,7 +1207,7 @@ function App() {
 
             {selectedNotification?.rejection_history?.length > 0 && (
               <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 text-xs sm:text-sm font-semibold text-red-700">
-                ⚠️ Rechazos: {selectedNotification.rejection_history.join(', ')}
+                âš ï¸ Rechazos: {selectedNotification.rejection_history.join(', ')}
               </div>
             )}
 
@@ -1210,4 +1229,6 @@ function App() {
 }
 
 export default App;
+
+
 

@@ -74,6 +74,7 @@ Route::middleware(['auth:sanctum', 'active.user'])->group(function () {
     Route::get('/seller-referrals', [SellerReferralController::class, 'index']);
     Route::get('/seller-referrals/statistics', [SellerReferralController::class, 'statistics']);
     Route::get('/seller-referrals/earnings', [SellerReferralController::class, 'earnings']);
+    Route::get('/seller-referrals/partner-dashboard', [SellerReferralController::class, 'partnerDashboard']);
     Route::post('/seller-referrals', [SellerReferralController::class, 'store']);
     Route::put('/seller-referrals/{id}/review', [SellerReferralController::class, 'review']);
     Route::delete('/product-requests/{productRequest}', [ProductRequestController::class, 'destroy']);

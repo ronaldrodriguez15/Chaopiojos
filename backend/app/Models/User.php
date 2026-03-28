@@ -122,4 +122,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(SellerReferral::class, 'seller_user_id');
     }
+
+    public function managedSellerReferral()
+    {
+        return $this->hasOne(SellerReferral::class, 'referred_user_id');
+    }
 }

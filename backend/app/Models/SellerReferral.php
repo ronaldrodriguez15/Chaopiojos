@@ -12,6 +12,7 @@ class SellerReferral extends Model
 
     protected $fillable = [
         'seller_user_id',
+        'referred_user_id',
         'business_name',
         'owner_name',
         'contact_name',
@@ -63,6 +64,11 @@ class SellerReferral extends Model
     public function reviewer()
     {
         return $this->belongsTo(User::class, 'reviewed_by_user_id');
+    }
+
+    public function referredUser()
+    {
+        return $this->belongsTo(User::class, 'referred_user_id');
     }
 
     public function bookings()

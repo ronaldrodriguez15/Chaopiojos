@@ -2,25 +2,51 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Booking;
 use App\Models\ReferralCommission;
 use App\Models\SellerReferral;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 
 class SellerReferralController extends Controller
 {
-    protected function canManage(Request $request): bool
+    protected function canAccessReferrals(Request $request): bool
+    {
+        $role = $request->user()?->role;
+        return in_array($role, ['admin', 'vendedor', 'referido'], true);
+    }
+
+    protected function canAccessSellerReports(Request $request): bool
     {
         $role = $request->user()?->role;
         return in_array($role, ['admin', 'vendedor'], true);
     }
 
+    protected function scopeReferralsForUser(Builder $query, User $user): Builder
+    {
+        if ($user->role === 'vendedor') {
+            $query->where('seller_user_id', $user->id);
+        }
+
+        if ($user->role === 'referido') {
+            $query->where('referred_user_id', $user->id);
+        }
+
+        return $query;
+    }
+
     protected function serializeReferral(SellerReferral $referral): array
     {
+        $isQrActive = !empty($referral->link_token) && $referral->status !== 'rejected';
+
         return [
             'id' => $referral->id,
             'seller_user_id' => $referral->seller_user_id,
+            'referred_user_id' => $referral->referred_user_id,
             'reviewed_by_user_id' => $referral->reviewed_by_user_id,
             'business_name' => $referral->business_name,
             'owner_name' => $referral->owner_name,
@@ -34,9 +60,7 @@ class SellerReferralController extends Controller
             'notes' => $referral->notes,
             'status' => $referral->status,
             'link_token' => $referral->link_token,
-            'booking_link' => $referral->status === 'approved' && $referral->link_token
-                ? '/agenda?sr=' . urlencode($referral->link_token)
-                : null,
+            'booking_link' => $isQrActive ? '/agenda?sr=' . urlencode($referral->link_token) : null,
             'review_notes' => $referral->review_notes,
             'reviewed_at' => $referral->reviewed_at,
             'chamber_of_commerce_path' => $referral->chamber_of_commerce_path,
@@ -51,6 +75,14 @@ class SellerReferralController extends Controller
                     'name' => $referral->seller->name,
                     'email' => $referral->seller->email,
                     'referral_code' => $referral->seller->referral_code,
+                ]
+                : null,
+            'referred_user' => $referral->relationLoaded('referredUser') && $referral->referredUser
+                ? [
+                    'id' => $referral->referredUser->id,
+                    'name' => $referral->referredUser->name,
+                    'email' => $referral->referredUser->email,
+                    'is_active' => (bool) $referral->referredUser->is_active,
                 ]
                 : null,
             'reviewer' => $referral->relationLoaded('reviewer') && $referral->reviewer
@@ -76,31 +108,92 @@ class SellerReferralController extends Controller
 
     protected function storeDocument(?\Illuminate\Http\UploadedFile $file, string $prefix): ?string
     {
-        if (!$file) return null;
+        if (!$file) {
+            return null;
+        }
+
         $safePrefix = preg_replace('/[^a-z0-9_-]+/i', '-', strtolower($prefix));
         $extension = $file->getClientOriginalExtension() ?: 'bin';
         $filename = 'seller-referrals/' . $safePrefix . '-' . uniqid() . '.' . $extension;
         Storage::disk('public')->putFileAs('seller-referrals', $file, basename($filename));
+
         return $filename;
+    }
+
+    protected function buildPartnerDashboard(SellerReferral $referral): array
+    {
+        $bookings = Booking::where('seller_referral_id', $referral->id)
+            ->orderByDesc('created_at')
+            ->get([
+                'id',
+                'clientName',
+                'fecha',
+                'hora',
+                'numPersonas',
+                'estado',
+                'created_at',
+            ]);
+
+        $now = now();
+        $completedStatuses = ['completed', 'completado'];
+        $registeredClients = $bookings->count();
+        $headsCount = (int) $bookings->reduce(function ($carry, Booking $booking) {
+            return $carry + max(1, (int) ($booking->numPersonas ?? 1));
+        }, 0);
+        $completedBookings = $bookings->filter(function (Booking $booking) use ($completedStatuses) {
+            return in_array(strtolower((string) $booking->estado), $completedStatuses, true);
+        })->count();
+        $thisMonth = $bookings->filter(function (Booking $booking) use ($now) {
+            return $booking->created_at
+                && $booking->created_at->month === $now->month
+                && $booking->created_at->year === $now->year;
+        })->count();
+
+        return [
+            'statistics' => [
+                'registered_clients' => $registeredClients,
+                'heads_count' => $headsCount,
+                'completed_bookings' => $completedBookings,
+                'pending_bookings' => max(0, $registeredClients - $completedBookings),
+                'this_month' => $thisMonth,
+            ],
+            'recent_bookings' => $bookings->take(10)->map(function (Booking $booking) {
+                return [
+                    'id' => $booking->id,
+                    'clientName' => $booking->clientName,
+                    'fecha' => $booking->fecha,
+                    'hora' => $booking->hora,
+                    'numPersonas' => (int) ($booking->numPersonas ?? 1),
+                    'estado' => $booking->estado,
+                    'created_at' => $booking->created_at,
+                ];
+            })->values(),
+        ];
     }
 
     public function resolveLink(string $token)
     {
         try {
-            $referral = SellerReferral::with('seller:id,name,email,role,referral_code')
+            $referral = SellerReferral::with([
+                'seller:id,name,email,role,referral_code',
+                'referredUser:id,name,email,is_active',
+            ])
                 ->where('link_token', $token)
-                ->where('status', 'approved')
+                ->whereIn('status', ['pending_review', 'approved'])
                 ->first();
 
             if (!$referral || !$referral->seller || $referral->seller->role !== 'vendedor') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'El link de peluqueria no es valido o no esta aprobado'
+                    'message' => 'El enlace del referido no es válido o fue desactivado'
                 ], 404);
             }
 
             $this->ensureSellerReferralCode($referral);
-            $referral->refresh()->load('seller:id,name,email,role,referral_code');
+            $referral->refresh()->load([
+                'seller:id,name,email,role,referral_code',
+                'referredUser:id,name,email,is_active',
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -109,7 +202,7 @@ class SellerReferralController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al resolver el link de peluqueria: ' . $e->getMessage()
+                'message' => 'Error al resolver el enlace del referido: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -117,7 +210,7 @@ class SellerReferralController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->canManage($request)) {
+            if (!$this->canAccessReferrals($request)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'No autorizado para consultar referidos de vendedor'
@@ -125,13 +218,15 @@ class SellerReferralController extends Controller
             }
 
             $user = $request->user();
-            $query = SellerReferral::with(['seller:id,name,email', 'reviewer:id,name,email'])->orderBy('created_at', 'desc');
+            $query = SellerReferral::with([
+                'seller:id,name,email,referral_code',
+                'referredUser:id,name,email,is_active',
+                'reviewer:id,name,email',
+            ])->orderBy('created_at', 'desc');
 
-            if ($user->role === 'vendedor') {
-                $query->where('seller_user_id', $user->id);
-            }
+            $this->scopeReferralsForUser($query, $user);
 
-            $referrals = $query->get()->map(fn ($item) => $this->serializeReferral($item))->values();
+            $referrals = $query->get()->map(fn (SellerReferral $item) => $this->serializeReferral($item))->values();
 
             return response()->json([
                 'success' => true,
@@ -148,7 +243,7 @@ class SellerReferralController extends Controller
     public function statistics(Request $request)
     {
         try {
-            if (!$this->canManage($request)) {
+            if (!$this->canAccessSellerReports($request)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'No autorizado para consultar estadísticas'
@@ -167,8 +262,8 @@ class SellerReferralController extends Controller
             $pending = $all->where('status', 'pending_review')->count();
             $approved = $all->where('status', 'approved')->count();
             $rejected = $all->where('status', 'rejected')->count();
-            $withDocs = $all->filter(fn ($item) => !empty($item->chamber_of_commerce_path) && !empty($item->rut_path))->count();
-            $thisMonth = $all->filter(fn ($item) => $item->created_at && $item->created_at->month === $now->month && $item->created_at->year === $now->year)->count();
+            $withDocs = $all->filter(fn (SellerReferral $item) => !empty($item->chamber_of_commerce_path) && !empty($item->rut_path))->count();
+            $thisMonth = $all->filter(fn (SellerReferral $item) => $item->created_at && $item->created_at->month === $now->month && $item->created_at->year === $now->year)->count();
 
             return response()->json([
                 'success' => true,
@@ -192,7 +287,7 @@ class SellerReferralController extends Controller
     public function earnings(Request $request)
     {
         try {
-            if (!$this->canManage($request)) {
+            if (!$this->canAccessSellerReports($request)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'No autorizado para consultar ganancias'
@@ -280,23 +375,61 @@ class SellerReferralController extends Controller
         }
     }
 
+    public function partnerDashboard(Request $request)
+    {
+        try {
+            if ($request->user()?->role !== 'referido') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Solo un referido puede consultar este panel'
+                ], 403);
+            }
+
+            $referral = SellerReferral::with([
+                'seller:id,name,email,referral_code',
+                'referredUser:id,name,email,is_active',
+            ])
+                ->where('referred_user_id', $request->user()->id)
+                ->first();
+
+            if (!$referral) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se encontró el referido asociado a este usuario'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'referral' => $this->serializeReferral($referral),
+                ...$this->buildPartnerDashboard($referral),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al cargar el panel del referido: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function store(Request $request)
     {
         try {
             if ($request->user()?->role !== 'vendedor') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Solo los vendedores pueden registrar contratos'
+                    'message' => 'Solo los vendedores pueden registrar referidos'
                 ], 403);
             }
 
             $validated = $request->validate([
                 'business_name' => 'required|string|max:255',
                 'owner_name' => 'nullable|string|max:255',
-                'contact_name' => 'required|string|max:255',
+                'contact_name' => 'nullable|string|max:255',
                 'phone' => 'nullable|string|max:30',
                 'whatsapp' => 'nullable|string|max:30',
-                'email' => 'nullable|email|max:255',
+                'email' => 'required|email|max:255|unique:users,email',
+                'password' => 'required|string|min:6|max:255',
                 'nit' => 'nullable|string|max:50',
                 'city' => 'nullable|string|max:120',
                 'address' => 'nullable|string|max:255',
@@ -305,29 +438,55 @@ class SellerReferralController extends Controller
                 'rut' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:5120',
             ]);
 
-            $referral = SellerReferral::create([
-                'seller_user_id' => $request->user()->id,
-                'business_name' => $validated['business_name'],
-                'owner_name' => $validated['owner_name'] ?? null,
-                'contact_name' => $validated['contact_name'],
-                'phone' => $validated['phone'] ?? null,
-                'whatsapp' => $validated['whatsapp'] ?? null,
-                'email' => $validated['email'] ?? null,
-                'nit' => $validated['nit'] ?? null,
-                'city' => $validated['city'] ?? null,
-                'address' => $validated['address'] ?? null,
-                'notes' => $validated['notes'] ?? null,
-                'status' => 'pending_review',
-                'chamber_of_commerce_path' => $this->storeDocument($request->file('chamber_of_commerce'), 'camara-comercio'),
-                'rut_path' => $this->storeDocument($request->file('rut'), 'rut'),
-            ]);
+            $resolvedContactName = trim((string) ($validated['contact_name'] ?? ''));
+            if ($resolvedContactName === '') {
+                $resolvedContactName = trim((string) ($validated['owner_name'] ?? '')) ?: $validated['business_name'];
+            }
 
-            $referral->load('seller:id,name,email');
+            $referredUser = null;
+            $referral = DB::transaction(function () use ($request, $validated, $resolvedContactName, &$referredUser) {
+                $referredUser = User::create([
+                    'name' => $validated['business_name'],
+                    'email' => $validated['email'],
+                    'password' => Hash::make($validated['password']),
+                    'role' => 'referido',
+                    'available' => false,
+                    'is_active' => true,
+                    'earnings' => 0,
+                    'address' => $validated['address'] ?? null,
+                ]);
+
+                return SellerReferral::create([
+                    'seller_user_id' => $request->user()->id,
+                    'referred_user_id' => $referredUser->id,
+                    'business_name' => $validated['business_name'],
+                    'owner_name' => $validated['owner_name'] ?? null,
+                    'contact_name' => $resolvedContactName,
+                    'phone' => $validated['phone'] ?? null,
+                    'whatsapp' => $validated['whatsapp'] ?? null,
+                    'email' => $validated['email'],
+                    'nit' => $validated['nit'] ?? null,
+                    'city' => $validated['city'] ?? null,
+                    'address' => $validated['address'] ?? null,
+                    'notes' => $validated['notes'] ?? null,
+                    'status' => 'pending_review',
+                    'chamber_of_commerce_path' => $this->storeDocument($request->file('chamber_of_commerce'), 'camara-comercio'),
+                    'rut_path' => $this->storeDocument($request->file('rut'), 'rut'),
+                ]);
+            });
+
+            $referral->load([
+                'seller:id,name,email,referral_code',
+                'referredUser:id,name,email,is_active',
+            ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Contrato referido registrado exitosamente',
+                'message' => 'Referido registrado y usuario creado exitosamente',
                 'referral' => $this->serializeReferral($referral),
+                'credentials' => [
+                    'email' => $referredUser?->email,
+                ],
             ], 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
@@ -358,17 +517,31 @@ class SellerReferralController extends Controller
                 'review_notes' => 'nullable|string|max:5000',
             ]);
 
-            $referral = SellerReferral::findOrFail($id);
+            $referral = SellerReferral::with('referredUser')->findOrFail($id);
             $referral->status = $validated['status'];
             $referral->review_notes = $validated['review_notes'] ?? null;
             $referral->reviewed_at = now();
             $referral->reviewed_by_user_id = $request->user()->id;
             $referral->save();
-            $referral->load(['seller:id,name,email', 'reviewer:id,name,email']);
+
+            if ($referral->referredUser) {
+                $referral->referredUser->is_active = $validated['status'] !== 'rejected';
+                $referral->referredUser->save();
+            }
+
+            $referral->load([
+                'seller:id,name,email,referral_code',
+                'referredUser:id,name,email,is_active',
+                'reviewer:id,name,email',
+            ]);
 
             if ($validated['status'] === 'approved') {
                 $this->ensureSellerReferralCode($referral);
-                $referral->refresh()->load(['seller:id,name,email,referral_code', 'reviewer:id,name,email']);
+                $referral->refresh()->load([
+                    'seller:id,name,email,referral_code',
+                    'referredUser:id,name,email,is_active',
+                    'reviewer:id,name,email',
+                ]);
             }
 
             return response()->json([

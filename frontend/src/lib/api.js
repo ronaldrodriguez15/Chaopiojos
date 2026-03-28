@@ -497,6 +497,24 @@ export const sellerReferralService = {
     }
   },
 
+  async getPartnerDashboard() {
+    try {
+      const response = await api.get('/seller-referrals/partner-dashboard');
+      return {
+        success: true,
+        referral: response.data.referral || null,
+        statistics: response.data.statistics || {},
+        recentBookings: response.data.recent_bookings || [],
+      };
+    } catch (error) {
+      console.error('Error obteniendo panel del referido:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al obtener el panel del referido'
+      };
+    }
+  },
+
   async create(payload) {
     try {
       const formData = new FormData();
@@ -510,7 +528,12 @@ export const sellerReferralService = {
           'Content-Type': 'multipart/form-data'
         }
       });
-      return { success: true, referral: response.data.referral };
+      return {
+        success: true,
+        referral: response.data.referral,
+        message: response.data.message,
+        credentials: response.data.credentials || null,
+      };
     } catch (error) {
       console.error('Error creando referido de vendedor:', error.response?.data);
       return {

@@ -483,14 +483,14 @@ class BookingController extends Controller
         if ($resolvedSellerToken) {
             $sellerReferral = SellerReferral::with('seller:id,name,email,role,referral_code')
                 ->where('link_token', $resolvedSellerToken)
-                ->where('status', 'approved')
+                ->whereIn('status', ['pending_review', 'approved'])
                 ->first();
 
             if (!$sellerReferral || !$sellerReferral->seller || $sellerReferral->seller->role !== 'vendedor') {
                 return [
                     'success' => false,
                     'errors' => [
-                        'sellerReferralToken' => ['El link de peluqueria no es valido o no esta aprobado']
+                        'sellerReferralToken' => ['El enlace del referido no es válido o fue desactivado']
                     ]
                 ];
             }
