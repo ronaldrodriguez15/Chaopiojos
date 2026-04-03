@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useCallback, lazy, Suspense, startTransition } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, PieChart, Users, User, DollarSign, Map, Loader, RefreshCw, Menu } from 'lucide-react';
+import { User, Map, Loader, RefreshCw, Menu, Building2, FileText, Lock, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -10,20 +10,61 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Bar, Pie, Line } from 'react-chartjs-2';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import ScheduleManagement from '@/components/ScheduleManagement';
 import PiojologistMap from '@/components/PiojologistMap';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import DashboardModule from '@/components/admin/DashboardModule';
 import { geocodeAddress } from '@/lib/geocoding';
-import { bookingService, referralService, settingsService } from '@/lib/api';
+import { bookingService, referralService, sellerReferralService, settingsService } from '@/lib/api';
 import {
   DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE,
   SMS_TEMPLATE_VARIABLES
 } from '@/lib/bookingSmsTemplate';
 
-// Register ChartJS components
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement);
+const DEFAULT_PARTNER_COMMISSION_TIERS = [
+  { from: 1, to: 20, value: 5000 },
+  { from: 21, to: 40, value: 7000 },
+  { from: 41, to: null, value: 100000 },
+];
+
+const normalizePartnerCommissionTiers = (tiers) => {
+  if (!Array.isArray(tiers) || tiers.length === 0) return DEFAULT_PARTNER_COMMISSION_TIERS;
+
+  const normalized = tiers
+    .map((tier, index) => ({
+      id: tier?.id || `tier-${index + 1}`,
+      from: Number(tier?.from || 1),
+      to: tier?.to === null || typeof tier?.to === 'undefined' || tier?.to === '' ? null : Number(tier.to),
+      value: Number(tier?.value || 0),
+    }))
+    .filter((tier) => Number.isFinite(tier.from) && tier.from >= 1 && Number.isFinite(tier.value) && tier.value >= 0)
+    .sort((a, b) => a.from - b.from);
+
+  return normalized.length > 0 ? normalized : DEFAULT_PARTNER_COMMISSION_TIERS;
+};
+
+const INITIAL_USER_FORM_DATA = {
+  name: '',
+  email: '',
+  password: '',
+  role: 'piojologa',
+  specialty: '',
+  available: true,
+  is_active: true,
+  address: '',
+  commission_rate: 50,
+  referral_value: 15000,
+  referral_code_used: '',
+  referral_code: '',
+  business_name: '',
+  owner_name: '',
+  whatsapp: '',
+  nit: '',
+  city: '',
+  notes: '',
+  chamber_of_commerce: null,
+  rut: null,
+};
 
 // Lazy load módulos pesados para mejor rendimiento
 const UsersModule = lazy(() => import('@/components/admin/UsersModule'));
@@ -40,7 +81,7 @@ const DeleteConfirmDialog = lazy(() => import('@/components/admin/dialogs/Delete
 const UserDetailDialog = lazy(() => import('@/components/admin/dialogs/UserDetailDialog'));
 const EarningsDialog = lazy(() => import('@/components/admin/dialogs/EarningsDialog'));
 
-const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUserActive, appointments, baseAppointments = [], bookings = [], updateAppointments, updateBookings, reloadBookings, onDeleteBooking, piojologists, products, updateProducts, services = [], onCreateService, onUpdateService, onDeleteService, serviceCatalog, formatCurrency, syncICalEvents, productRequests, onApproveRequest, onRejectRequest, onNotify }) => {
+const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUserActive, appointments, baseAppointments = [], bookings = [], updateAppointments, updateBookings, reloadUsers, reloadBookings, onDeleteBooking, piojologists, products, updateProducts, services = [], onCreateService, onUpdateService, onDeleteService, serviceCatalog, formatCurrency, syncICalEvents, productRequests, onApproveRequest, onRejectRequest, onNotify }) => {
   const { toast } = useToast();
   
   // User Management State
@@ -50,19 +91,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
   const [isUserDetailOpen, setIsUserDetailOpen] = useState(false);
   const [detailUser, setDetailUser] = useState(null);
   const [referralCodeValidation, setReferralCodeValidation] = useState({ isValidating: false, isValid: null, message: '' });
-  const [userFormData, setUserFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    role: 'piojologa',
-    specialty: '',
-    available: true,
-    address: '',
-    commission_rate: 50,
-    referral_value: 15000,
-    referral_code_used: '', // Código de referido ingresado
-    referral_code: '' // Código único generado para la piojóloga
-  });
+  const [userFormData, setUserFormData] = useState(INITIAL_USER_FORM_DATA);
 
   // Service Creation State
   const [isServiceDialogOpen, setIsServiceDialogOpen] = useState(false);
@@ -85,16 +114,48 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
   const [bookingSettingsLoading, setBookingSettingsLoading] = useState(false);
   const [whatsappTemplateDraft, setWhatsappTemplateDraft] = useState(DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE);
   const [smsSettingsSaving, setSmsSettingsSaving] = useState(false);
+  const [sellerReferralValueDraft, setSellerReferralValueDraft] = useState(5000);
+  const [sellerReferralSettingsSaving, setSellerReferralSettingsSaving] = useState(false);
+  const [partnerCommissionTiersDraft, setPartnerCommissionTiersDraft] = useState(DEFAULT_PARTNER_COMMISSION_TIERS);
+  const [partnerCommissionSettingsSaving, setPartnerCommissionSettingsSaving] = useState(false);
 
 
   // Persist active tab across refresh
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('adminTab') || 'dashboard');
+  const [settingsTab, setSettingsTab] = useState(() => localStorage.getItem('adminSettingsTab') || 'agenda');
+  const [dashboardFocus, setDashboardFocus] = useState(null);
   const handleTabChange = (value) => {
     startTransition(() => {
       setActiveTab(value);
       localStorage.setItem('adminTab', value);
     });
   };
+  const handleSettingsTabChange = (value) => {
+    setSettingsTab(value);
+    localStorage.setItem('adminSettingsTab', value);
+  };
+  const handleOpenUserStats = useCallback((user) => {
+    const tabMap = {
+      referido: 'establecimientos',
+      vendedor: 'vendedores',
+      piojologa: 'piojologas',
+    };
+    const targetTab = tabMap[user?.role];
+    if (!targetTab) return;
+
+    const search = String(user?.business_name || user?.name || user?.email || '').trim();
+    const request = {
+      tab: targetTab,
+      search,
+      requestId: `${user?.id || 'user'}-${Date.now()}`,
+    };
+
+    startTransition(() => {
+      setDashboardFocus(request);
+      setActiveTab('dashboard');
+      localStorage.setItem('adminTab', 'dashboard');
+    });
+  }, []);
 
   const loadReferralPaymentHistory = useCallback(async (showErrorToast = false) => {
     setLoadingEarnings(true);
@@ -152,6 +213,8 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
       if (isMounted && result.success) {
         setBookingRequireAdvance12h(!!result.settings?.requireAdvance12h);
         const template = result.settings?.whatsappConfirmationTemplate || DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE;
+        setSellerReferralValueDraft(Number(result.settings?.sellerReferralValue ?? 5000));
+        setPartnerCommissionTiersDraft(normalizePartnerCommissionTiers(result.settings?.partnerCommissionTiers));
         setWhatsappTemplateDraft(template);
         try {
           localStorage.setItem('booking_whatsapp_template', template);
@@ -259,6 +322,97 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
     setWhatsappTemplateDraft(DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE);
   };
 
+  const handleSaveSellerReferralSettings = async () => {
+    const nextValue = Number(sellerReferralValueDraft);
+    if (!Number.isFinite(nextValue) || nextValue < 0) {
+      toast({
+        title: "❌ Valor inválido",
+        description: "Debes ingresar un valor global válido para vendedores.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setSellerReferralSettingsSaving(true);
+    const result = await settingsService.updateBookingSettings({
+      sellerReferralValue: nextValue
+    });
+    setSellerReferralSettingsSaving(false);
+
+    if (!result.success) {
+      toast({
+        title: "❌ Error",
+        description: result.message || "No se pudo actualizar la comisión global de vendedores",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const savedValue = Number(result.settings?.sellerReferralValue ?? nextValue);
+    setSellerReferralValueDraft(savedValue);
+    toast({
+      title: "✅ Configuración actualizada",
+      description: `La comisión global por cabeza para vendedores quedó en ${toMoney(savedValue)}.`
+    });
+  };
+
+  const handlePartnerTierChange = (index, field, value) => {
+    setPartnerCommissionTiersDraft((current) => current.map((tier, tierIndex) => {
+      if (tierIndex !== index) return tier;
+      return {
+        ...tier,
+        [field]: value,
+      };
+    }));
+  };
+
+  const handleSavePartnerCommissionSettings = async () => {
+    const normalizedTiers = normalizePartnerCommissionTiers(partnerCommissionTiersDraft).map((tier) => ({
+      from: Number(tier.from || 1),
+      to: tier.to === null || tier.to === '' ? null : Number(tier.to),
+      value: Number(tier.value || 0),
+    }));
+
+    const hasInvalidTier = normalizedTiers.some((tier) => (
+      !Number.isFinite(tier.from)
+      || tier.from < 1
+      || (tier.to !== null && (!Number.isFinite(tier.to) || tier.to < tier.from))
+      || !Number.isFinite(tier.value)
+      || tier.value < 0
+    ));
+
+    if (hasInvalidTier) {
+      toast({
+        title: "❌ Tramos inválidos",
+        description: "Revisa los valores de los tramos antes de guardar la comisión de establecimientos.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setPartnerCommissionSettingsSaving(true);
+    const result = await settingsService.updateBookingSettings({
+      partnerCommissionTiers: normalizedTiers
+    });
+    setPartnerCommissionSettingsSaving(false);
+
+    if (!result.success) {
+      toast({
+        title: "❌ Error",
+        description: result.message || "No se pudo actualizar la comisión de establecimientos",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const savedTiers = normalizePartnerCommissionTiers(result.settings?.partnerCommissionTiers);
+    setPartnerCommissionTiersDraft(savedTiers);
+    toast({
+      title: "✅ Configuración actualizada",
+      description: "Los tramos mensuales de comisión para establecimientos quedaron guardados."
+    });
+  };
+
   // Mobile nav toggle for tabs
   const [isNavOpen, setIsNavOpen] = useState(false);
   useEffect(() => {
@@ -342,19 +496,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
   });
 
   const resetUserForm = () => {
-    setUserFormData({
-      name: '',
-      email: '',
-      password: '',
-      role: 'piojologa',
-      specialty: '',
-      available: true,
-      is_active: true,
-      address: '',
-      referral_value: 15000,
-      referral_code_used: '',
-      referral_code: ''
-    });
+    setUserFormData(INITIAL_USER_FORM_DATA);
     setEditingUser(null);
     setReferralCodeValidation({ isValid: true, message: '' });
   };
@@ -433,12 +575,24 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
     if (user) {
       setEditingUser(user);
       setUserFormData({
+        ...INITIAL_USER_FORM_DATA,
         ...user,
-        referral_value: Number(user.referral_value ?? 15000)
+        referral_value: Number(user.referral_value ?? (user.role === 'vendedor' ? sellerReferralValueDraft : 15000))
       });
     } else {
       resetUserForm();
     }
+    setIsUserDialogOpen(true);
+  };
+
+  const handleOpenEstablishmentDialog = () => {
+    setEditingUser(null);
+    setUserFormData({
+      ...INITIAL_USER_FORM_DATA,
+      role: 'referido',
+      available: false,
+    });
+    setReferralCodeValidation({ isValid: true, message: '' });
     setIsUserDialogOpen(true);
   };
 
@@ -533,9 +687,19 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
 
       let userToSave = { ...userFormData };
 
+      if (userToSave.role === 'referido') {
+        userToSave = {
+          ...userToSave,
+          business_name: userToSave.business_name?.trim() || userToSave.name?.trim() || '',
+        };
+      }
+
       if (userToSave.role === 'piojologa') {
         const referralValue = Number(userToSave.referral_value);
         userToSave.referral_value = Number.isFinite(referralValue) && referralValue >= 0 ? referralValue : 15000;
+      } else if (userToSave.role === 'vendedor') {
+        const referralValue = Number(userToSave.referral_value);
+        userToSave.referral_value = Number.isFinite(referralValue) && referralValue >= 0 ? referralValue : Number(sellerReferralValueDraft || 5000);
       } else {
         delete userToSave.referral_value;
       }
@@ -581,6 +745,16 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
 
       let result;
       if (editingUser) {
+        if (userToSave.role === 'referido') {
+          toast({
+            title: "Edición no disponible",
+            description: "Los establecimientos se crean desde este módulo, pero su edición aún no está habilitada aquí.",
+            variant: "destructive",
+            className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+          });
+          return;
+        }
+
         result = await handleUpdateUser({ ...userToSave, id: editingUser.id });
         if (result.success) {
           // Si el usuario editado es el que está en detailUser, actualizarlo con los datos frescos
@@ -600,6 +774,42 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
           });
         }
       } else {
+        if (userToSave.role === 'referido') {
+          const establishmentPayload = {
+            business_name: userToSave.business_name,
+            owner_name: userToSave.owner_name?.trim() || '',
+            whatsapp: userToSave.whatsapp?.trim() || '',
+            email: userToSave.email?.trim() || '',
+            password: userToSave.password || '',
+            city: userToSave.city?.trim() || '',
+            address: userToSave.address?.trim() || '',
+            nit: userToSave.nit?.trim() || '',
+            notes: userToSave.notes?.trim() || '',
+            chamber_of_commerce: userToSave.chamber_of_commerce || null,
+            rut: userToSave.rut || null,
+          };
+
+          result = await sellerReferralService.create(establishmentPayload);
+          if (result.success) {
+            toast({
+              title: "Establecimiento creado",
+              description: "El establecimiento quedó creado con su usuario de acceso y su link.",
+              className: "bg-blue-100 text-blue-800 rounded-2xl border-2 border-blue-200"
+            });
+            setIsUserDialogOpen(false);
+            resetUserForm();
+            await reloadUsers?.();
+          } else {
+            toast({
+              title: "Error al crear",
+              description: buildValidationMessage(result, "No se pudo crear el establecimiento"),
+              variant: "destructive",
+              className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+            });
+          }
+          return;
+        }
+
         // Generar código único de referido para nuevas piojólogas
         if (userToSave.role === 'piojologa') {
           try {
@@ -1013,6 +1223,8 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
     handleAssignPiojologist(appointment?.backendId || appointment?.bookingId || appointment?.id, piojologistId, appointment);
   };
 
+  const isEstablishmentForm = userFormData.role === 'referido';
+
   return (
     <div className="w-full space-y-8 overflow-x-hidden">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
@@ -1069,284 +1281,14 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
               </Button>
             </div>
         <TabsContent value="dashboard" className="space-y-6">
-            {/* Stats Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              { label: 'Total Citas', val: appointments.length, color: 'bg-blue-100 text-blue-600', icon: PieChart },
-              { label: 'Pendientes', val: appointments.filter(a => a.status === 'pending').length, color: 'bg-yellow-100 text-yellow-600', icon: Calendar },
-              { label: 'Héroes', val: piojologists.length, color: 'bg-green-100 text-green-600', icon: Users },
-              { label: 'Ingresos Totales', val: formatCurrency(appointments.filter(a => a.status === 'completed').reduce((acc, curr) => acc + getServicePrice(curr), 0)), color: 'bg-purple-100 text-purple-600', icon: DollarSign },
-            ].map((stat, idx) => (
-              <motion.div 
-                key={idx}
-                whileHover={{ scale: 1.05, rotate: idx % 2 === 0 ? 2 : -2 }}
-                className={`${stat.color} p-6 rounded-[2rem] border-4 border-white shadow-lg flex flex-col items-center justify-center text-center`}
-              >
-                <stat.icon className="w-8 h-8 mb-2 opacity-80" />
-                <span className="text-3xl font-black truncate w-full">{stat.val}</span>
-                <span className="font-bold text-sm opacity-70">{stat.label}</span>
-              </motion.div>
-            ))}
-          </div>
-
-          {/* Analytics & Charts Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Distribution by Status - Pie Chart */}
-            <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-purple-100">
-              <h3 className="text-2xl font-black text-gray-800 mb-6 flex items-center gap-3">
-                <span className="text-3xl">📊</span> Distribución de Estados
-              </h3>
-              <div className="h-80 flex items-center justify-center">
-                {(() => {
-                  const counts = [
-                    appointments.filter(a => a.status === 'pending').length,
-                    appointments.filter(a => a.status === 'assigned').length,
-                    appointments.filter(a => a.status === 'accepted').length,
-                    appointments.filter(a => a.status === 'completed').length
-                  ];
-                  const total = counts.reduce((acc, v) => acc + v, 0);
-                  if (total === 0) {
-                    return (
-                      <div className="text-center">
-                        <div className="text-gray-500 font-black text-xl">Sin datos para mostrar</div>
-                        <div className="text-gray-400 font-bold text-sm">No hay citas registradas aún</div>
-                      </div>
-                    );
-                  }
-                  return (
-                    <Pie
-                      data={{
-                        labels: ['Pendientes', 'Asignados', 'Aceptados', 'Completados'],
-                        datasets: [{
-                          data: counts,
-                          backgroundColor: ['#FBBF24', '#22D3EE', '#4ADE80', '#60A5FA'],
-                          borderColor: ['#F59E0B', '#06B6D4', '#22C55E', '#3B82F6'],
-                          borderWidth: 2,
-                          borderRadius: 8
-                        }]
-                      }}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                          legend: {
-                            position: 'bottom',
-                            labels: {
-                              font: { family: 'Fredoka', size: 12, weight: 700 },
-                              color: '#374151',
-                              padding: 15,
-                              usePointStyle: true
-                            }
-                          },
-                          tooltip: {
-                            backgroundColor: 'rgba(0,0,0,0.8)',
-                            padding: 12,
-                            titleFont: { family: 'Fredoka', size: 14, weight: 700 },
-                            bodyFont: { family: 'Fredoka', size: 12, weight: 600 },
-                            borderColor: '#60A5FA',
-                            borderWidth: 1,
-                            borderRadius: 8
-                          }
-                        }
-                      }}
-                    />
-                  );
-                })()}
-              </div>
-            </div>
-
-            {/* Revenue by Piojologist - Bar Chart */}
-            <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-green-100">
-              <h3 className="text-2xl font-black text-gray-800 mb-6 flex items-center gap-3">
-                <span className="text-3xl">💰</span> Ingresos por Piojóloga
-              </h3>
-              <div className="h-80">
-                <Bar
-                  data={{
-                    labels: piojologists.map(p => p.name),
-                    datasets: [{
-                      label: 'Ingresos ($)',
-                      data: piojologists.map(pio => 
-                        appointments.filter(a => a.piojologistId === pio.id && a.status === 'completed')
-                          .reduce((acc, curr) => acc + getServicePrice(curr), 0)
-                      ),
-                      backgroundColor: ['#10B981', '#34D399', '#6EE7B7', '#A7F3D0'],
-                      borderColor: '#059669',
-                      borderWidth: 2,
-                      borderRadius: 8,
-                      hoverBackgroundColor: '#047857'
-                    }]
-                  }}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    indexAxis: 'y',
-                    plugins: {
-                      legend: {
-                        labels: {
-                          font: { family: 'Fredoka', size: 12, weight: 700 },
-                          color: '#374151'
-                        }
-                      },
-                      tooltip: {
-                        backgroundColor: 'rgba(0,0,0,0.8)',
-                        padding: 12,
-                        titleFont: { size: 14, weight: 'bold' },
-                        bodyFont: { size: 12 },
-                        borderColor: '#10B981',
-                        borderWidth: 1,
-                        borderRadius: 8,
-                        callbacks: {
-                          label: function(context) {
-                            return formatCurrency(context.parsed.x);
-                          }
-                        }
-                      }
-                    },
-                    scales: {
-                      x: {
-                        beginAtZero: true,
-                        grid: { color: '#E5E7EB' },
-                        ticks: { font: { size: 11, weight: 'bold' }, color: '#6B7280' }
-                      },
-                      y: {
-                        grid: { display: false },
-                        ticks: { font: { size: 11, weight: 'bold' }, color: '#374151' }
-                      }
-                    }
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Service Popularity - Horizontal Bar Chart */}
-            <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-pink-100">
-              <h3 className="text-2xl font-black text-gray-800 mb-6 flex items-center gap-3">
-                <span className="text-3xl">⭐</span> Servicios Más Solicitados
-              </h3>
-              <div className="h-80">
-                <Bar
-                  data={{
-                    labels: Object.keys(serviceCatalog),
-                    datasets: [{
-                      label: 'Cantidad de Servicios',
-                      data: Object.keys(serviceCatalog).map(service => 
-                        appointments.filter(a => a.serviceType === service).length
-                      ),
-                      backgroundColor: ['#EC4899', '#F472B6', '#F9A8D4', '#FBCFE8'],
-                      borderColor: '#BE185D',
-                      borderWidth: 2,
-                      borderRadius: 8,
-                      hoverBackgroundColor: '#DB2777'
-                    }]
-                  }}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    indexAxis: 'y',
-                    plugins: {
-                      legend: {
-                        labels: {
-                          font: { family: 'Fredoka', size: 12, weight: 700 },
-                          color: '#374151'
-                        }
-                      },
-                      tooltip: {
-                        backgroundColor: 'rgba(0,0,0,0.8)',
-                        padding: 12,
-                        titleFont: { family: 'Fredoka', size: 14, weight: 700 },
-                        bodyFont: { family: 'Fredoka', size: 12, weight: 600 },
-                        borderColor: '#EC4899',
-                        borderWidth: 1,
-                        borderRadius: 8
-                      }
-                    },
-                    scales: {
-                      x: {
-                        beginAtZero: true,
-                        grid: { color: '#E5E7EB' },
-                        ticks: { font: { family: 'Fredoka', size: 11, weight: 700 }, color: '#6B7280' }
-                      },
-                      y: {
-                        grid: { display: false },
-                        ticks: { font: { family: 'Fredoka', size: 11, weight: 700 }, color: '#374151' }
-                      }
-                    }
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Weekly Performance - Line Chart */}
-            <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border-4 border-orange-100">
-              <h3 className="text-2xl font-black text-gray-800 mb-6 flex items-center gap-3">
-                <span className="text-3xl">📈</span> Desempeño Semanal
-              </h3>
-              <div className="h-80">
-                <Line
-                  data={{
-                    labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sab', 'Dom'],
-                    datasets: [{
-                      label: 'Citas por Día',
-                      data: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sab', 'Dom'].map((day, idx) => {
-                        const dayCount = appointments.filter(a => {
-                          const apt = new Date(a.date);
-                          const today = new Date();
-                          const daysBack = 6 - idx;
-                          const checkDate = new Date(today);
-                          checkDate.setDate(checkDate.getDate() - daysBack);
-                          return apt.toDateString() === checkDate.toDateString();
-                        }).length;
-                        return dayCount;
-                      }),
-                      backgroundColor: 'rgba(251, 191, 36, 0.1)',
-                      borderColor: '#F59E0B',
-                      borderWidth: 3,
-                      fill: true,
-                      tension: 0.4,
-                      pointBackgroundColor: '#F59E0B',
-                      pointBorderColor: '#D97706',
-                      pointBorderWidth: 2,
-                      pointRadius: 5,
-                      pointHoverRadius: 7
-                    }]
-                  }}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                      legend: {
-                        labels: {
-                          font: { family: 'Fredoka', size: 12, weight: 700 },
-                          color: '#374151'
-                        }
-                      },
-                      tooltip: {
-                        backgroundColor: 'rgba(0,0,0,0.8)',
-                        padding: 12,
-                        titleFont: { family: 'Fredoka', size: 14, weight: 700 },
-                        bodyFont: { family: 'Fredoka', size: 12, weight: 600 },
-                        borderColor: '#F59E0B',
-                        borderWidth: 1,
-                        borderRadius: 8
-                      }
-                    },
-                    scales: {
-                      y: {
-                        beginAtZero: true,
-                        grid: { color: '#E5E7EB' },
-                        ticks: { font: { family: 'Fredoka', size: 11, weight: 700 }, color: '#6B7280', stepSize: 1 }
-                      },
-                      x: {
-                        grid: { color: '#E5E7EB' },
-                        ticks: { font: { family: 'Fredoka', size: 11, weight: 700 }, color: '#374151' }
-                      }
-                    }
-                  }}
-                />
-              </div>
-            </div>
-          </div>
+          <DashboardModule
+            appointments={appointments}
+            users={users}
+            piojologists={piojologists}
+            formatCurrency={formatCurrency}
+            getServicePrice={getServicePrice}
+            focusRequest={dashboardFocus}
+          />
         </TabsContent>
 
         <TabsContent value="schedule" className="space-y-6">
@@ -1369,9 +1311,11 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
             <UsersModule
               users={users}
               handleOpenUserDialog={handleOpenUserDialog}
+              handleOpenEstablishmentDialog={handleOpenEstablishmentDialog}
               handleOpenUserDetail={handleOpenUserDetail}
               handleToggleUserActive={handleToggleUserActive}
               handleOpenEarningsModal={handleOpenEarningsModal}
+              handleOpenUserStats={handleOpenUserStats}
             />
           </Suspense>
         </TabsContent>
@@ -1495,47 +1439,193 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
               </div>
             </div>
 
-            <div className="bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-4 md:p-5 space-y-4">
-              <div>
-                <p className="text-xs font-black text-emerald-600 uppercase tracking-wide">Submódulo</p>
-                <h4 className="text-xl font-black text-emerald-800">SMS</h4>
-                <p className="text-sm font-bold text-emerald-700">
-                  Este mensaje se usa en el botón de WhatsApp del agendamiento público confirmado.
-                </p>
-              </div>
+            <Tabs value={settingsTab} onValueChange={handleSettingsTabChange} className="space-y-6">
+              <TabsList className="grid grid-cols-2 xl:grid-cols-4 bg-slate-50 border-2 border-slate-200 rounded-2xl p-2 h-auto gap-2">
+                <TabsTrigger value="agenda" className="rounded-xl py-3 font-black data-[state=active]:bg-slate-500 data-[state=active]:text-white">Agenda</TabsTrigger>
+                <TabsTrigger value="vendedores" className="rounded-xl py-3 font-black data-[state=active]:bg-emerald-500 data-[state=active]:text-white">Vendedores</TabsTrigger>
+                <TabsTrigger value="establecimientos" className="rounded-xl py-3 font-black data-[state=active]:bg-sky-500 data-[state=active]:text-white">Establecimientos</TabsTrigger>
+                <TabsTrigger value="mensajes" className="rounded-xl py-3 font-black data-[state=active]:bg-teal-500 data-[state=active]:text-white">Mensajes</TabsTrigger>
+              </TabsList>
 
-              <div className="bg-white border-2 border-emerald-200 rounded-2xl p-4 space-y-3">
-                <label className="block text-sm font-black text-gray-700">Plantilla del mensaje</label>
-                <textarea
-                  value={whatsappTemplateDraft}
-                  onChange={(e) => setWhatsappTemplateDraft(e.target.value)}
-                  className="w-full min-h-[320px] rounded-2xl border-2 border-emerald-200 bg-white px-4 py-3 text-sm font-bold text-gray-800 focus:outline-none focus:border-emerald-400 resize-y"
-                  placeholder="Escribe el mensaje que se enviará por WhatsApp"
-                />
-                <p className="text-xs text-gray-500 font-bold">
-                  Variables disponibles: {SMS_TEMPLATE_VARIABLES.join(', ')}
-                </p>
-              </div>
+              <TabsContent value="agenda" className="space-y-4">
+                <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 md:p-5 space-y-4">
+                  <div>
+                    <p className="text-xs font-black text-amber-600 uppercase tracking-wide">Submódulo</p>
+                    <h4 className="text-xl font-black text-amber-800">Agenda</h4>
+                    <p className="text-sm font-bold text-amber-700">
+                      Controla la regla global de anticipación mínima para crear agendamientos.
+                    </p>
+                  </div>
 
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  type="button"
-                  onClick={handleSaveSmsSettings}
-                  disabled={smsSettingsSaving}
-                  className="bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-xl px-5"
-                >
-                  {smsSettingsSaving ? 'Guardando...' : 'Guardar configuración SMS'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleResetSmsTemplate}
-                  className="border-2 border-emerald-200 text-emerald-700 hover:bg-emerald-100 font-black rounded-xl px-5"
-                >
-                  Restaurar plantilla predeterminada
-                </Button>
-              </div>
-            </div>
+                  <div className="bg-white border-2 border-amber-200 rounded-2xl p-4 md:p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-black text-gray-800">Agendamiento con anticipación de 12 horas</p>
+                      <p className="text-xs text-gray-500 font-bold mt-1">
+                        Si está activo, el sistema no permitirá reservar con menos de 12 horas de diferencia.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => handleToggleBookingAdvance12h(!bookingRequireAdvance12h)}
+                      disabled={bookingSettingsLoading}
+                      className={`${bookingRequireAdvance12h ? 'bg-amber-500 hover:bg-amber-600 border-amber-700' : 'bg-slate-500 hover:bg-slate-600 border-slate-700'} text-white font-black rounded-xl px-5`}
+                    >
+                      {bookingSettingsLoading ? 'Guardando...' : bookingRequireAdvance12h ? 'Activo' : 'Inactivo'}
+                    </Button>
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="vendedores" className="space-y-4">
+                <div className="bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-4 md:p-5 space-y-4">
+                  <div>
+                    <p className="text-xs font-black text-emerald-600 uppercase tracking-wide">Submódulo</p>
+                    <h4 className="text-xl font-black text-emerald-800">Vendedores</h4>
+                    <p className="text-sm font-bold text-emerald-700">
+                      Define la comisión global por cabeza agendada desde los links de vendedores. Si un vendedor tiene valor propio, ese valor tendrá prioridad.
+                    </p>
+                  </div>
+
+                  <div className="bg-white border-2 border-emerald-200 rounded-2xl p-4 space-y-3">
+                    <label className="block text-sm font-black text-gray-700">Valor global por cabeza (COP)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1000"
+                      value={sellerReferralValueDraft}
+                      onChange={(e) => setSellerReferralValueDraft(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full rounded-2xl border-2 border-emerald-200 bg-white px-4 py-3 text-sm font-bold text-gray-800 focus:outline-none focus:border-emerald-400"
+                      placeholder="5000"
+                    />
+                    <p className="text-xs text-gray-500 font-bold">
+                      Este valor se usa como predeterminado para todos los vendedores que no tengan un valor personalizado.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      type="button"
+                      onClick={handleSaveSellerReferralSettings}
+                      disabled={sellerReferralSettingsSaving}
+                      className="bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-xl px-5"
+                    >
+                      {sellerReferralSettingsSaving ? 'Guardando...' : 'Guardar comisión global de vendedores'}
+                    </Button>
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="establecimientos" className="space-y-4">
+                <div className="bg-sky-50 border-2 border-sky-200 rounded-2xl p-4 md:p-5 space-y-4">
+                  <div>
+                    <p className="text-xs font-black text-sky-600 uppercase tracking-wide">Submódulo</p>
+                    <h4 className="text-xl font-black text-sky-800">Establecimientos</h4>
+                    <p className="text-sm font-bold text-sky-700">
+                      Define la comisión mensual por tramos para los establecimientos referidos. El corte se guarda por mes calendario.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {partnerCommissionTiersDraft.map((tier, index) => (
+                      <div key={tier.id || index} className="bg-white border-2 border-sky-200 rounded-2xl p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-sm font-black text-gray-700 mb-2">Desde</label>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={tier.from}
+                            onChange={(e) => handlePartnerTierChange(index, 'from', e.target.value === '' ? '' : Number(e.target.value))}
+                            className="w-full rounded-2xl border-2 border-sky-200 bg-white px-4 py-3 text-sm font-bold text-gray-800 focus:outline-none focus:border-sky-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-black text-gray-700 mb-2">Hasta</label>
+                          <input
+                            type="number"
+                            min={tier.from || 1}
+                            step="1"
+                            value={tier.to ?? ''}
+                            onChange={(e) => handlePartnerTierChange(index, 'to', e.target.value === '' ? null : Number(e.target.value))}
+                            className="w-full rounded-2xl border-2 border-sky-200 bg-white px-4 py-3 text-sm font-bold text-gray-800 focus:outline-none focus:border-sky-400"
+                            placeholder={index === partnerCommissionTiersDraft.length - 1 ? 'Sin límite' : ''}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-black text-gray-700 mb-2">Comisión (COP)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1000"
+                            value={tier.value}
+                            onChange={(e) => handlePartnerTierChange(index, 'value', e.target.value === '' ? '' : Number(e.target.value))}
+                            className="w-full rounded-2xl border-2 border-sky-200 bg-white px-4 py-3 text-sm font-bold text-gray-800 focus:outline-none focus:border-sky-400"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-xs text-gray-500 font-bold">
+                      El último tramo puede quedar sin límite en el campo "Hasta". El sistema aplicará estos valores según la cantidad de referidos del mes por establecimiento.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      type="button"
+                      onClick={handleSavePartnerCommissionSettings}
+                      disabled={partnerCommissionSettingsSaving}
+                      className="bg-sky-500 hover:bg-sky-600 text-white font-black rounded-xl px-5"
+                    >
+                      {partnerCommissionSettingsSaving ? 'Guardando...' : 'Guardar comisión de establecimientos'}
+                    </Button>
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="mensajes" className="space-y-4">
+                <div className="bg-teal-50 border-2 border-teal-200 rounded-2xl p-4 md:p-5 space-y-4">
+                  <div>
+                    <p className="text-xs font-black text-teal-600 uppercase tracking-wide">Submódulo</p>
+                    <h4 className="text-xl font-black text-teal-800">Mensajes</h4>
+                    <p className="text-sm font-bold text-teal-700">
+                      Este mensaje se usa en el botón de WhatsApp del agendamiento público confirmado.
+                    </p>
+                  </div>
+
+                  <div className="bg-white border-2 border-teal-200 rounded-2xl p-4 space-y-3">
+                    <label className="block text-sm font-black text-gray-700">Plantilla del mensaje</label>
+                    <textarea
+                      value={whatsappTemplateDraft}
+                      onChange={(e) => setWhatsappTemplateDraft(e.target.value)}
+                      className="w-full min-h-[320px] rounded-2xl border-2 border-teal-200 bg-white px-4 py-3 text-sm font-bold text-gray-800 focus:outline-none focus:border-teal-400 resize-y"
+                      placeholder="Escribe el mensaje que se enviará por WhatsApp"
+                    />
+                    <p className="text-xs text-gray-500 font-bold">
+                      Variables disponibles: {SMS_TEMPLATE_VARIABLES.join(', ')}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      type="button"
+                      onClick={handleSaveSmsSettings}
+                      disabled={smsSettingsSaving}
+                      className="bg-teal-500 hover:bg-teal-600 text-white font-black rounded-xl px-5"
+                    >
+                      {smsSettingsSaving ? 'Guardando...' : 'Guardar configuración SMS'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleResetSmsTemplate}
+                      className="border-2 border-teal-200 text-teal-700 hover:bg-teal-100 font-black rounded-xl px-5"
+                    >
+                      Restaurar plantilla predeterminada
+                    </Button>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
         </TabsContent>
           </section>
@@ -1546,32 +1636,34 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
       <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
         <DialogContent className="rounded-[3rem] border-4 border-blue-400 p-0 overflow-hidden sm:max-w-md bg-blue-50 shadow-2xl">
           <DialogHeader className="sr-only">
-            <DialogTitle>{editingUser ? 'Editar Miembro' : 'Nuevo Miembro'}</DialogTitle>
+            <DialogTitle>{editingUser ? 'Editar Miembro' : isEstablishmentForm ? 'Nuevo Establecimiento' : 'Nuevo Miembro'}</DialogTitle>
           </DialogHeader>
           {/* Title */}
           <div className="text-center pt-8 pb-6">
             <div className="flex items-center justify-center gap-3 mb-2">
-              <User className="w-6 h-6 text-blue-600" />
+              {isEstablishmentForm ? <Building2 className="w-6 h-6 text-blue-600" /> : <User className="w-6 h-6 text-blue-600" />}
               <h2 className="text-2xl font-black text-blue-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
-                {editingUser ? 'EDITAR MIEMBRO' : 'NUEVO MIEMBRO'}
+                {editingUser ? 'EDITAR MIEMBRO' : isEstablishmentForm ? 'NUEVO ESTABLECIMIENTO' : 'NUEVO MIEMBRO'}
               </h2>
             </div>
           </div>
           
           <div className="max-h-[60vh] overflow-y-auto">
             <form onSubmit={handleUserSubmit} className="px-8 pb-8 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-2">Nombre del Cliente</label>
-              <input 
-                required
-                className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
-                value={userFormData.name}
-                onChange={e => setUserFormData({...userFormData, name: e.target.value})}
-                placeholder="Ej. Familia Pérez"
-              />
-            </div>
+            {!isEstablishmentForm && (
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-2">Nombre del Cliente</label>
+                <input 
+                  required
+                  className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
+                  value={userFormData.name}
+                  onChange={e => setUserFormData({...userFormData, name: e.target.value})}
+                  placeholder="Ej. Familia Pérez"
+                />
+              </div>
+            )}
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className={`grid gap-4 ${isEstablishmentForm ? 'grid-cols-1' : 'grid-cols-2'}`}>
               <div>
                 <label className="block text-sm font-medium text-gray-600 mb-2">Rol</label>
                 <select 
@@ -1579,82 +1671,227 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
                   value={userFormData.role}
                   onChange={e => {
                     const nextRole = e.target.value;
+                    const currentRole = userFormData.role;
                     setUserFormData({
                       ...userFormData,
                       role: nextRole,
                       referral_value: nextRole === 'piojologa'
-                        ? Number(userFormData.referral_value ?? 15000)
-                        : userFormData.referral_value
+                        ? Number(currentRole === 'piojologa' ? (userFormData.referral_value ?? 15000) : 15000)
+                        : nextRole === 'vendedor'
+                          ? Number(currentRole === 'vendedor' ? (userFormData.referral_value ?? sellerReferralValueDraft) : sellerReferralValueDraft)
+                          : userFormData.referral_value
                     });
                   }}
                 >
                   <option value="piojologa">🦸 Piojóloga</option>
                   <option value="vendedor">💼 Vendedor</option>
+                  <option value="referido">🏪 Establecimiento</option>
                   <option value="admin">👑 Administrador</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-2">
-                  Contraseña {editingUser && <span className="text-xs text-gray-400">(mantener actual)</span>}
-                </label>
-                <input 
-                  required={!editingUser}
-                  type="password"
-                  className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
-                  value={userFormData.password}
-                  onChange={e => setUserFormData({...userFormData, password: e.target.value})}
-                  placeholder={editingUser ? "Dejar vacío si no cambia" : "***"}
-                />
-              </div>
+              {!isEstablishmentForm && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">
+                    Contraseña {editingUser && <span className="text-xs text-gray-400">(mantener actual)</span>}
+                  </label>
+                  <input 
+                    required={!editingUser}
+                    type="password"
+                    className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
+                    value={userFormData.password}
+                    onChange={e => setUserFormData({...userFormData, password: e.target.value})}
+                    placeholder={editingUser ? "Dejar vacío si no cambia" : "***"}
+                  />
+                </div>
+              )}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-2">Email</label>
-              <input 
-                required
-                type="email"
-                className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
-                value={userFormData.email}
-                onChange={e => setUserFormData({...userFormData, email: e.target.value})}
-                placeholder="correo@ejemplo.com"
-              />
-            </div>
-
-            {userFormData.role === 'piojologa' && (
+            {isEstablishmentForm ? (
               <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-2">Especialidad (Súper Poder)</label>
-                  <input 
+                  <label className="block text-sm font-medium text-gray-600 mb-2">Nombre del establecimiento *</label>
+                  <input
+                    required
                     className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
-                    value={userFormData.specialty || ''}
-                    onChange={e => setUserFormData({...userFormData, specialty: e.target.value})}
-                    placeholder="Ej. Visión de Rayos X"
+                    value={userFormData.business_name}
+                    onChange={e => setUserFormData({
+                      ...userFormData,
+                      business_name: e.target.value,
+                      name: e.target.value
+                    })}
+                    placeholder="Ej. Peluquería Brillo Perfecto"
                   />
                 </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-2">Propietario</label>
+                    <input
+                      className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
+                      value={userFormData.owner_name}
+                      onChange={e => setUserFormData({...userFormData, owner_name: e.target.value})}
+                      placeholder="Nombre del dueño"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-2">WhatsApp *</label>
+                    <input
+                      required
+                      className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
+                      value={userFormData.whatsapp}
+                      onChange={e => setUserFormData({...userFormData, whatsapp: e.target.value})}
+                      placeholder="3001234567"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-2">Correo de acceso *</label>
+                    <div className="flex items-center gap-3 rounded-2xl border-2 border-blue-400 bg-white p-4">
+                      <Mail className="w-4 h-4 text-blue-600" />
+                      <input
+                        required
+                        type="email"
+                        className="w-full bg-transparent text-gray-700 outline-none"
+                        value={userFormData.email}
+                        onChange={e => setUserFormData({...userFormData, email: e.target.value})}
+                        placeholder="contacto@establecimiento.com"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-2">Contraseña inicial *</label>
+                    <div className="flex items-center gap-3 rounded-2xl border-2 border-blue-400 bg-white p-4">
+                      <Lock className="w-4 h-4 text-blue-600" />
+                      <input
+                        required={!editingUser}
+                        type="text"
+                        className="w-full bg-transparent text-gray-700 outline-none"
+                        value={userFormData.password}
+                        onChange={e => setUserFormData({...userFormData, password: e.target.value})}
+                        placeholder="Mínimo 6 caracteres"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-2">Ciudad</label>
+                    <input
+                      className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
+                      value={userFormData.city}
+                      onChange={e => setUserFormData({...userFormData, city: e.target.value})}
+                      placeholder="Ciudad"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-2">NIT</label>
+                    <input
+                      className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
+                      value={userFormData.nit}
+                      onChange={e => setUserFormData({...userFormData, nit: e.target.value})}
+                      placeholder="Identificación tributaria"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">Observaciones</label>
+                  <textarea
+                    rows={3}
+                    className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400 resize-none"
+                    value={userFormData.notes}
+                    onChange={e => setUserFormData({...userFormData, notes: e.target.value})}
+                    placeholder="Notas comerciales, condiciones o comentarios relevantes"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <label className="block rounded-2xl border-2 border-dashed border-blue-300 bg-white p-4 cursor-pointer">
+                    <span className="block text-sm font-black text-blue-700 mb-2">Cámara de Comercio</span>
+                    <span className="block text-xs text-gray-500 font-bold mb-3">PDF o imagen, máximo 5 MB</span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp"
+                      onChange={(e) => setUserFormData({...userFormData, chamber_of_commerce: e.target.files?.[0] || null})}
+                    />
+                    <span className="inline-flex items-center gap-2 text-sm font-black text-blue-700">
+                      <FileText className="w-4 h-4" />
+                      {userFormData.chamber_of_commerce ? userFormData.chamber_of_commerce.name : 'Seleccionar archivo'}
+                    </span>
+                  </label>
+                  <label className="block rounded-2xl border-2 border-dashed border-blue-300 bg-white p-4 cursor-pointer">
+                    <span className="block text-sm font-black text-blue-700 mb-2">RUT</span>
+                    <span className="block text-xs text-gray-500 font-bold mb-3">PDF o imagen, máximo 5 MB</span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp"
+                      onChange={(e) => setUserFormData({...userFormData, rut: e.target.files?.[0] || null})}
+                    />
+                    <span className="inline-flex items-center gap-2 text-sm font-black text-blue-700">
+                      <FileText className="w-4 h-4" />
+                      {userFormData.rut ? userFormData.rut.name : 'Seleccionar archivo'}
+                    </span>
+                  </label>
+                </div>
+              </motion.div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-2">Email</label>
+                <input 
+                  required
+                  type="email"
+                  className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
+                  value={userFormData.email}
+                  onChange={e => setUserFormData({...userFormData, email: e.target.value})}
+                  placeholder="correo@ejemplo.com"
+                />
+              </div>
+            )}
+
+            {!isEstablishmentForm && (userFormData.role === 'piojologa' || userFormData.role === 'vendedor') && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="space-y-4">
+                {userFormData.role === 'piojologa' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-2">Especialidad (Súper Poder)</label>
+                    <input 
+                      className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
+                      value={userFormData.specialty || ''}
+                      onChange={e => setUserFormData({...userFormData, specialty: e.target.value})}
+                      placeholder="Ej. Visión de Rayos X"
+                    />
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-2">
-                    💸 Valor referido (COP)
+                    {userFormData.role === 'vendedor' ? '💸 Valor por cabeza referida (COP)' : '💸 Valor referido (COP)'}
                   </label>
                   <input
                     type="number"
                     min="0"
                     step="1000"
                     className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 outline-none focus:border-blue-500 transition-all placeholder-gray-400"
-                    value={userFormData.referral_value ?? 15000}
+                    value={userFormData.referral_value ?? (userFormData.role === 'vendedor' ? sellerReferralValueDraft : 15000)}
                     onChange={e => setUserFormData({
                       ...userFormData,
                       referral_value: e.target.value === '' ? '' : Number(e.target.value)
                     })}
-                    placeholder="15000"
+                    placeholder={userFormData.role === 'vendedor' ? String(sellerReferralValueDraft || 5000) : "15000"}
                   />
                   <p className="text-xs text-gray-500 mt-2">
-                    Por defecto: {formatCurrency(15000)}. Puedes personalizarlo por piojóloga.
+                    {userFormData.role === 'vendedor'
+                      ? `Por defecto: ${formatCurrency(sellerReferralValueDraft || 5000)}. Puedes personalizarlo por vendedor.`
+                      : `Por defecto: ${formatCurrency(15000)}. Puedes personalizarlo por piojóloga.`}
                   </p>
                 </div>
 
                 {/* Código de Referido Usado */}
-                {!editingUser && (
+                {!editingUser && userFormData.role === 'piojologa' && (
                   <div>
                     <label className="block text-sm font-medium text-gray-600 mb-2">
                       🎁 Código de Referido <span className="text-xs text-gray-400">(opcional)</span>
@@ -1695,7 +1932,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
                 )}
 
                 {/* Código de Referido Propio */}
-                {editingUser && (
+                {editingUser && userFormData.role === 'piojologa' && (
                   <div>
                     <label className="block text-sm font-medium text-gray-600 mb-2">
                       🔗 Código de Referido Único
@@ -1747,7 +1984,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
               </motion.div>
             )}
 
-            {userFormData.role === 'piojologa' && (
+            {userFormData.role === 'piojologa' && !isEstablishmentForm && (
               <div>
                 <label className="block text-sm font-medium text-gray-600 mb-2">📍 Dirección</label>
                 <AddressAutocomplete
@@ -1772,7 +2009,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
 
             {userFormData.role !== 'piojologa' && (
               <div>
-                <label className="block text-sm font-medium text-gray-600 mb-2">📍 Dirección (Opcional)</label>
+                <label className="block text-sm font-medium text-gray-600 mb-2">📍 Dirección {isEstablishmentForm ? '' : '(Opcional)'}</label>
                 <AddressAutocomplete
                   value={userFormData.address || ''}
                   onChange={(address) => setUserFormData({...userFormData, address})}
@@ -1805,7 +2042,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
                     Localizando...
                   </>
                 ) : (
-                  editingUser ? 'Guardar Cambios' : 'Crear y Asignar Miembro'
+                  editingUser ? 'Guardar Cambios' : isEstablishmentForm ? 'Crear Establecimiento' : 'Crear y Asignar Miembro'
                 )}
               </Button>
             </div>

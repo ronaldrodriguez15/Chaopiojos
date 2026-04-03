@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\AppSetting;
 use App\Models\Booking;
 use App\Models\SellerReferral;
 use App\Models\User;
@@ -13,6 +14,11 @@ use Illuminate\Validation\Rule;
 
 class BookingController extends Controller
 {
+    private function getDefaultSellerReferralValue(): float
+    {
+        return (float) AppSetting::getValue('seller_referral_value', '5000');
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -486,7 +492,7 @@ class BookingController extends Controller
                 ->whereIn('status', ['pending_review', 'approved'])
                 ->first();
 
-            if (!$sellerReferral || !$sellerReferral->seller || $sellerReferral->seller->role !== 'vendedor') {
+            if (!$sellerReferral) {
                 return [
                     'success' => false,
                     'errors' => [
@@ -495,14 +501,19 @@ class BookingController extends Controller
                 ];
             }
 
-            if (empty($sellerReferral->seller->referral_code)) {
+            if ($sellerReferral->seller && $sellerReferral->seller->role === 'vendedor' && empty($sellerReferral->seller->referral_code)) {
                 $sellerReferral->seller->referral_code = User::generateUniqueReferralCode('vendedor');
                 $sellerReferral->seller->save();
             }
 
-            $referredByUserId = $sellerReferral->seller->id;
-            $resolvedReferidoPor = $sellerReferral->seller->name;
-            $resolvedReferralCode = $sellerReferral->seller->referral_code;
+            if ($sellerReferral->seller && $sellerReferral->seller->role === 'vendedor') {
+                $referredByUserId = $sellerReferral->seller->id;
+                $resolvedReferidoPor = $sellerReferral->seller->name;
+                $resolvedReferralCode = $sellerReferral->seller->referral_code;
+            } else {
+                $resolvedReferidoPor = $sellerReferral->business_name;
+                $resolvedReferralCode = null;
+            }
             $sellerReferralId = $sellerReferral->id;
         } elseif ($resolvedReferralCode) {
             $referrer = User::where('referral_code', $resolvedReferralCode)
@@ -578,7 +589,8 @@ class BookingController extends Controller
                 }
 
                 $peopleCount = max(1, (int) ($booking->numPersonas ?? 1));
-                $commissionAmount = $peopleCount * 5000;
+                $sellerReferralValue = (float) ($referrer->referral_value ?? $this->getDefaultSellerReferralValue());
+                $commissionAmount = $peopleCount * max(0, $sellerReferralValue);
             } else {
                 if ($trigger !== 'booking_completed') {
                     return;

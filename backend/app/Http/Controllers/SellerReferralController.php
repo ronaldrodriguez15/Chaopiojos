@@ -3,9 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Booking;
+use App\Models\AppSetting;
 use App\Models\ReferralCommission;
 use App\Models\SellerReferral;
+use App\Models\SellerReferralMonthlyHistory;
 use App\Models\User;
+use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +18,11 @@ use Illuminate\Support\Facades\Storage;
 
 class SellerReferralController extends Controller
 {
+    protected function getDefaultSellerReferralValue(): float
+    {
+        return (float) AppSetting::getValue('seller_referral_value', '5000');
+    }
+
     protected function canAccessReferrals(Request $request): bool
     {
         $role = $request->user()?->role;
@@ -41,7 +50,7 @@ class SellerReferralController extends Controller
 
     protected function serializeReferral(SellerReferral $referral): array
     {
-        $isQrActive = !empty($referral->link_token) && $referral->status !== 'rejected';
+        $hasActiveBookingLink = !empty($referral->link_token) && $referral->status !== 'rejected';
 
         return [
             'id' => $referral->id,
@@ -60,7 +69,7 @@ class SellerReferralController extends Controller
             'notes' => $referral->notes,
             'status' => $referral->status,
             'link_token' => $referral->link_token,
-            'booking_link' => $isQrActive ? '/agenda?sr=' . urlencode($referral->link_token) : null,
+            'booking_link' => $hasActiveBookingLink ? '/agenda?sr=' . urlencode($referral->link_token) : null,
             'review_notes' => $referral->review_notes,
             'reviewed_at' => $referral->reviewed_at,
             'chamber_of_commerce_path' => $referral->chamber_of_commerce_path,
@@ -120,34 +129,252 @@ class SellerReferralController extends Controller
         return $filename;
     }
 
+    protected function getDefaultPartnerCommissionTiers(): array
+    {
+        return [
+            ['from' => 1, 'to' => 20, 'value' => 5000],
+            ['from' => 21, 'to' => 40, 'value' => 7000],
+            ['from' => 41, 'to' => null, 'value' => 100000],
+        ];
+    }
+
+    protected function normalizePartnerCommissionTiers($tiers): array
+    {
+        if (is_string($tiers) && trim($tiers) !== '') {
+            $decoded = json_decode($tiers, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $tiers = $decoded;
+            }
+        }
+
+        if (!is_array($tiers)) {
+            return $this->getDefaultPartnerCommissionTiers();
+        }
+
+        $normalized = collect($tiers)
+            ->map(function ($tier) {
+                if (!is_array($tier)) {
+                    return null;
+                }
+
+                $from = (int) ($tier['from'] ?? 0);
+                $to = array_key_exists('to', $tier) && $tier['to'] !== null && $tier['to'] !== ''
+                    ? (int) $tier['to']
+                    : null;
+                $value = (float) ($tier['value'] ?? 0);
+
+                if ($from < 1 || $value < 0) {
+                    return null;
+                }
+
+                if ($to !== null && $to < $from) {
+                    return null;
+                }
+
+                return [
+                    'from' => $from,
+                    'to' => $to,
+                    'value' => $value,
+                ];
+            })
+            ->filter()
+            ->sortBy('from')
+            ->values()
+            ->all();
+
+        return !empty($normalized) ? $normalized : $this->getDefaultPartnerCommissionTiers();
+    }
+
+    protected function getPartnerCommissionTiers(): array
+    {
+        return $this->normalizePartnerCommissionTiers(
+            AppSetting::getValue(
+                'partner_commission_tiers',
+                json_encode($this->getDefaultPartnerCommissionTiers())
+            )
+        );
+    }
+
+    protected function resolvePartnerCommissionTier(int $position, array $tiers): array
+    {
+        foreach ($tiers as $tier) {
+            $from = (int) ($tier['from'] ?? 1);
+            $to = array_key_exists('to', $tier) && $tier['to'] !== null ? (int) $tier['to'] : null;
+            if ($position >= $from && ($to === null || $position <= $to)) {
+                return [
+                    'from' => $from,
+                    'to' => $to,
+                    'value' => (float) ($tier['value'] ?? 0),
+                ];
+            }
+        }
+
+        $lastTier = collect($tiers)->last() ?: ['from' => 1, 'to' => null, 'value' => 0];
+
+        return [
+            'from' => (int) ($lastTier['from'] ?? 1),
+            'to' => array_key_exists('to', $lastTier) && $lastTier['to'] !== null ? (int) $lastTier['to'] : null,
+            'value' => (float) ($lastTier['value'] ?? 0),
+        ];
+    }
+
+    protected function buildPartnerCommissionRows(Collection $bookings, array $tiers): Collection
+    {
+        $sortedBookings = $bookings
+            ->sort(function (Booking $a, Booking $b) {
+                $aDate = $a->created_at ? $a->created_at->timestamp : ($a->fecha ? Carbon::parse($a->fecha)->timestamp : 0);
+                $bDate = $b->created_at ? $b->created_at->timestamp : ($b->fecha ? Carbon::parse($b->fecha)->timestamp : 0);
+
+                if ($aDate === $bDate) {
+                    return $a->id <=> $b->id;
+                }
+
+                return $aDate <=> $bDate;
+            })
+            ->values();
+
+        $completedStatuses = ['completed', 'completado'];
+        $monthlyPositions = [];
+
+        return $sortedBookings->map(function (Booking $booking) use ($tiers, $completedStatuses, &$monthlyPositions) {
+            $baseDate = $booking->created_at
+                ? $booking->created_at->copy()
+                : ($booking->fecha ? Carbon::parse($booking->fecha) : now());
+            $periodStart = $baseDate->copy()->startOfMonth();
+            $monthKey = $periodStart->toDateString();
+            $monthlyPositions[$monthKey] = ($monthlyPositions[$monthKey] ?? 0) + 1;
+            $position = $monthlyPositions[$monthKey];
+            $tier = $this->resolvePartnerCommissionTier($position, $tiers);
+            $isCompleted = in_array(strtolower((string) $booking->estado), $completedStatuses, true);
+
+            return [
+                'booking' => $booking,
+                'position' => $position,
+                'period_start' => $monthKey,
+                'period_end' => $periodStart->copy()->endOfMonth()->toDateString(),
+                'amount' => (float) $tier['value'],
+                'is_completed' => $isCompleted,
+                'tier' => $tier,
+            ];
+        });
+    }
+
+    protected function syncPartnerMonthlyHistory(SellerReferral $referral, Collection $commissionRows, array $tiers): Collection
+    {
+        $currentMonthStart = now()->startOfMonth()->toDateString();
+        $existingRows = SellerReferralMonthlyHistory::where('seller_referral_id', $referral->id)
+            ->get()
+            ->keyBy(fn (SellerReferralMonthlyHistory $row) => $row->period_start->toDateString());
+
+        $groupedByMonth = $commissionRows->groupBy('period_start');
+
+        foreach ($groupedByMonth as $periodStart => $rows) {
+            $existingRow = $existingRows->get($periodStart);
+            if ($existingRow && $existingRow->is_closed) {
+                continue;
+            }
+
+            $periodStartDate = Carbon::parse($periodStart)->startOfMonth();
+            $isClosed = $periodStartDate->toDateString() < $currentMonthStart;
+            $bookingsCount = (int) $rows->count();
+            $completedBookings = (int) $rows->where('is_completed', true)->count();
+            $pendingBookings = max(0, $bookingsCount - $completedBookings);
+            $totalAmount = (float) $rows->sum('amount');
+            $completedAmount = (float) $rows->where('is_completed', true)->sum('amount');
+            $pendingAmount = (float) max(0, $totalAmount - $completedAmount);
+
+            SellerReferralMonthlyHistory::updateOrCreate(
+                [
+                    'seller_referral_id' => $referral->id,
+                    'period_start' => $periodStartDate->toDateString(),
+                ],
+                [
+                    'period_end' => $periodStartDate->copy()->endOfMonth()->toDateString(),
+                    'bookings_count' => $bookingsCount,
+                    'completed_bookings' => $completedBookings,
+                    'pending_bookings' => $pendingBookings,
+                    'pending_amount' => $pendingAmount,
+                    'completed_amount' => $completedAmount,
+                    'total_amount' => $totalAmount,
+                    'tier_snapshot' => $tiers,
+                    'is_closed' => $isClosed,
+                    'closed_at' => $isClosed ? $periodStartDate->copy()->endOfMonth()->endOfDay() : null,
+                ]
+            );
+        }
+
+        return SellerReferralMonthlyHistory::where('seller_referral_id', $referral->id)
+            ->orderByDesc('period_start')
+            ->get();
+    }
+
+    protected function serializePartnerMonthlyHistory(SellerReferralMonthlyHistory $row): array
+    {
+        return [
+            'id' => $row->id,
+            'period_start' => $row->period_start?->toDateString(),
+            'period_end' => $row->period_end?->toDateString(),
+            'bookings_count' => (int) ($row->bookings_count ?? 0),
+            'completed_bookings' => (int) ($row->completed_bookings ?? 0),
+            'pending_bookings' => (int) ($row->pending_bookings ?? 0),
+            'pending_amount' => (float) ($row->pending_amount ?? 0),
+            'completed_amount' => (float) ($row->completed_amount ?? 0),
+            'total_amount' => (float) ($row->total_amount ?? 0),
+            'tier_snapshot' => $this->normalizePartnerCommissionTiers($row->tier_snapshot),
+            'is_closed' => (bool) $row->is_closed,
+            'closed_at' => $row->closed_at,
+        ];
+    }
+
     protected function buildPartnerDashboard(SellerReferral $referral): array
     {
         $bookings = Booking::where('seller_referral_id', $referral->id)
-            ->orderByDesc('created_at')
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->get([
                 'id',
                 'clientName',
                 'fecha',
                 'hora',
+                'serviceType',
+                'services_per_person',
                 'numPersonas',
                 'estado',
+                'price_confirmed',
+                'additional_costs',
                 'created_at',
             ]);
 
         $now = now();
-        $completedStatuses = ['completed', 'completado'];
+        $tiers = $this->getPartnerCommissionTiers();
+        $commissionRows = $this->buildPartnerCommissionRows($bookings, $tiers);
+        $monthlyHistory = $this->syncPartnerMonthlyHistory($referral, $commissionRows, $tiers);
+        $latestHistory = $monthlyHistory->sortByDesc('period_start')->values();
+        $currentMonthRow = $latestHistory->first(function (SellerReferralMonthlyHistory $row) use ($now) {
+            return $row->period_start
+                && $row->period_start->month === $now->month
+                && $row->period_start->year === $now->year;
+        });
         $registeredClients = $bookings->count();
         $headsCount = (int) $bookings->reduce(function ($carry, Booking $booking) {
             return $carry + max(1, (int) ($booking->numPersonas ?? 1));
         }, 0);
-        $completedBookings = $bookings->filter(function (Booking $booking) use ($completedStatuses) {
-            return in_array(strtolower((string) $booking->estado), $completedStatuses, true);
-        })->count();
+        $completedBookings = (int) $latestHistory->sum('completed_bookings');
         $thisMonth = $bookings->filter(function (Booking $booking) use ($now) {
             return $booking->created_at
                 && $booking->created_at->month === $now->month
                 && $booking->created_at->year === $now->year;
         })->count();
+        $totalAmount = (float) $latestHistory->sum('total_amount');
+        $completedAmount = (float) $latestHistory->sum('completed_amount');
+        $pendingAmount = (float) $latestHistory->sum('pending_amount');
+        $thisMonthAmount = (float) ($currentMonthRow?->total_amount ?? 0);
+        $currentMonthCompleted = (int) ($currentMonthRow?->completed_bookings ?? 0);
+        $currentMonthPending = (int) ($currentMonthRow?->pending_bookings ?? 0);
+        $recentRows = $commissionRows
+            ->sortByDesc(fn (array $item) => optional($item['booking']->created_at)->timestamp ?? 0)
+            ->take(10)
+            ->values();
 
         return [
             'statistics' => [
@@ -156,18 +383,44 @@ class SellerReferralController extends Controller
                 'completed_bookings' => $completedBookings,
                 'pending_bookings' => max(0, $registeredClients - $completedBookings),
                 'this_month' => $thisMonth,
+                'this_month_amount' => $thisMonthAmount,
             ],
-            'recent_bookings' => $bookings->take(10)->map(function (Booking $booking) {
+            'earnings' => [
+                'summary' => [
+                    'pending_amount' => $pendingAmount,
+                    'completed_amount' => $completedAmount,
+                    'total_amount' => $totalAmount,
+                    'bookings_count' => $registeredClients,
+                    'heads_count' => $headsCount,
+                    'completed_bookings' => $completedBookings,
+                    'pending_bookings' => max(0, $registeredClients - $completedBookings),
+                    'this_month_amount' => $thisMonthAmount,
+                    'current_month_completed_bookings' => $currentMonthCompleted,
+                    'current_month_pending_bookings' => $currentMonthPending,
+                    'commission_tiers' => $tiers,
+                ],
+            ],
+            'recent_bookings' => $recentRows->map(function (array $item) {
+                $booking = $item['booking'];
                 return [
                     'id' => $booking->id,
                     'clientName' => $booking->clientName,
                     'fecha' => $booking->fecha,
                     'hora' => $booking->hora,
+                    'serviceType' => $booking->serviceType,
                     'numPersonas' => (int) ($booking->numPersonas ?? 1),
                     'estado' => $booking->estado,
+                    'total_amount' => (float) $item['amount'],
+                    'is_completed' => (bool) $item['is_completed'],
+                    'monthly_position' => (int) ($item['position'] ?? 0),
+                    'tier_value' => (float) ($item['tier']['value'] ?? 0),
                     'created_at' => $booking->created_at,
                 ];
             })->values(),
+            'monthly_history' => $latestHistory
+                ->take(12)
+                ->map(fn (SellerReferralMonthlyHistory $row) => $this->serializePartnerMonthlyHistory($row))
+                ->values(),
         ];
     }
 
@@ -182,14 +435,16 @@ class SellerReferralController extends Controller
                 ->whereIn('status', ['pending_review', 'approved'])
                 ->first();
 
-            if (!$referral || !$referral->seller || $referral->seller->role !== 'vendedor') {
+            if (!$referral) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'El enlace del referido no es válido o fue desactivado'
+                    'message' => 'El enlace del establecimiento no es válido o fue desactivado'
                 ], 404);
             }
 
-            $this->ensureSellerReferralCode($referral);
+            if ($referral->seller && $referral->seller->role === 'vendedor') {
+                $this->ensureSellerReferralCode($referral);
+            }
             $referral->refresh()->load([
                 'seller:id,name,email,role,referral_code',
                 'referredUser:id,name,email,is_active',
@@ -202,7 +457,7 @@ class SellerReferralController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al resolver el enlace del referido: ' . $e->getMessage()
+                'message' => 'Error al resolver el enlace del establecimiento: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -246,7 +501,7 @@ class SellerReferralController extends Controller
             if (!$this->canAccessSellerReports($request)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No autorizado para consultar estadísticas'
+                    'message' => 'No autorizado para consultar estadÃ­sticas'
                 ], 403);
             }
 
@@ -279,7 +534,7 @@ class SellerReferralController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al obtener estadísticas del vendedor: ' . $e->getMessage()
+                'message' => 'Error al obtener estadÃ­sticas del vendedor: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -299,11 +554,12 @@ class SellerReferralController extends Controller
                 ? [$authUser->id]
                 : User::where('role', 'vendedor')->pluck('id')->all();
 
+            $defaultSellerReferralValue = $this->getDefaultSellerReferralValue();
             $sellers = User::whereIn('id', $sellerIds)
                 ->orderBy('name')
-                ->get(['id', 'name', 'email', 'referral_code']);
+                ->get(['id', 'name', 'email', 'referral_code', 'referral_value']);
 
-            $items = $sellers->map(function (User $seller) {
+            $items = $sellers->map(function (User $seller) use ($defaultSellerReferralValue) {
                 $commissions = ReferralCommission::where('referrer_id', $seller->id)
                     ->with('booking:id,clientName,fecha,hora,numPersonas,seller_referral_id')
                     ->with('booking.sellerReferral:id,business_name')
@@ -318,6 +574,7 @@ class SellerReferralController extends Controller
                 $approvedReferrals = SellerReferral::where('seller_user_id', $seller->id)
                     ->where('status', 'approved')
                     ->count();
+                $effectiveReferralValue = (float) ($seller->referral_value ?? $defaultSellerReferralValue);
 
                 return [
                     'seller' => [
@@ -325,6 +582,8 @@ class SellerReferralController extends Controller
                         'name' => $seller->name,
                         'email' => $seller->email,
                         'referral_code' => $seller->referral_code,
+                        'referral_value' => $seller->referral_value !== null ? (float) $seller->referral_value : null,
+                        'effective_referral_value' => $effectiveReferralValue,
                     ],
                     'summary' => [
                         'pending_amount' => $pendingAmount,
@@ -333,6 +592,7 @@ class SellerReferralController extends Controller
                         'bookings_count' => $commissions->count(),
                         'heads_count' => $headsCount,
                         'approved_referrals' => $approvedReferrals,
+                        'per_head_value' => $effectiveReferralValue,
                     ],
                     'commissions' => $commissions->map(function ($commission) {
                         return [
@@ -365,6 +625,7 @@ class SellerReferralController extends Controller
                     'total_amount' => (float) $items->sum(fn ($item) => $item['summary']['total_amount'] ?? 0),
                     'bookings_count' => (int) $items->sum(fn ($item) => $item['summary']['bookings_count'] ?? 0),
                     'heads_count' => (int) $items->sum(fn ($item) => $item['summary']['heads_count'] ?? 0),
+                    'default_per_head_value' => $defaultSellerReferralValue,
                 ],
             ]);
         } catch (\Exception $e) {
@@ -381,7 +642,7 @@ class SellerReferralController extends Controller
             if ($request->user()?->role !== 'referido') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Solo un referido puede consultar este panel'
+                    'message' => 'Solo un establecimiento puede consultar este panel'
                 ], 403);
             }
 
@@ -395,7 +656,7 @@ class SellerReferralController extends Controller
             if (!$referral) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No se encontró el referido asociado a este usuario'
+                    'message' => 'No se encontró el establecimiento asociado a este usuario'
                 ], 404);
             }
 
@@ -407,7 +668,7 @@ class SellerReferralController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al cargar el panel del referido: ' . $e->getMessage()
+                'message' => 'Error al cargar el panel del establecimiento: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -415,10 +676,14 @@ class SellerReferralController extends Controller
     public function store(Request $request)
     {
         try {
-            if ($request->user()?->role !== 'vendedor') {
+            $authUser = $request->user();
+            $isAdmin = $authUser?->role === 'admin';
+            $isSeller = $authUser?->role === 'vendedor';
+
+            if (!$isAdmin && !$isSeller) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Solo los vendedores pueden registrar referidos'
+                    'message' => 'Solo administradores o vendedores pueden registrar establecimientos'
                 ], 403);
             }
 
@@ -444,7 +709,7 @@ class SellerReferralController extends Controller
             }
 
             $referredUser = null;
-            $referral = DB::transaction(function () use ($request, $validated, $resolvedContactName, &$referredUser) {
+            $referral = DB::transaction(function () use ($request, $validated, $resolvedContactName, $authUser, $isAdmin, &$referredUser) {
                 $referredUser = User::create([
                     'name' => $validated['business_name'],
                     'email' => $validated['email'],
@@ -457,7 +722,7 @@ class SellerReferralController extends Controller
                 ]);
 
                 return SellerReferral::create([
-                    'seller_user_id' => $request->user()->id,
+                    'seller_user_id' => $isAdmin ? null : $authUser->id,
                     'referred_user_id' => $referredUser->id,
                     'business_name' => $validated['business_name'],
                     'owner_name' => $validated['owner_name'] ?? null,
@@ -469,7 +734,9 @@ class SellerReferralController extends Controller
                     'city' => $validated['city'] ?? null,
                     'address' => $validated['address'] ?? null,
                     'notes' => $validated['notes'] ?? null,
-                    'status' => 'pending_review',
+                    'status' => $isAdmin ? 'approved' : 'pending_review',
+                    'reviewed_by_user_id' => $isAdmin ? $authUser?->id : null,
+                    'reviewed_at' => $isAdmin ? now() : null,
                     'chamber_of_commerce_path' => $this->storeDocument($request->file('chamber_of_commerce'), 'camara-comercio'),
                     'rut_path' => $this->storeDocument($request->file('rut'), 'rut'),
                 ]);
@@ -482,7 +749,7 @@ class SellerReferralController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Referido registrado y usuario creado exitosamente',
+                'message' => 'Establecimiento registrado y usuario creado exitosamente',
                 'referral' => $this->serializeReferral($referral),
                 'credentials' => [
                     'email' => $referredUser?->email,
@@ -497,11 +764,10 @@ class SellerReferralController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al registrar referido del vendedor: ' . $e->getMessage()
+                'message' => 'Error al registrar establecimiento: ' . $e->getMessage()
             ], 500);
         }
     }
-
     public function review(Request $request, $id)
     {
         try {
@@ -570,3 +836,4 @@ class SellerReferralController extends Controller
         }
     }
 }
+

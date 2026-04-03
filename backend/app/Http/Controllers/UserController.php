@@ -3,12 +3,18 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\AppSetting;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
+    protected function getDefaultSellerReferralValue(): float
+    {
+        return (float) AppSetting::getValue('seller_referral_value', '5000');
+    }
+
     protected function normalizeRoleValue($role)
     {
         $normalized = strtolower(trim((string) $role));
@@ -16,6 +22,7 @@ class UserController extends Controller
         return match ($normalized) {
             'piojologist' => 'piojologa',
             'seller' => 'vendedor',
+            'establecimiento' => 'referido',
             default => $normalized,
         };
     }
@@ -42,7 +49,7 @@ class UserController extends Controller
     public function index(Request $request)
     {
         try {
-            $users = User::orderBy('created_at', 'desc')->get();
+            $users = User::with('managedSellerReferral')->orderBy('created_at', 'desc')->get();
 
             return response()->json([
                 'success' => true,
@@ -106,6 +113,10 @@ class UserController extends Controller
                 $validated['referral_value'] = isset($validated['referral_value'])
                     ? (float) $validated['referral_value']
                     : 15000;
+            } elseif (($validated['role'] ?? null) === 'vendedor') {
+                $validated['referral_value'] = isset($validated['referral_value'])
+                    ? (float) $validated['referral_value']
+                    : $this->getDefaultSellerReferralValue();
             } else {
                 unset($validated['referral_value']);
             }
@@ -157,7 +168,7 @@ class UserController extends Controller
     public function show(Request $request, $id)
     {
         try {
-            $user = User::findOrFail($id);
+            $user = User::with('managedSellerReferral')->findOrFail($id);
 
             return response()->json([
                 'success' => true,
@@ -219,6 +230,12 @@ class UserController extends Controller
             if ($incomingRole === 'piojologa') {
                 if (!array_key_exists('referral_value', $validated)) {
                     $validated['referral_value'] = $user->referral_value ?? 15000;
+                } else {
+                    $validated['referral_value'] = (float) $validated['referral_value'];
+                }
+            } elseif ($incomingRole === 'vendedor') {
+                if (!array_key_exists('referral_value', $validated)) {
+                    $validated['referral_value'] = $user->referral_value ?? $this->getDefaultSellerReferralValue();
                 } else {
                     $validated['referral_value'] = (float) $validated['referral_value'];
                 }

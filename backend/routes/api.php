@@ -27,7 +27,6 @@ use App\Http\Controllers\SellerReferralController;
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/ical-proxy', [ICalProxyController::class, 'fetchICalFeed']);
-Route::get('/qr-proxy', [ICalProxyController::class, 'fetchQrImage']);
 Route::post('/bookings', [BookingController::class, 'store']); // Ruta publica para crear reservas
 Route::get('/services', [ServiceController::class, 'index']);
 Route::post('/validate-referral-code', [UserController::class, 'validateReferralCode']); // Validar código de referido

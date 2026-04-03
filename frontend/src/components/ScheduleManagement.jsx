@@ -1195,8 +1195,8 @@ const ScheduleManagement = ({
                       {(() => {
                         const payment = selectedService.paymentMethod || selectedService.payment_method;
                         if (payment === 'pay_now') return 'Paga en lnea';
-                        if (payment === 'pay_later') return 'Paga despus del servicio';
-                        return 'Paga despus del servicio';
+                        if (payment === 'pay_later') return 'Paga después del servicio';
+                        return 'Paga después del servicio';
                       })()}
                     </span>
                   </div>

@@ -1,16 +1,40 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { UserPlus, Eye, Edit, UserX, UserCheck, DollarSign } from 'lucide-react';
+import { UserPlus, Eye, Edit, UserX, UserCheck, DollarSign, Building2, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import Pagination from './Pagination';
 
+const getRoleLabel = (role) => {
+  if (role === 'admin') return 'Administrador';
+  if (role === 'piojologa') return 'Piojóloga';
+  if (role === 'vendedor') return 'Vendedor';
+  if (role === 'referido') return 'Establecimiento';
+  return role;
+};
+
+const getRoleTone = (role) => {
+  if (role === 'admin') return 'bg-purple-100 text-purple-600';
+  if (role === 'piojologa') return 'bg-green-100 text-green-600';
+  if (role === 'vendedor') return 'bg-cyan-100 text-cyan-600';
+  return 'bg-orange-100 text-orange-600';
+};
+
+const getRoleAvatar = (role) => {
+  if (role === 'admin') return '👑';
+  if (role === 'piojologa') return '👩‍⚕️';
+  if (role === 'vendedor') return '👤';
+  return '🏪';
+};
+
 const UsersModule = React.memo(({
   users,
   handleOpenUserDialog,
+  handleOpenEstablishmentDialog,
   handleOpenUserDetail,
   handleToggleUserActive,
-  handleOpenEarningsModal
+  handleOpenEarningsModal,
+  handleOpenUserStats = () => {}
 }) => {
   const { toast } = useToast();
   const [currentPage, setCurrentPage] = useState(1);
@@ -78,6 +102,13 @@ const UsersModule = React.memo(({
             Ganancias Referidos
           </Button>
           <Button
+            onClick={handleOpenEstablishmentDialog}
+            className="bg-cyan-500 hover:bg-cyan-600 text-white rounded-2xl px-4 sm:px-6 py-4 sm:py-6 font-bold text-base sm:text-lg shadow-md hover:shadow-lg border-b-4 border-cyan-700 active:border-b-0 active:translate-y-1 w-full sm:w-auto justify-center"
+          >
+            <Building2 className="w-6 h-6 mr-2" />
+            Nuevo Establecimiento
+          </Button>
+          <Button
             onClick={() => handleOpenUserDialog()}
             className="bg-blue-400 hover:bg-blue-500 text-white rounded-2xl px-4 sm:px-6 py-4 sm:py-6 font-bold text-base sm:text-lg shadow-md hover:shadow-lg border-b-4 border-blue-600 active:border-b-0 active:translate-y-1 w-full sm:w-auto justify-center"
           >
@@ -119,22 +150,14 @@ const UsersModule = React.memo(({
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-sm ${
                       user.role === 'admin' ? 'bg-purple-100' : user.role === 'piojologa' ? 'bg-green-100' : user.role === 'vendedor' ? 'bg-cyan-100' : 'bg-orange-100'
                     }`}>
-                      {user.role === 'admin' ? '👑' : user.role === 'piojologa' ? '👩‍⚕️' : '👤'}
+                      {getRoleAvatar(user.role)}
                     </div>
                     <span className="font-bold text-gray-700">{user.name}</span>
                   </div>
                 </td>
                 <td className="p-4">
-                  <span className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider ${
-                    user.role === 'admin'
-                      ? 'bg-purple-100 text-purple-600'
-                      : user.role === 'piojologa'
-                      ? 'bg-green-100 text-green-600'
-                      : user.role === 'vendedor'
-                      ? 'bg-cyan-100 text-cyan-600'
-                      : 'bg-orange-100 text-orange-600'
-                  }`}>
-                    {user.role === 'admin' ? 'admin' : user.role === 'piojologa' ? 'piojóloga' : user.role}
+                  <span className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider ${getRoleTone(user.role)}`}>
+                    {getRoleLabel(user.role)}
                   </span>
                 </td>
                 <td className="p-4 font-medium text-gray-500">{user.email}</td>
@@ -160,15 +183,28 @@ const UsersModule = React.memo(({
                     >
                       <Eye className="w-5 h-5" />
                     </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => handleOpenUserDialog(user)}
-                      className="h-10 w-10 rounded-xl bg-blue-100 text-blue-500 hover:bg-blue-200"
-                      title="Editar"
-                    >
-                      <Edit className="w-5 h-5" />
-                    </Button>
+                    {user.role !== 'admin' && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => handleOpenUserStats(user)}
+                        className="h-10 w-10 rounded-xl bg-amber-100 text-amber-600 hover:bg-amber-200"
+                        title="Ver Estadísticas"
+                      >
+                        <BarChart3 className="w-5 h-5" />
+                      </Button>
+                    )}
+                    {user.role !== 'referido' && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => handleOpenUserDialog(user)}
+                        className="h-10 w-10 rounded-xl bg-blue-100 text-blue-500 hover:bg-blue-200"
+                        title="Editar"
+                      >
+                        <Edit className="w-5 h-5" />
+                      </Button>
+                    )}
                     {user.role !== 'admin' && (
                       <Button
                         size="icon"
@@ -215,7 +251,7 @@ const UsersModule = React.memo(({
               <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400">
                 <p className="text-lg font-bold text-gray-800">{userToToggle.name}</p>
                 <p className="text-sm text-gray-600">{userToToggle.email}</p>
-                <p className="text-sm text-yellow-600 font-bold capitalize">{userToToggle.role}</p>
+                <p className="text-sm text-yellow-600 font-bold">{getRoleLabel(userToToggle.role)}</p>
               </div>
             )}
             <p className="text-gray-600 text-sm">

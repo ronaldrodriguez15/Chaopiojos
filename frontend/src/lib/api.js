@@ -448,7 +448,7 @@ export const sellerReferralService = {
       console.error('Error resolviendo link de peluqueria:', error.response?.data);
       return {
         success: false,
-        message: error.response?.data?.message || 'Error al validar el link de peluqueria'
+        message: error.response?.data?.message || 'Error al validar el link del establecimiento'
       };
     }
   },
@@ -504,13 +504,15 @@ export const sellerReferralService = {
         success: true,
         referral: response.data.referral || null,
         statistics: response.data.statistics || {},
+        earnings: response.data.earnings || null,
         recentBookings: response.data.recent_bookings || [],
+        monthlyHistory: response.data.monthly_history || [],
       };
     } catch (error) {
-      console.error('Error obteniendo panel del referido:', error.response?.data);
+      console.error('Error obteniendo panel del establecimiento:', error.response?.data);
       return {
         success: false,
-        message: error.response?.data?.message || 'Error al obtener el panel del referido'
+        message: error.response?.data?.message || 'Error al obtener el panel del establecimiento'
       };
     }
   },
@@ -535,10 +537,10 @@ export const sellerReferralService = {
         credentials: response.data.credentials || null,
       };
     } catch (error) {
-      console.error('Error creando referido de vendedor:', error.response?.data);
+      console.error('Error creando establecimiento:', error.response?.data);
       return {
         success: false,
-        message: error.response?.data?.message || 'Error al registrar referido',
+        message: error.response?.data?.message || 'Error al registrar establecimiento',
         errors: error.response?.data?.errors
       };
     }
@@ -564,7 +566,13 @@ export const settingsService = {
   async getBookingSettings() {
     const defaultSettings = {
       requireAdvance12h: true,
-      whatsappConfirmationTemplate: DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE
+      whatsappConfirmationTemplate: DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE,
+      sellerReferralValue: 5000,
+      partnerCommissionTiers: [
+        { from: 1, to: 20, value: 5000 },
+        { from: 21, to: 40, value: 7000 },
+        { from: 41, to: null, value: 100000 },
+      ]
     };
     try {
       const response = await api.get('/booking-settings');
@@ -588,7 +596,13 @@ export const settingsService = {
   async updateBookingSettings(payload) {
     const defaultSettings = {
       requireAdvance12h: true,
-      whatsappConfirmationTemplate: DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE
+      whatsappConfirmationTemplate: DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE,
+      sellerReferralValue: 5000,
+      partnerCommissionTiers: [
+        { from: 1, to: 20, value: 5000 },
+        { from: 21, to: 40, value: 7000 },
+        { from: 41, to: null, value: 100000 },
+      ]
     };
     try {
       const response = await api.put('/booking-settings', payload);

@@ -75,4 +75,9 @@ class SellerReferral extends Model
     {
         return $this->hasMany(Booking::class, 'seller_referral_id');
     }
+
+    public function monthlyHistories()
+    {
+        return $this->hasMany(SellerReferralMonthlyHistory::class, 'seller_referral_id');
+    }
 }

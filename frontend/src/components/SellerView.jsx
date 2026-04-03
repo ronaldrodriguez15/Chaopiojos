@@ -98,6 +98,11 @@ const SellerView = ({ currentUser }) => {
     () => referrals.filter((item) => item.booking_link),
     [referrals]
   );
+  const commissionPerHead = Number(
+    earnings.seller?.effective_referral_value
+    ?? earnings.summary?.per_head_value
+    ?? 0
+  );
 
   const cards = useMemo(() => ([
     { label: 'Referidos registrados', value: stats.total || 0, tone: 'bg-blue-50 border-blue-200 text-blue-700', icon: Briefcase },
@@ -188,7 +193,7 @@ const SellerView = ({ currentUser }) => {
     });
     toast({
       title: 'Referido creado',
-      description: 'El usuario del referido quedó listo con su acceso y su QR.',
+      description: 'El usuario del referido quedó listo con su acceso y su link.',
       className: 'bg-green-100 text-green-800 rounded-2xl border-2 border-green-200'
     });
     await loadDashboard();
@@ -232,7 +237,7 @@ const SellerView = ({ currentUser }) => {
                 <h3 className="text-xl font-black text-gray-800">Links activos por referido</h3>
               </div>
               {activeLinkReferrals.length === 0 ? (
-                <div className="rounded-2xl border-2 border-dashed border-cyan-200 bg-cyan-50 p-8 text-center font-bold text-cyan-700">Aún no tienes referidos con QR activo.</div>
+                <div className="rounded-2xl border-2 border-dashed border-cyan-200 bg-cyan-50 p-8 text-center font-bold text-cyan-700">Aún no tienes referidos con link activo.</div>
               ) : (
                 <div className="space-y-3">
                   {activeLinkReferrals.map((item) => (
@@ -253,7 +258,7 @@ const SellerView = ({ currentUser }) => {
                       </div>
                     </div>
                   ))}
-                  <p className="text-sm font-bold text-gray-600">Cada reserva hecha con estos links te genera <span className="text-cyan-700">{formatCurrency(5000)}</span> por cabeza agendada.</p>
+                  <p className="text-sm font-bold text-gray-600">Cada reserva hecha con estos links te genera <span className="text-cyan-700">{formatCurrency(commissionPerHead)}</span> por cabeza agendada.</p>
                 </div>
               )}
             </div>
@@ -261,11 +266,12 @@ const SellerView = ({ currentUser }) => {
             <div className="bg-gradient-to-br from-cyan-500 to-blue-600 rounded-[2rem] p-6 shadow-lg text-white border-4 border-cyan-300">
               <p className="text-xs uppercase tracking-[0.25em] font-black opacity-80">Ganancias por referidos</p>
               <h3 className="text-3xl font-black mt-3">{formatCurrency(earnings.summary?.total_amount || 0)}</h3>
-              <p className="text-sm md:text-base font-bold text-cyan-50 mt-3 leading-relaxed">Seguimiento de reservas creadas con los QR de tus referidos y pago por cabeza agendada.</p>
+              <p className="text-sm md:text-base font-bold text-cyan-50 mt-3 leading-relaxed">Seguimiento de reservas creadas con los links de tus referidos y pago por cabeza agendada.</p>
+              <p className="text-sm font-black text-cyan-100 mt-3">Valor actual por cabeza: {formatCurrency(commissionPerHead)}</p>
               <div className="mt-6 space-y-3">
                 <div className="rounded-2xl bg-white/15 border border-white/20 p-4 flex items-center justify-between"><span className="font-bold">Pendiente</span><span className="text-2xl font-black">{formatCurrency(earnings.summary?.pending_amount || 0)}</span></div>
                 <div className="rounded-2xl bg-white/15 border border-white/20 p-4 flex items-center justify-between"><span className="font-bold">Pagado</span><span className="text-2xl font-black">{formatCurrency(earnings.summary?.paid_amount || 0)}</span></div>
-                <div className="rounded-2xl bg-white/15 border border-white/20 p-4 flex items-center justify-between"><span className="font-bold">Reservas con QR</span><span className="text-2xl font-black">{earnings.summary?.bookings_count || 0}</span></div>
+                <div className="rounded-2xl bg-white/15 border border-white/20 p-4 flex items-center justify-between"><span className="font-bold">Reservas por link</span><span className="text-2xl font-black">{earnings.summary?.bookings_count || 0}</span></div>
               </div>
             </div>
           </div>
@@ -304,7 +310,7 @@ const SellerView = ({ currentUser }) => {
                 ))}
               </div>
             ) : (
-              <div className="rounded-2xl border-2 border-dashed border-cyan-200 bg-cyan-50 p-8 text-center font-bold text-cyan-700">Aún no tienes reservas generadas con los QR de tus referidos.</div>
+              <div className="rounded-2xl border-2 border-dashed border-cyan-200 bg-cyan-50 p-8 text-center font-bold text-cyan-700">Aún no tienes reservas generadas con los links de tus referidos.</div>
             )}
           </div>
         </TabsContent>
@@ -312,10 +318,10 @@ const SellerView = ({ currentUser }) => {
         <TabsContent value="referrals" className="space-y-6">
           <div className="grid grid-cols-1 xl:grid-cols-[0.95fr_1.05fr] gap-6">
             <div className="bg-white rounded-[2rem] border-4 border-cyan-100 p-6 shadow-lg space-y-5">
-              <div className="flex items-center gap-3"><Upload className="w-6 h-6 text-cyan-600" /><h3 className="text-xl font-black text-gray-800">Registrar nuevo referido</h3></div>
+              <div className="flex items-center gap-3"><Upload className="w-6 h-6 text-cyan-600" /><h3 className="text-xl font-black text-gray-800">Registrar nuevo establecimiento</h3></div>
 
               <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50 p-4 text-sm font-bold text-gray-700">
-                Al registrar un referido se crea un usuario independiente. Ese referido podrá entrar con su correo y contraseña para ver únicamente su panel estadístico y su QR.
+                Al registrar un referido se crea un usuario independiente. Ese referido podrá entrar con su correo y contraseña para ver únicamente su panel estadístico y su link.
               </div>
 
               {createdAccess && (
@@ -366,7 +372,7 @@ const SellerView = ({ currentUser }) => {
             </div>
 
             <div className="bg-white rounded-[2rem] border-4 border-cyan-100 p-6 shadow-lg">
-              <div className="flex items-center gap-3 mb-5"><Briefcase className="w-6 h-6 text-cyan-600" /><h3 className="text-xl font-black text-gray-800">Referidos cargados</h3></div>
+              <div className="flex items-center gap-3 mb-5"><Briefcase className="w-6 h-6 text-cyan-600" /><h3 className="text-xl font-black text-gray-800">Establecimientos cargados</h3></div>
               {referrals.length === 0 ? (
                 <div className="rounded-2xl border-2 border-dashed border-cyan-200 bg-cyan-50 p-10 text-center text-cyan-700 font-bold">Todavía no has registrado referidos.</div>
               ) : (
@@ -391,7 +397,7 @@ const SellerView = ({ currentUser }) => {
 
                         {item.booking_link && (
                           <div className="mt-4 rounded-xl bg-white border border-cyan-100 p-3 space-y-2">
-                            <p className="text-xs font-black uppercase tracking-wide text-cyan-600">QR y link activos</p>
+                            <p className="text-xs font-black uppercase tracking-wide text-cyan-600">Link activo</p>
                             <p className="text-xs font-bold text-gray-600 break-all">{buildBookingUrl(item.booking_link)}</p>
                             <Button type="button" onClick={() => handleCopyBookingUrl(item.booking_link)} className="bg-cyan-500 hover:bg-cyan-600 text-white rounded-xl px-4 py-2 font-bold"><Copy className="w-4 h-4 mr-2" />Copiar link</Button>
                           </div>

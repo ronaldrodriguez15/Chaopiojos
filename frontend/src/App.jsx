@@ -892,7 +892,7 @@ function App() {
       case 'vendedor':
         return "Chao Piojos | Vendedor";
       case 'referido':
-        return "Chao Piojos | Referido";
+        return "Chao Piojos | Establecimiento";
       default:
         return "Chao Piojos";
     }
@@ -973,7 +973,7 @@ function App() {
                       <span className="text-blue-500">Piojos</span>
                     </h1>
                     <p className="text-xs md:text-lg text-gray-500 font-bold bg-orange-100 px-2 md:px-3 py-0.5 md:py-1 rounded-full inline-block mt-1 truncate max-w-[10.5rem] sm:max-w-none">
-                      Hola, {currentUser.name} ðŸ‘‹
+                      Hola, {currentUser.name}
                     </p>
                   </div>
                 </div>
@@ -1035,7 +1035,8 @@ function App() {
                     users={users}
                     handleCreateUser={handleCreateUser}
                     handleUpdateUser={handleUpdateUser}
-              handleToggleUserActive={handleToggleUserActive}
+                    handleToggleUserActive={handleToggleUserActive}
+                    reloadUsers={loadUsers}
                     appointments={allAppointments}
                     baseAppointments={appointments}
                     bookings={bookings}
@@ -1089,7 +1090,7 @@ function App() {
           style={dropdownStyle}
         >
           <div className="bg-yellow-100 px-4 py-3 border-b-2 border-yellow-200 flex justify-between items-center">
-            <h3 className="font-bold text-gray-800 text-lg">ðŸ”” Notificaciones</h3>
+            <h3 className="font-bold text-gray-800 text-lg">Notificaciones</h3>
             <div className="flex gap-2">
               {getFilteredNotifications().length > 0 && (
                 <>
@@ -1163,7 +1164,7 @@ function App() {
           <DialogHeader className="mb-4">
             <DialogTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
               <span className="inline-flex items-center gap-2 bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs sm:text-sm font-bold">
-                ðŸ”” Detalle de notificaciÃ³n
+                Detalle de notificación
               </span>
             </DialogTitle>
           </DialogHeader>
