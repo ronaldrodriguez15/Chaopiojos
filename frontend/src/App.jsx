@@ -1,12 +1,15 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Toaster } from '@/components/ui/toaster';
 import PiojologistView from '@/components/PiojologistView';
 import AdminView from '@/components/AdminView';
 import SellerView from '@/components/SellerView';
 import ReferralPartnerView from '@/components/ReferralPartnerView';
+import ProfileDialog from '@/components/ProfileDialog';
+import UserAvatar from '@/components/UserAvatar';
 import Login from '@/components/Login';
-import { LogOut, Bell } from 'lucide-react';
+import { LogOut, Bell, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -53,6 +56,7 @@ function App() {
   // Notification system
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [seenAppointmentIds, setSeenAppointmentIds] = useState([]);
 
@@ -608,8 +612,18 @@ function App() {
 
   const handleLogout = async () => {
     await authService.logout();
+    setShowProfile(false);
     setCurrentUser(null);
     setUsers([]);
+  };
+
+  const handleProfileUpdated = async (updatedUser) => {
+    setCurrentUser(updatedUser);
+    authService.setCurrentUser(updatedUser);
+
+    if (updatedUser?.role === 'admin') {
+      await loadUsers();
+    }
   };
 
   const handleCreateUser = async (newUser) => {
@@ -1001,6 +1015,39 @@ function App() {
 
                   </div>
 
+                  <DropdownMenu.Root>
+                    <DropdownMenu.Trigger asChild>
+                      <button
+                        type="button"
+                        aria-label="Abrir menú de perfil"
+                        className="w-[52px] h-[52px] md:w-[58px] md:h-[58px] bg-cyan-400 hover:bg-cyan-500 text-white rounded-xl md:rounded-2xl p-1 shadow-md hover:shadow-lg transition-all border-b-4 border-cyan-600 hover:border-cyan-700 active:border-b-0 active:translate-y-1"
+                      >
+                        <UserAvatar user={currentUser} className="w-full h-full rounded-[0.85rem] md:rounded-[1rem] border-2 border-white/70 shadow-sm" textClassName="text-lg md:text-xl" />
+                      </button>
+                    </DropdownMenu.Trigger>
+
+                    <DropdownMenu.Portal>
+                      <DropdownMenu.Content
+                        sideOffset={10}
+                        align="center"
+                        className="z-[100000] min-w-[13rem] rounded-2xl border-4 border-cyan-200 bg-white p-2 shadow-2xl"
+                      >
+                        <div className="px-3 py-2 rounded-xl bg-cyan-50 border border-cyan-100 mb-2">
+                          <p className="text-sm font-black text-gray-800 truncate">{currentUser.name}</p>
+                          <p className="text-xs font-bold text-cyan-700 truncate">{currentUser.email}</p>
+                        </div>
+
+                        <DropdownMenu.Item
+                          onSelect={() => setShowProfile(true)}
+                          className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-black text-cyan-700 outline-none cursor-pointer hover:bg-cyan-50 focus:bg-cyan-50"
+                        >
+                          <User className="w-4 h-4" />
+                          Mi perfil
+                        </DropdownMenu.Item>
+                      </DropdownMenu.Content>
+                    </DropdownMenu.Portal>
+                  </DropdownMenu.Root>
+
                   <Button 
                     onClick={handleLogout}
                     className="bg-red-400 hover:bg-red-500 text-white rounded-xl md:rounded-2xl px-3 md:px-6 py-3 md:py-6 font-bold text-sm md:text-lg shadow-md hover:shadow-lg transition-all border-b-4 border-red-600 hover:border-red-700 active:border-b-0 active:translate-y-1"
@@ -1077,6 +1124,13 @@ function App() {
           )}
         </AnimatePresence>
       </div>
+
+      <ProfileDialog
+        open={showProfile}
+        onOpenChange={setShowProfile}
+        currentUser={currentUser}
+        onProfileUpdated={handleProfileUpdated}
+      />
 
       {/* Decorative Background Blobs */}
       <div className="fixed top-20 -left-10 w-48 h-48 bg-yellow-300 rounded-full mix-blend-multiply filter blur-2xl opacity-40 animate-pulse pointer-events-none"></div>

@@ -74,8 +74,10 @@ class SellerReferralController extends Controller
             'reviewed_at' => $referral->reviewed_at,
             'chamber_of_commerce_path' => $referral->chamber_of_commerce_path,
             'rut_path' => $referral->rut_path,
+            'place_photo_path' => $referral->place_photo_path,
             'chamber_of_commerce_url' => $referral->chamber_of_commerce_path ? asset('storage/' . $referral->chamber_of_commerce_path) : null,
             'rut_url' => $referral->rut_path ? asset('storage/' . $referral->rut_path) : null,
+            'place_photo_url' => $referral->place_photo_path ? asset('storage/' . $referral->place_photo_path) : null,
             'created_at' => $referral->created_at,
             'updated_at' => $referral->updated_at,
             'seller' => $referral->relationLoaded('seller') && $referral->seller
@@ -701,6 +703,7 @@ class SellerReferralController extends Controller
                 'notes' => 'nullable|string|max:5000',
                 'chamber_of_commerce' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:5120',
                 'rut' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:5120',
+                'place_photo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
             ]);
 
             $resolvedContactName = trim((string) ($validated['contact_name'] ?? ''));
@@ -739,6 +742,7 @@ class SellerReferralController extends Controller
                     'reviewed_at' => $isAdmin ? now() : null,
                     'chamber_of_commerce_path' => $this->storeDocument($request->file('chamber_of_commerce'), 'camara-comercio'),
                     'rut_path' => $this->storeDocument($request->file('rut'), 'rut'),
+                    'place_photo_path' => $this->storeDocument($request->file('place_photo'), 'foto-lugar'),
                 ]);
             });
 

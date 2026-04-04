@@ -11,7 +11,8 @@ const Pagination = React.memo(({ currentPage, totalItems, itemsPerPage, onPageCh
     pink: 'bg-pink-400 hover:bg-pink-500 border-pink-600',
     purple: 'bg-purple-500 hover:bg-purple-600 border-purple-600',
     green: 'bg-green-500 hover:bg-green-600 border-green-600',
-    amber: 'bg-amber-500 hover:bg-amber-600 border-amber-600'
+    amber: 'bg-amber-500 hover:bg-amber-600 border-amber-600',
+    orange: 'bg-orange-500 hover:bg-orange-600 border-orange-600'
   };
 
   const colorClass = colors[colorScheme] || colors.blue;

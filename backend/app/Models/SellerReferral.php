@@ -30,6 +30,7 @@ class SellerReferral extends Model
         'reviewed_at',
         'chamber_of_commerce_path',
         'rut_path',
+        'place_photo_path',
     ];
 
     protected $casts = [

@@ -41,7 +41,7 @@ class AuthController extends Controller
 
             return response()->json([
                 'success' => true,
-                'user' => $user,
+                'user' => $user->fresh(),
                 'token' => $token,
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -85,7 +85,7 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'user' => $user
+            'user' => $user?->fresh()
         ]);
     }
 }

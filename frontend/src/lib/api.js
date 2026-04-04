@@ -12,6 +12,15 @@ const api = axios.create({
   withCredentials: true,
 });
 
+const setStoredCurrentUser = (user) => {
+  localStorage.setItem('current_user', JSON.stringify(user));
+};
+
+const clearStoredSession = () => {
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('current_user');
+};
+
 // Interceptor para agregar el token a cada petición
 api.interceptors.request.use(
   (config) => {
@@ -37,14 +46,12 @@ api.interceptors.response.use(
 
     // Evita redirigir en intentos de login fallidos; solo actúa cuando hay sesión previa
     if (status === 401 && hasToken && !requestUrl.includes('/login')) {
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('current_user');
+      clearStoredSession();
       window.location.href = '/';
     }
 
     if (status === 403 && hasToken && typeof message === 'string' && message.toLowerCase().includes('inactiva')) {
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('current_user');
+      clearStoredSession();
       window.location.href = '/';
     }
 
@@ -80,7 +87,7 @@ export const authService = {
       
       // Guardar token y usuario en localStorage
       localStorage.setItem('auth_token', token);
-      localStorage.setItem('current_user', JSON.stringify(user));
+      setStoredCurrentUser(user);
       
       return { success: true, user, token };
     } catch (error) {
@@ -95,13 +102,11 @@ export const authService = {
   async logout() {
     try {
       await api.post('/logout');
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('current_user');
+      clearStoredSession();
       return { success: true };
     } catch (error) {
       // Limpiar localStorage de todas formas
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('current_user');
+      clearStoredSession();
       return { success: true };
     }
   },
@@ -134,6 +139,14 @@ export const authService = {
 
   getToken() {
     return localStorage.getItem('auth_token');
+  },
+
+  setCurrentUser(user) {
+    setStoredCurrentUser(user);
+  },
+
+  clearSession() {
+    clearStoredSession();
   },
 
   isAuthenticated() {
@@ -219,6 +232,58 @@ export const userService = {
       return { 
         success: false, 
         message: error.response?.data?.message || 'Error al regenerar código' 
+      };
+    }
+  }
+};
+
+export const profileService = {
+  async get() {
+    try {
+      const response = await api.get('/profile');
+      return { success: true, user: response.data.user };
+    } catch (error) {
+      console.error('Error obteniendo perfil:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al obtener perfil'
+      };
+    }
+  },
+
+  async update(payload) {
+    try {
+      const formData = new FormData();
+      Object.entries(payload || {}).forEach(([key, value]) => {
+        if (value === undefined) return;
+        if (value === null) {
+          formData.append(key, '');
+          return;
+        }
+        formData.append(key, value);
+      });
+
+      const response = await api.post('/profile', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      if (response.data?.user) {
+        setStoredCurrentUser(response.data.user);
+      }
+
+      return {
+        success: true,
+        user: response.data.user,
+        message: response.data.message
+      };
+    } catch (error) {
+      console.error('Error actualizando perfil:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al actualizar perfil',
+        errors: error.response?.data?.errors
       };
     }
   }
@@ -562,6 +627,124 @@ export const sellerReferralService = {
 };
 
 // Configuración de aplicación
+const SELLER_VISITS_SUPPORT_KEY = `seller-visits-support:${API_URL}`;
+
+const getSellerVisitsSupport = () => {
+  try {
+    const value = localStorage.getItem(SELLER_VISITS_SUPPORT_KEY);
+    if (value === 'unsupported') return false;
+    if (value === 'supported') return true;
+  } catch (error) {
+    // ignore storage errors
+  }
+  return true;
+};
+
+const setSellerVisitsSupport = (supported) => {
+  try {
+    localStorage.setItem(SELLER_VISITS_SUPPORT_KEY, supported ? 'supported' : 'unsupported');
+  } catch (error) {
+    // ignore storage errors
+  }
+};
+
+export const sellerVisitService = {
+  isSupported() {
+    return getSellerVisitsSupport();
+  },
+
+  async getAll(options = {}) {
+    const forceRefresh = options?.force === true;
+
+    if (!forceRefresh && !getSellerVisitsSupport()) {
+      return {
+        success: true,
+        visits: [],
+        supported: false,
+        message: 'El backend actual no tiene habilitado el historial de visitas comerciales.'
+      };
+    }
+
+    try {
+      const response = await api.get('/seller-visits');
+      setSellerVisitsSupport(true);
+      return { success: true, visits: response.data.visits || [], supported: true };
+    } catch (error) {
+      const status = error.response?.status;
+      const message = error.response?.data?.message || '';
+      const missingRoute = status === 404 && typeof message === 'string' && message.toLowerCase().includes('seller-visits');
+      if (missingRoute) {
+        setSellerVisitsSupport(false);
+        return {
+          success: true,
+          visits: [],
+          supported: false,
+          message: 'El backend actual no tiene habilitado el historial de visitas comerciales.'
+        };
+      }
+
+      console.error('Error obteniendo visitas comerciales:', error.response?.data);
+      return {
+        success: false,
+        supported: true,
+        message: error.response?.data?.message || 'Error al obtener visitas comerciales'
+      };
+    }
+  },
+
+  async create(payload) {
+    if (!getSellerVisitsSupport()) {
+      return {
+        success: false,
+        supported: false,
+        message: 'Este backend todavia no soporta el registro de visitas comerciales.'
+      };
+    }
+
+    try {
+      const formData = new FormData();
+      Object.entries(payload || {}).forEach(([key, value]) => {
+        if (value === null || value === undefined || value === '') return;
+        formData.append(key, value);
+      });
+
+      const response = await api.post('/seller-visits', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      setSellerVisitsSupport(true);
+      return {
+        success: true,
+        visit: response.data.visit,
+        message: response.data.message,
+        supported: true,
+      };
+    } catch (error) {
+      const status = error.response?.status;
+      const message = error.response?.data?.message || '';
+      const missingRoute = status === 404 && typeof message === 'string' && message.toLowerCase().includes('seller-visits');
+      if (missingRoute) {
+        setSellerVisitsSupport(false);
+        return {
+          success: false,
+          supported: false,
+          message: 'Este backend todavía no soporta el registro de visitas comerciales.'
+        };
+      }
+
+      console.error('Error creando visita comercial:', error.response?.data);
+      return {
+        success: false,
+        supported: true,
+        message: error.response?.data?.message || 'Error al registrar visita comercial',
+        errors: error.response?.data?.errors
+      };
+    }
+  }
+};
+
 export const settingsService = {
   async getBookingSettings() {
     const defaultSettings = {

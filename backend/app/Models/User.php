@@ -8,6 +8,7 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Support\Str;
 use App\Models\SellerReferral;
+use App\Models\SellerVisit;
 
 class User extends Authenticatable
 {
@@ -34,6 +35,9 @@ class User extends Authenticatable
         'referral_value',
         'referral_code',
         'referred_by_id',
+        'phone',
+        'profile_photo_path',
+        'avatar_key',
     ];
 
     /**
@@ -56,6 +60,10 @@ class User extends Authenticatable
         'available' => 'boolean',
         'is_active' => 'boolean',
         'referral_value' => 'decimal:2',
+    ];
+
+    protected $appends = [
+        'profile_photo_url',
     ];
 
     /**
@@ -126,5 +134,19 @@ class User extends Authenticatable
     public function managedSellerReferral()
     {
         return $this->hasOne(SellerReferral::class, 'referred_user_id');
+    }
+
+    public function sellerVisits()
+    {
+        return $this->hasMany(SellerVisit::class, 'seller_user_id');
+    }
+
+    public function getProfilePhotoUrlAttribute(): ?string
+    {
+        if (empty($this->profile_photo_path)) {
+            return null;
+        }
+
+        return asset('storage/' . $this->profile_photo_path);
     }
 }

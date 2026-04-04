@@ -12,6 +12,8 @@ use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\AppSettingController;
 use App\Http\Controllers\SellerReferralController;
+use App\Http\Controllers\SellerVisitController;
+use App\Http\Controllers\ProfileController;
 
 /*
 |--------------------------------------------------------------------------
@@ -38,6 +40,8 @@ Route::middleware(['auth:sanctum', 'active.user'])->group(function () {
     // Auth
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+    Route::get('/profile', [ProfileController::class, 'show']);
+    Route::post('/profile', [ProfileController::class, 'update']);
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
@@ -76,6 +80,8 @@ Route::middleware(['auth:sanctum', 'active.user'])->group(function () {
     Route::get('/seller-referrals/partner-dashboard', [SellerReferralController::class, 'partnerDashboard']);
     Route::post('/seller-referrals', [SellerReferralController::class, 'store']);
     Route::put('/seller-referrals/{id}/review', [SellerReferralController::class, 'review']);
+    Route::get('/seller-visits', [SellerVisitController::class, 'index']);
+    Route::post('/seller-visits', [SellerVisitController::class, 'store']);
     Route::delete('/product-requests/{productRequest}', [ProductRequestController::class, 'destroy']);
 
     // App settings (admin)
