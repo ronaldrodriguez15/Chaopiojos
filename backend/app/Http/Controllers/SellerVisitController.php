@@ -9,6 +9,31 @@ use Illuminate\Support\Facades\Storage;
 
 class SellerVisitController extends Controller
 {
+    protected function resolvePhotoAbsolutePath(?string $path): ?string
+    {
+        if (!$path) {
+            return null;
+        }
+
+        if (Storage::disk('public')->exists($path)) {
+            return Storage::disk('public')->path($path);
+        }
+
+        $normalizedPath = ltrim($path, '/\\');
+        $publicCandidates = [
+            public_path($normalizedPath),
+            public_path('storage/' . $normalizedPath),
+        ];
+
+        foreach ($publicCandidates as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
     protected function canAccessVisits(Request $request): bool
     {
         return in_array($request->user()?->role, ['admin', 'vendedor'], true);
@@ -45,7 +70,9 @@ class SellerVisitController extends Controller
             'owner_name' => $visit->owner_name,
             'whatsapp' => $visit->whatsapp,
             'place_photo_path' => $visit->place_photo_path,
-            'place_photo_url' => $visit->place_photo_path ? asset('storage/' . $visit->place_photo_path) : null,
+            'place_photo_url' => $visit->place_photo_path
+                ? url('/api/seller-visits/photo/' . $visit->id) . '?v=' . ($visit->updated_at?->timestamp ?? $visit->id)
+                : null,
             'created_at' => $visit->created_at,
             'updated_at' => $visit->updated_at,
             'seller' => $visit->relationLoaded('seller') && $visit->seller
@@ -57,6 +84,22 @@ class SellerVisitController extends Controller
                 ]
                 : null,
         ];
+    }
+
+    public function photo(SellerVisit $sellerVisit)
+    {
+        $absolutePath = $this->resolvePhotoAbsolutePath($sellerVisit->place_photo_path);
+
+        if (!$absolutePath) {
+            abort(404);
+        }
+
+        $mimeType = mime_content_type($absolutePath) ?: 'application/octet-stream';
+
+        return response()->file($absolutePath, [
+            'Content-Type' => $mimeType,
+            'Cache-Control' => 'public, max-age=31536000',
+        ]);
     }
 
     public function index(Request $request)

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { User, Crown, UserCheck, Building2 } from 'lucide-react';
+import { User, Crown, UserCheck, Building2, Copy, Link2, FileText, Download, Image as ImageIcon } from 'lucide-react';
 
 const getRoleLabel = (role) => {
   if (role === 'admin') return 'Administrador';
@@ -25,6 +25,17 @@ const getRoleIcon = (role) => {
   return <User className="w-6 h-6 text-yellow-600" />;
 };
 
+const buildReferralBookingLink = (referralCode) => (
+  referralCode ? `${window.location.origin}/agenda?ref=${encodeURIComponent(referralCode)}` : ''
+);
+
+const ESTABLISHMENT_DOCUMENTS = [
+  { key: 'chamber_of_commerce_url', label: 'Camara de Comercio', icon: FileText },
+  { key: 'rut_url', label: 'RUT', icon: FileText },
+  { key: 'logo_url', label: 'Logo del establecimiento', icon: ImageIcon },
+  { key: 'citizenship_card_url', label: 'Cedula de ciudadania', icon: ImageIcon },
+];
+
 const UserDetailDialog = ({
   isOpen,
   onClose,
@@ -35,6 +46,16 @@ const UserDetailDialog = ({
   if (!user) return null;
 
   const establishment = user.managedSellerReferral || null;
+  const sellerReferralLink = buildReferralBookingLink(user.referral_code);
+
+  const handleCopyReferralLink = async () => {
+    if (!sellerReferralLink) return;
+    try {
+      await navigator.clipboard.writeText(sellerReferralLink);
+    } catch (error) {
+      // ignore clipboard failures inside detail dialog
+    }
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -91,6 +112,41 @@ const UserDetailDialog = ({
                 </div>
               )}
 
+              {user.role === 'vendedor' && (
+                <>
+                  <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400">
+                    <p className="text-xs font-bold text-yellow-600 mb-1">Código de Referido</p>
+                    <p className="text-2xl font-bold text-gray-800">{user.referral_code || 'Sin código asignado'}</p>
+                  </div>
+
+                  <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400">
+                    <p className="text-xs font-bold text-yellow-600 mb-1">Link General del Vendedor</p>
+                    <p className="text-sm font-bold text-gray-800 break-all">{sellerReferralLink || 'Genera primero el código del vendedor'}</p>
+                    {sellerReferralLink ? (
+                      <div className="mt-3 flex flex-col sm:flex-row gap-3">
+                        <Button
+                          type="button"
+                          onClick={handleCopyReferralLink}
+                          className="bg-cyan-500 hover:bg-cyan-600 text-white rounded-2xl py-3 px-5 font-bold"
+                        >
+                          <Copy className="w-4 h-4 mr-2" />
+                          Copiar link
+                        </Button>
+                        <a
+                          href={sellerReferralLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center rounded-2xl border-2 border-cyan-200 bg-cyan-50 px-5 py-3 font-bold text-cyan-700 hover:bg-cyan-100"
+                        >
+                          <Link2 className="w-4 h-4 mr-2" />
+                          Abrir link
+                        </a>
+                      </div>
+                    ) : null}
+                  </div>
+                </>
+              )}
+
               {user.address && (
                 <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400">
                   <p className="text-xs font-bold text-yellow-600 mb-1">Dirección</p>
@@ -123,6 +179,34 @@ const UserDetailDialog = ({
 
               {establishment && (
                 <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {establishment.logo_url ? (
+                      <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs font-bold text-yellow-600 uppercase tracking-wide">Logo</p>
+                          <a href={establishment.logo_url} download className="inline-flex items-center gap-2 text-xs font-bold text-yellow-700 hover:text-yellow-900">
+                            <Download className="w-4 h-4" />
+                            Descargar
+                          </a>
+                        </div>
+                        <img src={establishment.logo_url} alt={`Logo de ${establishment.business_name || user.name}`} className="w-full h-40 rounded-2xl border border-yellow-200 bg-yellow-50 object-contain" />
+                      </div>
+                    ) : null}
+
+                    {establishment.citizenship_card_url ? (
+                      <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs font-bold text-yellow-600 uppercase tracking-wide">Cedula</p>
+                          <a href={establishment.citizenship_card_url} download className="inline-flex items-center gap-2 text-xs font-bold text-yellow-700 hover:text-yellow-900">
+                            <Download className="w-4 h-4" />
+                            Descargar
+                          </a>
+                        </div>
+                        <img src={establishment.citizenship_card_url} alt={`Cedula de ${establishment.business_name || user.name}`} className="w-full h-40 rounded-2xl border border-yellow-200 bg-yellow-50 object-contain" />
+                      </div>
+                    ) : null}
+                  </div>
+
                   <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400">
                     <p className="text-xs font-bold text-yellow-600 mb-1">Nombre del Establecimiento</p>
                     <p className="text-base font-bold text-gray-800">{establishment.business_name || user.name}</p>
@@ -181,6 +265,38 @@ const UserDetailDialog = ({
                       <p className="text-sm font-bold text-gray-800 break-all">{`${window.location.origin}${establishment.booking_link}`}</p>
                     </div>
                   )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {ESTABLISHMENT_DOCUMENTS.map(({ key, label, icon: Icon }) => {
+                      const url = establishment[key];
+                      if (!url) return null;
+
+                      return (
+                        <div key={key} className="bg-white rounded-2xl p-4 border-2 border-yellow-400 space-y-3">
+                          <p className="text-xs font-bold text-yellow-600 uppercase tracking-wide">{label}</p>
+                          <div className="flex flex-wrap gap-2">
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-2 rounded-2xl border-2 border-yellow-300 bg-yellow-50 px-4 py-3 font-bold text-yellow-700 hover:bg-yellow-100"
+                            >
+                              <Icon className="w-4 h-4" />
+                              Ver archivo
+                            </a>
+                            <a
+                              href={url}
+                              download
+                              className="inline-flex items-center gap-2 rounded-2xl border-2 border-yellow-300 bg-white px-4 py-3 font-bold text-yellow-700 hover:bg-yellow-50"
+                            >
+                              <Download className="w-4 h-4" />
+                              Descargar
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </>
               )}
             </div>

@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building2, CalendarDays, Copy, ExternalLink, RefreshCw, Users, Wallet } from 'lucide-react';
+import { Building2, CalendarDays, Copy, ExternalLink, Menu, RefreshCw, Users, Wallet } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
+import MessagingModule from '@/components/MessagingModule';
 import { sellerReferralService } from '@/lib/api';
 
 const emptyEarnings = {
@@ -52,6 +54,8 @@ const bookingStatusTone = (status, isCompleted) => {
 
 const ReferralPartnerView = ({ currentUser }) => {
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('referralPartnerTab') || 'panel');
+  const [isNavOpen, setIsNavOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [referral, setReferral] = useState(null);
   const [statistics, setStatistics] = useState({
@@ -186,250 +190,325 @@ const ReferralPartnerView = ({ currentUser }) => {
     return to === null ? `${from}+ referidos` : `${from} a ${to} referidos`;
   };
 
+  const handleTabChange = (value) => {
+    setActiveTab(value);
+    localStorage.setItem('referralPartnerTab', value);
+  };
+
   return (
-    <div className="bg-white rounded-[2.5rem] p-4 md:p-6 shadow-xl border-4 border-cyan-100 space-y-6">
-      <div className="bg-white rounded-[2rem] border-4 border-cyan-100 shadow-lg p-5 md:p-6">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-[1.5rem] bg-gradient-to-br from-cyan-400 to-blue-500 text-white flex items-center justify-center shadow-lg">
-              <Building2 className="w-8 h-8" />
+    <div className="w-full space-y-8 overflow-x-hidden">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-[225px_minmax(0,1fr)] gap-4">
+          <aside className={`${isNavOpen ? 'block' : 'hidden'} lg:block`}>
+            <div className="bg-white/60 border-2 border-cyan-100 rounded-[1.5rem] p-3 sticky top-4">
+              <p className="text-xs font-black text-gray-500 uppercase tracking-wide mb-2">Modulos</p>
+              <TabsList className="w-full h-auto flex flex-col items-stretch bg-transparent p-0 gap-2">
+                <TabsTrigger value="panel" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-cyan-500 data-[state=active]:text-white transition-all">
+                  📊 Mi Panel
+                </TabsTrigger>
+                <TabsTrigger value="link" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-blue-500 data-[state=active]:text-white transition-all">
+                  🔗 Mi Link
+                </TabsTrigger>
+                <TabsTrigger value="messaging" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-teal-500 data-[state=active]:text-white transition-all">
+                  💬 Mensajería
+                </TabsTrigger>
+              </TabsList>
             </div>
-            <div>
-              <h2 className="text-2xl md:text-3xl font-black text-gray-800">Panel del Establecimiento</h2>
-              <p className="text-sm md:text-base font-bold text-cyan-600">{referral?.business_name || currentUser?.name}</p>
-            </div>
-          </div>
-          <Button type="button" onClick={loadDashboard} className="bg-cyan-500 hover:bg-cyan-600 text-white rounded-2xl px-5 py-4 font-bold shadow-md border-b-4 border-cyan-700 active:border-b-0 active:translate-y-1">
-            <RefreshCw className={`w-5 h-5 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Actualizar
-          </Button>
-        </div>
-      </div>
+          </aside>
 
-      <div className="bg-gradient-to-br from-cyan-500 to-blue-600 rounded-[2rem] p-6 shadow-lg text-white border-4 border-cyan-300">
-        <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6">
-          <div className="max-w-2xl">
-            <div className="flex items-center gap-3">
-              <Wallet className="w-6 h-6 text-white" />
-              <p className="text-xs uppercase tracking-[0.25em] font-black opacity-80">Ganancias del establecimiento</p>
+          <section className="space-y-6">
+            <div className="md:hidden flex items-center justify-between">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 rounded-full text-cyan-700 bg-cyan-100/90 hover:bg-cyan-200 px-3 shadow-sm"
+                onClick={() => setIsNavOpen((prev) => !prev)}
+                aria-expanded={isNavOpen}
+                aria-label="Mostrar u ocultar modulos"
+              >
+                <Menu className="w-4 h-4 mr-2" />
+                {isNavOpen ? 'Ocultar modulos' : 'Mostrar modulos'}
+              </Button>
             </div>
-            <h3 className="text-3xl md:text-4xl font-black mt-4">{formatCurrency(earnings.summary?.total_amount || 0)}</h3>
-            <p className="text-sm md:text-base font-bold text-cyan-50 mt-3 leading-relaxed">
-              Aquí ves la comisión que ha generado tu negocio con las reservas hechas desde tu link. La comisión sube por tramos según la cantidad de referidos del mes.
-            </p>
-            {activeTier && (
-              <p className="text-sm font-black text-cyan-100 mt-3">
-                Tramo activo del mes: {formatTierLabel(activeTier)} • {formatCurrency(activeTier.value || 0)} por referido
-              </p>
-            )}
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 xl:min-w-[24rem]">
-            <div className="rounded-2xl bg-white/15 border border-white/20 p-4">
-              <p className="text-xs uppercase tracking-wide font-black opacity-80">Reservas por link</p>
-              <p className="text-2xl font-black mt-2">{earnings.summary?.bookings_count || 0}</p>
+            <div className="hidden md:flex bg-white/60 border-2 border-cyan-100 rounded-[1.25rem] px-3 py-2 items-center justify-between">
+              <div className="flex items-center gap-3 min-w-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="lg:hidden h-9 rounded-lg border-2 border-cyan-200 text-cyan-600 bg-white/90 px-3"
+                  onClick={() => setIsNavOpen((prev) => !prev)}
+                  aria-expanded={isNavOpen}
+                  aria-label="Abrir menu lateral"
+                >
+                  <Menu className="w-5 h-5 mr-2" />
+                  {isNavOpen ? 'Cerrar' : 'Modulos'}
+                </Button>
+                <h2 className="text-base sm:text-lg font-black text-gray-800 truncate">Panel del Establecimiento</h2>
+              </div>
+              <Button
+                type="button"
+                onClick={loadDashboard}
+                className="bg-cyan-500 hover:bg-cyan-600 text-white rounded-xl px-4 py-2 font-bold shadow-sm"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                Actualizar
+              </Button>
             </div>
-            <div className="rounded-2xl bg-white/15 border border-white/20 p-4">
-              <p className="text-xs uppercase tracking-wide font-black opacity-80">Completadas</p>
-              <p className="text-2xl font-black mt-2">{earnings.summary?.completed_bookings || 0}</p>
-            </div>
-            <div className="rounded-2xl bg-white/15 border border-white/20 p-4">
-              <p className="text-xs uppercase tracking-wide font-black opacity-80">Conversión</p>
-              <p className="text-2xl font-black mt-2">{completionRate}%</p>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {earningsCards.map((card) => (
-          <div key={card.label} className={`rounded-[1.75rem] border-4 p-5 shadow-lg ${card.tone}`}>
-            <p className="text-xs uppercase tracking-wide font-black opacity-80">{card.label}</p>
-            <p className="text-3xl font-black mt-2">{card.value}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-[1.05fr_0.95fr] gap-6">
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {cards.map((card) => {
-              const Icon = card.icon;
-              return (
-                <div key={card.label} className={`rounded-[1.75rem] border-4 p-5 shadow-lg ${card.tone}`}>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide font-black opacity-80">{card.label}</p>
-                      <p className="text-3xl font-black mt-2">{card.value}</p>
+            <TabsContent value="panel" className="space-y-6">
+              <div className="bg-white rounded-[2rem] border-4 border-cyan-100 shadow-lg p-5 md:p-6">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-[1.5rem] bg-gradient-to-br from-cyan-400 to-blue-500 text-white flex items-center justify-center shadow-lg">
+                      <Building2 className="w-8 h-8" />
                     </div>
-                    <div className="w-14 h-14 rounded-2xl bg-white/80 flex items-center justify-center shadow-sm">
-                      <Icon className="w-7 h-7" />
+                    <div>
+                      <h2 className="text-2xl md:text-3xl font-black text-gray-800">Panel del Establecimiento</h2>
+                      <p className="text-sm md:text-base font-bold text-cyan-600">{referral?.business_name || currentUser?.name}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-cyan-50 border-2 border-cyan-100 px-5 py-4">
+                    <p className="text-xs uppercase tracking-[0.2em] font-black text-cyan-600">Link activo</p>
+                    <p className="text-sm font-black text-cyan-700 mt-1">{bookingUrl ? 'Disponible' : 'Pendiente'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-cyan-500 to-blue-600 rounded-[2rem] p-6 shadow-lg text-white border-4 border-cyan-300">
+                <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6">
+                  <div className="max-w-2xl">
+                    <div className="flex items-center gap-3">
+                      <Wallet className="w-6 h-6 text-white" />
+                      <p className="text-xs uppercase tracking-[0.25em] font-black opacity-80">Ganancias del establecimiento</p>
+                    </div>
+                    <h3 className="text-3xl md:text-4xl font-black mt-4">{formatCurrency(earnings.summary?.total_amount || 0)}</h3>
+                    <p className="text-sm md:text-base font-bold text-cyan-50 mt-3 leading-relaxed">
+                      Aquí ves la comisión que ha generado tu negocio con las reservas hechas desde tu link. La comisión sube por tramos según la cantidad de referidos del mes.
+                    </p>
+                    {activeTier && (
+                      <p className="text-sm font-black text-cyan-100 mt-3">
+                        Tramo activo del mes: {formatTierLabel(activeTier)} • {formatCurrency(activeTier.value || 0)} por referido
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 xl:min-w-[24rem]">
+                    <div className="rounded-2xl bg-white/15 border border-white/20 p-4">
+                      <p className="text-xs uppercase tracking-wide font-black opacity-80">Reservas por link</p>
+                      <p className="text-2xl font-black mt-2">{earnings.summary?.bookings_count || 0}</p>
+                    </div>
+                    <div className="rounded-2xl bg-white/15 border border-white/20 p-4">
+                      <p className="text-xs uppercase tracking-wide font-black opacity-80">Completadas</p>
+                      <p className="text-2xl font-black mt-2">{earnings.summary?.completed_bookings || 0}</p>
+                    </div>
+                    <div className="rounded-2xl bg-white/15 border border-white/20 p-4">
+                      <p className="text-xs uppercase tracking-wide font-black opacity-80">Conversión</p>
+                      <p className="text-2xl font-black mt-2">{completionRate}%</p>
                     </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              </div>
 
-          <div className="bg-white rounded-[2rem] border-4 border-cyan-100 p-6 shadow-lg">
-            <div className="flex items-center gap-3 mb-4">
-              <Wallet className="w-6 h-6 text-cyan-600" />
-              <h3 className="text-xl font-black text-gray-800">Resumen de ganancias</h3>
-            </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                {earningsCards.map((card) => (
+                  <div key={card.label} className={`rounded-[1.75rem] border-4 p-5 shadow-lg ${card.tone}`}>
+                    <p className="text-xs uppercase tracking-wide font-black opacity-80">{card.label}</p>
+                    <p className="text-3xl font-black mt-2">{card.value}</p>
+                  </div>
+                ))}
+              </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50 p-4">
-                <p className="text-xs uppercase tracking-wide font-black text-cyan-600">Ticket promedio</p>
-                <p className="text-2xl font-black text-gray-800 mt-2">{formatCurrency(averageTicket)}</p>
-              </div>
-              <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50 p-4">
-                <p className="text-xs uppercase tracking-wide font-black text-cyan-600">Referidos este mes</p>
-                <p className="text-2xl font-black text-gray-800 mt-2">{currentMonthReferrals}</p>
-              </div>
-              <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50 p-4">
-                <p className="text-xs uppercase tracking-wide font-black text-cyan-600">Servicios pendientes</p>
-                <p className="text-2xl font-black text-gray-800 mt-2">{earnings.summary?.pending_bookings || 0}</p>
-              </div>
-              <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50 p-4">
-                <p className="text-xs uppercase tracking-wide font-black text-cyan-600">Servicios completados</p>
-                <p className="text-2xl font-black text-gray-800 mt-2">{earnings.summary?.completed_bookings || 0}</p>
-              </div>
-            </div>
-          </div>
+              <div className="grid grid-cols-1 xl:grid-cols-[1.05fr_0.95fr] gap-6">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {cards.map((card) => {
+                      const Icon = card.icon;
+                      return (
+                        <div key={card.label} className={`rounded-[1.75rem] border-4 p-5 shadow-lg ${card.tone}`}>
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-xs uppercase tracking-wide font-black opacity-80">{card.label}</p>
+                              <p className="text-3xl font-black mt-2">{card.value}</p>
+                            </div>
+                            <div className="w-14 h-14 rounded-2xl bg-white/80 flex items-center justify-center shadow-sm">
+                              <Icon className="w-7 h-7" />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
 
-          <div className="bg-white rounded-[2rem] border-4 border-cyan-100 p-6 shadow-lg">
-            <div className="flex items-center gap-3 mb-4">
-              <Users className="w-6 h-6 text-cyan-600" />
-              <h3 className="text-xl font-black text-gray-800">Actividad reciente</h3>
-            </div>
+                  <div className="bg-white rounded-[2rem] border-4 border-cyan-100 p-6 shadow-lg">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Wallet className="w-6 h-6 text-cyan-600" />
+                      <h3 className="text-xl font-black text-gray-800">Resumen de ganancias</h3>
+                    </div>
 
-            {recentBookings.length === 0 ? (
-              <div className="rounded-2xl border-2 border-dashed border-cyan-200 bg-cyan-50 p-8 text-center font-bold text-cyan-700">
-                Aún no hay clientes registrados con tu link.
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-[26rem] overflow-y-auto pr-1">
-                {recentBookings.map((item) => (
-                  <div key={item.id} className="rounded-2xl border-2 border-cyan-100 bg-cyan-50/60 p-4">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                      <div>
-                        <p className="text-lg font-black text-gray-800">{item.clientName || 'Cliente'}</p>
-                        <p className="text-sm font-bold text-gray-600">
-                          {item.fecha ? new Date(item.fecha).toLocaleDateString('es-CO') : 'Sin fecha'}
-                          {item.hora ? ` - ${item.hora}` : ''}
-                        </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50 p-4">
+                        <p className="text-xs uppercase tracking-wide font-black text-cyan-600">Ticket promedio</p>
+                        <p className="text-2xl font-black text-gray-800 mt-2">{formatCurrency(averageTicket)}</p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        <span className="px-3 py-1 rounded-full border text-xs font-black uppercase tracking-wide bg-white border-cyan-200 text-cyan-700">
-                          {item.numPersonas || 1} persona(s)
-                        </span>
-                        <span className={`px-3 py-1 rounded-full border text-xs font-black uppercase tracking-wide ${bookingStatusTone(item.estado, item.is_completed)}`}>
-                          {bookingStatusLabel(item.estado)}
-                        </span>
+                      <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50 p-4">
+                        <p className="text-xs uppercase tracking-wide font-black text-cyan-600">Referidos este mes</p>
+                        <p className="text-2xl font-black text-gray-800 mt-2">{currentMonthReferrals}</p>
+                      </div>
+                      <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50 p-4">
+                        <p className="text-xs uppercase tracking-wide font-black text-cyan-600">Servicios pendientes</p>
+                        <p className="text-2xl font-black text-gray-800 mt-2">{earnings.summary?.pending_bookings || 0}</p>
+                      </div>
+                      <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50 p-4">
+                        <p className="text-xs uppercase tracking-wide font-black text-cyan-600">Servicios completados</p>
+                        <p className="text-2xl font-black text-gray-800 mt-2">{earnings.summary?.completed_bookings || 0}</p>
                       </div>
                     </div>
-                    <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="text-sm font-bold text-cyan-700">
-                          {item.is_completed ? 'Ganancia confirmada' : 'Valor pendiente por confirmar'}
-                        </p>
-                        <p className="text-xs font-bold text-gray-500 mt-1">
-                          Referido #{item.monthly_position || 0} del mes • Comisión aplicada {formatCurrency(item.tier_value || 0)}
-                        </p>
+                  </div>
+
+                  <div className="bg-white rounded-[2rem] border-4 border-cyan-100 p-6 shadow-lg">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Users className="w-6 h-6 text-cyan-600" />
+                      <h3 className="text-xl font-black text-gray-800">Actividad reciente</h3>
+                    </div>
+
+                    {recentBookings.length === 0 ? (
+                      <div className="rounded-2xl border-2 border-dashed border-cyan-200 bg-cyan-50 p-8 text-center font-bold text-cyan-700">
+                        Aún no hay clientes registrados con tu link.
                       </div>
-                      <p className={`text-sm font-black ${item.is_completed ? 'text-emerald-700' : 'text-amber-700'}`}>
-                        {formatCurrency(item.total_amount || 0)}
+                    ) : (
+                      <div className="space-y-3 max-h-[26rem] overflow-y-auto pr-1">
+                        {recentBookings.map((item) => (
+                          <div key={item.id} className="rounded-2xl border-2 border-cyan-100 bg-cyan-50/60 p-4">
+                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                              <div>
+                                <p className="text-lg font-black text-gray-800">{item.clientName || 'Cliente'}</p>
+                                <p className="text-sm font-bold text-gray-600">
+                                  {item.fecha ? new Date(item.fecha).toLocaleDateString('es-CO') : 'Sin fecha'}
+                                  {item.hora ? ` - ${item.hora}` : ''}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <span className="px-3 py-1 rounded-full border text-xs font-black uppercase tracking-wide bg-white border-cyan-200 text-cyan-700">
+                                  {item.numPersonas || 1} persona(s)
+                                </span>
+                                <span className={`px-3 py-1 rounded-full border text-xs font-black uppercase tracking-wide ${bookingStatusTone(item.estado, item.is_completed)}`}>
+                                  {bookingStatusLabel(item.estado)}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                              <div>
+                                <p className="text-sm font-bold text-cyan-700">
+                                  {item.is_completed ? 'Ganancia confirmada' : 'Valor pendiente por confirmar'}
+                                </p>
+                                <p className="text-xs font-bold text-gray-500 mt-1">
+                                  Referido #{item.monthly_position || 0} del mes • Comisión aplicada {formatCurrency(item.tier_value || 0)}
+                                </p>
+                              </div>
+                              <p className={`text-sm font-black ${item.is_completed ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                {formatCurrency(item.total_amount || 0)}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-[2rem] border-4 border-cyan-100 p-6 shadow-lg">
+                  <div className="flex items-center gap-3 mb-4">
+                    <CalendarDays className="w-6 h-6 text-cyan-600" />
+                    <h3 className="text-xl font-black text-gray-800">Cortes mensuales</h3>
+                  </div>
+
+                  {monthlyHistory.length === 0 ? (
+                    <div className="rounded-2xl border-2 border-dashed border-cyan-200 bg-cyan-50 p-8 text-center font-bold text-cyan-700">
+                      Aún no hay cierres mensuales registrados.
+                    </div>
+                  ) : (
+                    <div className="space-y-3 max-h-[48rem] overflow-y-auto pr-1">
+                      {monthlyHistory.map((item) => (
+                        <div key={item.id || item.period_start} className="rounded-2xl border-2 border-cyan-100 bg-cyan-50/60 p-4">
+                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                            <div>
+                              <p className="text-lg font-black text-gray-800 capitalize">{formatMonthLabel(item.period_start)}</p>
+                              <p className="text-sm font-bold text-gray-600">
+                                {item.bookings_count || 0} referidos • {item.completed_bookings || 0} completados • {item.pending_bookings || 0} pendientes
+                              </p>
+                            </div>
+                            <span className={`px-3 py-1 rounded-full border text-xs font-black uppercase tracking-wide ${item.is_closed ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>
+                              {item.is_closed ? 'Corte cerrado' : 'Mes en curso'}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+                            <div className="rounded-xl bg-white border border-cyan-100 p-3">
+                              <p className="text-xs uppercase tracking-wide font-black text-cyan-600">Total generado</p>
+                              <p className="text-lg font-black text-gray-800 mt-1">{formatCurrency(item.total_amount || 0)}</p>
+                            </div>
+                            <div className="rounded-xl bg-white border border-cyan-100 p-3">
+                              <p className="text-xs uppercase tracking-wide font-black text-cyan-600">Confirmado</p>
+                              <p className="text-lg font-black text-gray-800 mt-1">{formatCurrency(item.completed_amount || 0)}</p>
+                            </div>
+                            <div className="rounded-xl bg-white border border-cyan-100 p-3">
+                              <p className="text-xs uppercase tracking-wide font-black text-cyan-600">Pendiente</p>
+                              <p className="text-lg font-black text-gray-800 mt-1">{formatCurrency(item.pending_amount || 0)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="link" className="space-y-6">
+              <div className="bg-gradient-to-br from-cyan-500 to-blue-600 rounded-[2rem] p-6 text-white shadow-lg border-4 border-cyan-300">
+                <p className="text-xs uppercase tracking-[0.28em] font-black opacity-80">Tu link de registro</p>
+                <h3 className="mt-3 text-3xl font-black">{referral?.business_name || 'Establecimiento'}</h3>
+                <p className="mt-3 text-sm md:text-base font-bold text-cyan-50 leading-relaxed">
+                  Comparte este enlace para que los clientes reserven directamente desde tu establecimiento.
+                </p>
+
+                <div className="mt-6 rounded-[1.75rem] bg-white p-5 text-gray-800 shadow-md">
+                  <div className="flex flex-col gap-4">
+                    <div className="w-full rounded-2xl border-2 border-cyan-100 bg-cyan-50 p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] font-black text-cyan-600">Link activo</p>
+                      <p className="mt-2 text-sm font-bold text-slate-700 break-all">{bookingUrl || 'Sin enlace disponible'}</p>
+                    </div>
+                    <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50 p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] font-black text-cyan-600">Cómo usarlo</p>
+                      <p className="mt-2 text-sm font-bold text-slate-700">
+                        Envía este link por WhatsApp, Instagram o cualquier canal del negocio para registrar reservas desde tu establecimiento.
                       </p>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                </div>
 
-          <div className="bg-white rounded-[2rem] border-4 border-cyan-100 p-6 shadow-lg">
-            <div className="flex items-center gap-3 mb-4">
-              <CalendarDays className="w-6 h-6 text-cyan-600" />
-              <h3 className="text-xl font-black text-gray-800">Cortes mensuales</h3>
-            </div>
-
-            {monthlyHistory.length === 0 ? (
-              <div className="rounded-2xl border-2 border-dashed border-cyan-200 bg-cyan-50 p-8 text-center font-bold text-cyan-700">
-                Aún no hay cierres mensuales registrados.
+                <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                  <Button type="button" onClick={copyBookingUrl} disabled={!bookingUrl} className="flex-1 bg-white text-cyan-700 hover:bg-cyan-50 rounded-2xl py-3 font-bold">
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copiar link
+                  </Button>
+                  {bookingUrl && (
+                    <a href={bookingUrl} target="_blank" rel="noreferrer" className="flex-1 inline-flex items-center justify-center rounded-2xl border-2 border-white/50 bg-white/10 px-5 py-3 font-bold text-white hover:bg-white/20">
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Abrir link
+                    </a>
+                  )}
+                </div>
               </div>
-            ) : (
-              <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
-                {monthlyHistory.map((item) => (
-                  <div key={item.id || item.period_start} className="rounded-2xl border-2 border-cyan-100 bg-cyan-50/60 p-4">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                      <div>
-                        <p className="text-lg font-black text-gray-800 capitalize">{formatMonthLabel(item.period_start)}</p>
-                        <p className="text-sm font-bold text-gray-600">
-                          {item.bookings_count || 0} referidos • {item.completed_bookings || 0} completados • {item.pending_bookings || 0} pendientes
-                        </p>
-                      </div>
-                      <span className={`px-3 py-1 rounded-full border text-xs font-black uppercase tracking-wide ${item.is_closed ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>
-                        {item.is_closed ? 'Corte cerrado' : 'Mes en curso'}
-                      </span>
-                    </div>
+            </TabsContent>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
-                      <div className="rounded-xl bg-white border border-cyan-100 p-3">
-                        <p className="text-xs uppercase tracking-wide font-black text-cyan-600">Total generado</p>
-                        <p className="text-lg font-black text-gray-800 mt-1">{formatCurrency(item.total_amount || 0)}</p>
-                      </div>
-                      <div className="rounded-xl bg-white border border-cyan-100 p-3">
-                        <p className="text-xs uppercase tracking-wide font-black text-cyan-600">Confirmado</p>
-                        <p className="text-lg font-black text-gray-800 mt-1">{formatCurrency(item.completed_amount || 0)}</p>
-                      </div>
-                      <div className="rounded-xl bg-white border border-cyan-100 p-3">
-                        <p className="text-xs uppercase tracking-wide font-black text-cyan-600">Pendiente</p>
-                        <p className="text-lg font-black text-gray-800 mt-1">{formatCurrency(item.pending_amount || 0)}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+            <TabsContent value="messaging" className="space-y-6">
+              <MessagingModule currentUser={currentUser} />
+            </TabsContent>
+          </section>
         </div>
-
-        <div className="rounded-[2rem] border-4 border-cyan-100 bg-gradient-to-br from-cyan-500 to-blue-600 p-6 text-white shadow-lg">
-          <p className="text-xs uppercase tracking-[0.28em] font-black opacity-80">Tu link de registro</p>
-          <h3 className="mt-3 text-3xl font-black">{referral?.business_name || 'Establecimiento'}</h3>
-          <p className="mt-3 text-sm md:text-base font-bold text-cyan-50 leading-relaxed">
-            Comparte este enlace para que los clientes reserven directamente desde tu establecimiento.
-          </p>
-
-          <div className="mt-6 rounded-[1.75rem] bg-white p-5 text-gray-800 shadow-md">
-            <div className="flex flex-col gap-4">
-              <div className="w-full rounded-2xl border-2 border-cyan-100 bg-cyan-50 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] font-black text-cyan-600">Link activo</p>
-                <p className="mt-2 text-sm font-bold text-slate-700 break-all">{bookingUrl || 'Sin enlace disponible'}</p>
-              </div>
-              <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] font-black text-cyan-600">Cómo usarlo</p>
-                <p className="mt-2 text-sm font-bold text-slate-700">
-                  Envía este link por WhatsApp, Instagram o cualquier canal del negocio para registrar reservas desde tu establecimiento.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-col sm:flex-row gap-3">
-            <Button type="button" onClick={copyBookingUrl} disabled={!bookingUrl} className="flex-1 bg-white text-cyan-700 hover:bg-cyan-50 rounded-2xl py-3 font-bold">
-              <Copy className="w-4 h-4 mr-2" />
-              Copiar link
-            </Button>
-            {bookingUrl && (
-              <a href={bookingUrl} target="_blank" rel="noreferrer" className="flex-1 inline-flex items-center justify-center rounded-2xl border-2 border-white/50 bg-white/10 px-5 py-3 font-bold text-white hover:bg-white/20">
-                <ExternalLink className="w-4 h-4 mr-2" />
-                Abrir link
-              </a>
-            )}
-          </div>
-        </div>
-      </div>
+      </Tabs>
     </div>
   );
 };

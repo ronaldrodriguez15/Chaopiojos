@@ -194,17 +194,15 @@ const UsersModule = React.memo(({
                         <BarChart3 className="w-5 h-5" />
                       </Button>
                     )}
-                    {user.role !== 'referido' && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => handleOpenUserDialog(user)}
-                        className="h-10 w-10 rounded-xl bg-blue-100 text-blue-500 hover:bg-blue-200"
-                        title="Editar"
-                      >
-                        <Edit className="w-5 h-5" />
-                      </Button>
-                    )}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => handleOpenUserDialog(user)}
+                      className="h-10 w-10 rounded-xl bg-blue-100 text-blue-500 hover:bg-blue-200"
+                      title="Editar"
+                    >
+                      <Edit className="w-5 h-5" />
+                    </Button>
                     {user.role !== 'admin' && (
                       <Button
                         size="icon"

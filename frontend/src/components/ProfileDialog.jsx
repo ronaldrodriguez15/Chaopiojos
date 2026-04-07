@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Camera, Image as ImageIcon, KeyRound, Mail, MapPin, Phone, Sparkles, User } from 'lucide-react';
+import { KeyRound, Mail, MapPin, Phone, Sparkles, User } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -21,8 +21,6 @@ const buildFormState = (user) => ({
   address: user?.address || '',
   specialty: user?.specialty || '',
   avatar_key: user?.avatar_key || '',
-  profile_photo: null,
-  remove_profile_photo: false,
   password: '',
   password_confirmation: '',
 });
@@ -33,7 +31,6 @@ const ProfileDialog = ({ open, onOpenChange, currentUser, onProfileUpdated }) =>
   const [fieldErrors, setFieldErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
-  const [photoPreview, setPhotoPreview] = useState('');
 
   useEffect(() => {
     if (!open || !currentUser) return;
@@ -48,7 +45,6 @@ const ProfileDialog = ({ open, onOpenChange, currentUser, onProfileUpdated }) =>
       const nextUser = result.success ? result.user : currentUser;
       setFormData(buildFormState(nextUser));
       setFieldErrors({});
-      setPhotoPreview('');
       setIsLoadingProfile(false);
     };
 
@@ -59,47 +55,16 @@ const ProfileDialog = ({ open, onOpenChange, currentUser, onProfileUpdated }) =>
     };
   }, [open, currentUser]);
 
-  useEffect(() => {
-    if (!formData.profile_photo) {
-      setPhotoPreview('');
-      return undefined;
-    }
-
-    const previewUrl = URL.createObjectURL(formData.profile_photo);
-    setPhotoPreview(previewUrl);
-
-    return () => {
-      URL.revokeObjectURL(previewUrl);
-    };
-  }, [formData.profile_photo]);
-
   const previewUser = useMemo(() => ({
     ...currentUser,
     name: formData.name,
     avatar_key: formData.avatar_key || null,
-    profile_photo_url: photoPreview || (formData.remove_profile_photo ? null : currentUser?.profile_photo_url),
-  }), [currentUser, formData.name, formData.avatar_key, formData.remove_profile_photo, photoPreview]);
+    profile_photo_url: null,
+  }), [currentUser, formData.name, formData.avatar_key]);
 
   const handleChange = (key, value) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
     setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
-  };
-
-  const handlePhotoChange = (file) => {
-    setFormData((prev) => ({
-      ...prev,
-      profile_photo: file || null,
-      remove_profile_photo: false,
-    }));
-    setFieldErrors((prev) => ({ ...prev, profile_photo: undefined }));
-  };
-
-  const handleRemovePhoto = () => {
-    setFormData((prev) => ({
-      ...prev,
-      profile_photo: null,
-      remove_profile_photo: true,
-    }));
   };
 
   const handleSubmit = async (event) => {
@@ -113,8 +78,7 @@ const ProfileDialog = ({ open, onOpenChange, currentUser, onProfileUpdated }) =>
       address: formData.address.trim(),
       specialty: currentUser?.role === 'piojologa' ? formData.specialty.trim() : '',
       avatar_key: formData.avatar_key || null,
-      profile_photo: formData.profile_photo,
-      remove_profile_photo: formData.remove_profile_photo ? '1' : '0',
+      remove_profile_photo: '1',
     };
 
     if (formData.password) {
@@ -171,7 +135,7 @@ const ProfileDialog = ({ open, onOpenChange, currentUser, onProfileUpdated }) =>
             <div className="rounded-[1.5rem] border-2 border-cyan-100 bg-white p-5 space-y-4">
               <div className="flex items-center gap-3">
                 <Sparkles className="w-5 h-5 text-cyan-600" />
-                <h3 className="text-lg font-black text-gray-800">Avatar y foto</h3>
+                <h3 className="text-lg font-black text-gray-800">Avatar</h3>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-5">
@@ -179,68 +143,34 @@ const ProfileDialog = ({ open, onOpenChange, currentUser, onProfileUpdated }) =>
                   <UserAvatar user={previewUser} className="w-28 h-28 rounded-[1.75rem] border-4 border-white shadow-lg" textClassName="text-5xl" />
                   <div className="space-y-2">
                     <p className="text-sm font-black text-gray-800">Vista previa</p>
-                    <p className="text-xs font-bold text-gray-500">La foto cargada tiene prioridad sobre el avatar predeterminado.</p>
+                    <p className="text-xs font-bold text-gray-500">Usa un personaje animado o deja las iniciales automáticas.</p>
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <label className="flex-1 rounded-2xl border-2 border-cyan-200 bg-cyan-50 px-4 py-4 cursor-pointer hover:border-cyan-400 transition-colors">
-                      <input type="file" className="hidden" accept="image/*" onChange={(e) => handlePhotoChange(e.target.files?.[0] || null)} />
-                      <span className="inline-flex items-center gap-2 text-sm font-black text-cyan-700">
-                        <ImageIcon className="w-4 h-4" />
-                        Subir foto
-                      </span>
-                    </label>
-                    <label className="flex-1 rounded-2xl border-2 border-cyan-200 bg-cyan-50 px-4 py-4 cursor-pointer hover:border-cyan-400 transition-colors">
-                      <input type="file" className="hidden" accept="image/*" capture="environment" onChange={(e) => handlePhotoChange(e.target.files?.[0] || null)} />
-                      <span className="inline-flex items-center gap-2 text-sm font-black text-cyan-700">
-                        <Camera className="w-4 h-4" />
-                        Tomar foto
-                      </span>
-                    </label>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-cyan-100 bg-cyan-50/70 px-4 py-3">
-                    <div>
-                      <p className="text-sm font-black text-cyan-700">{formData.profile_photo ? formData.profile_photo.name : currentUser.profile_photo_url && !formData.remove_profile_photo ? 'Foto actual cargada' : 'Sin foto personalizada'}</p>
-                      <p className="text-xs font-bold text-gray-500 mt-1">JPG, PNG o WEBP. Máximo 5 MB.</p>
-                    </div>
-                    {(currentUser.profile_photo_url || formData.profile_photo) ? (
-                      <Button type="button" variant="outline" className="rounded-xl border-2 border-red-200 text-red-600 bg-white hover:bg-red-50" onClick={handleRemovePhoto}>
-                        Quitar foto
-                      </Button>
-                    ) : null}
-                  </div>
-                  {fieldErrors.profile_photo ? <p className="text-sm font-bold text-red-500">{fieldErrors.profile_photo[0]}</p> : null}
-
-                  <div className="space-y-3">
-                    <p className="text-sm font-black text-gray-700">Avatares predeterminados</p>
-                    <button
-                      type="button"
-                      onClick={() => handleChange('avatar_key', '')}
-                      className={`w-full rounded-2xl border-2 px-4 py-3 text-left font-black transition-all ${!formData.avatar_key ? 'border-cyan-500 ring-2 ring-cyan-200 bg-cyan-50 text-cyan-700' : 'border-cyan-100 bg-white text-gray-700 hover:border-cyan-300'}`}
-                    >
-                      Usar iniciales automáticas
-                    </button>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {AVATAR_PRESETS.map((avatar) => {
-                        const isSelected = formData.avatar_key === avatar.id;
-                        return (
-                          <button
-                            key={avatar.id}
-                            type="button"
-                            onClick={() => handleChange('avatar_key', avatar.id)}
-                            className={`rounded-2xl border-2 p-3 text-left transition-all ${isSelected ? 'border-cyan-500 ring-2 ring-cyan-200 bg-cyan-50' : 'border-cyan-100 bg-white hover:border-cyan-300'}`}
-                          >
-                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${avatar.className}`}>
-                              <span className="text-2xl">{avatar.emoji}</span>
-                            </div>
-                            <p className="mt-3 text-sm font-black text-gray-800">{avatar.label}</p>
-                          </button>
-                        );
-                      })}
-                    </div>
+                <div className="space-y-3">
+                  <p className="text-sm font-black text-gray-700">Personajes</p>
+                  <button
+                    type="button"
+                    onClick={() => handleChange('avatar_key', '')}
+                    className={`w-full rounded-2xl border-2 px-4 py-3 text-left font-black transition-all ${!formData.avatar_key ? 'border-cyan-500 ring-2 ring-cyan-200 bg-cyan-50 text-cyan-700' : 'border-cyan-100 bg-white text-gray-700 hover:border-cyan-300'}`}
+                  >
+                    Usar iniciales automáticas
+                  </button>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {AVATAR_PRESETS.map((avatar) => {
+                      const isSelected = formData.avatar_key === avatar.id;
+                      return (
+                        <button
+                          key={avatar.id}
+                          type="button"
+                          onClick={() => handleChange('avatar_key', avatar.id)}
+                          className={`rounded-2xl border-2 p-3 text-left transition-all ${isSelected ? 'border-cyan-500 ring-2 ring-cyan-200 bg-cyan-50' : 'border-cyan-100 bg-white hover:border-cyan-300'}`}
+                        >
+                          <UserAvatar user={{ name: avatar.label, avatar_key: avatar.id }} className="w-12 h-12 rounded-2xl border-2 border-white shadow-sm" />
+                          <p className="mt-3 text-sm font-black text-gray-800">{avatar.label}</p>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

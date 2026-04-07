@@ -29,6 +29,10 @@ body {
   font-family: 'Lobster Two', cursive, sans-serif;
 }
 
+.font-system-ui {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
 /* Playful Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

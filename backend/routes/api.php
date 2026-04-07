@@ -11,6 +11,7 @@ use App\Http\Controllers\ProductRequestController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\AppSettingController;
+use App\Http\Controllers\AdminMessageController;
 use App\Http\Controllers\SellerReferralController;
 use App\Http\Controllers\SellerVisitController;
 use App\Http\Controllers\ProfileController;
@@ -34,6 +35,8 @@ Route::get('/services', [ServiceController::class, 'index']);
 Route::post('/validate-referral-code', [UserController::class, 'validateReferralCode']); // Validar código de referido
 Route::get('/booking-settings', [AppSettingController::class, 'bookingSettings']);
 Route::get('/seller-referrals/link/{token}', [SellerReferralController::class, 'resolveLink']);
+Route::get('/seller-visits/photo/{sellerVisit}', [SellerVisitController::class, 'photo']);
+Route::get('/profile-photo/{user}', [ProfileController::class, 'photo']);
 
 // Protected routes
 Route::middleware(['auth:sanctum', 'active.user'])->group(function () {
@@ -79,9 +82,13 @@ Route::middleware(['auth:sanctum', 'active.user'])->group(function () {
     Route::get('/seller-referrals/earnings', [SellerReferralController::class, 'earnings']);
     Route::get('/seller-referrals/partner-dashboard', [SellerReferralController::class, 'partnerDashboard']);
     Route::post('/seller-referrals', [SellerReferralController::class, 'store']);
+    Route::put('/seller-referrals/{id}', [SellerReferralController::class, 'update']);
     Route::put('/seller-referrals/{id}/review', [SellerReferralController::class, 'review']);
     Route::get('/seller-visits', [SellerVisitController::class, 'index']);
     Route::post('/seller-visits', [SellerVisitController::class, 'store']);
+    Route::get('/messages', [AdminMessageController::class, 'index']);
+    Route::post('/messages', [AdminMessageController::class, 'store']);
+    Route::put('/messages/{id}/reply', [AdminMessageController::class, 'reply']);
     Route::delete('/product-requests/{productRequest}', [ProductRequestController::class, 'destroy']);
 
     // App settings (admin)

@@ -14,6 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import MessagingModule from '@/components/MessagingModule';
 import { bookingService, referralService } from '@/lib/api';
 
 const ASSIGNED_AT_STORAGE_KEY = 'piojoAssignedAtMap';
@@ -1347,6 +1348,9 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                 <TabsTrigger value="referrals" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-pink-400 data-[state=active]:text-white transition-all">
                   🎁 Referidos
                 </TabsTrigger>
+                <TabsTrigger value="messaging" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-cyan-500 data-[state=active]:text-white transition-all">
+                  💬 Mensajería
+                </TabsTrigger>
               </TabsList>
             </div>
           </aside>
@@ -1894,6 +1898,10 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
               myReferrals={myReferrals}
             />
           </Suspense>
+        </TabsContent>
+
+        <TabsContent value="messaging">
+          <MessagingModule currentUser={currentUser} />
         </TabsContent>
 
           </section>

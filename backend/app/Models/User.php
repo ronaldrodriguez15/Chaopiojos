@@ -147,6 +147,8 @@ class User extends Authenticatable
             return null;
         }
 
-        return asset('storage/' . $this->profile_photo_path);
+        $version = $this->updated_at?->timestamp ?? time();
+
+        return '/api/profile-photo/' . $this->id . '?v=' . $version;
     }
 }

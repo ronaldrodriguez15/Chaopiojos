@@ -11,6 +11,9 @@ class AppSettingController extends Controller
     private const BOOKING_WHATSAPP_TEMPLATE_KEY = 'booking_whatsapp_confirmation_template';
     private const SELLER_REFERRAL_VALUE_KEY = 'seller_referral_value';
     private const PARTNER_COMMISSION_TIERS_KEY = 'partner_commission_tiers';
+    private const TERMS_PIOJOLOGA_KEY = 'terms_conditions_piojologa';
+    private const TERMS_SELLER_KEY = 'terms_conditions_vendedor';
+    private const TERMS_PARTNER_KEY = 'terms_conditions_referido';
 
     private function getDefaultWhatsappTemplate(): string
     {
@@ -82,6 +85,50 @@ class AppSettingController extends Controller
         ];
     }
 
+    private function getDefaultTermsConditions(): array
+    {
+        return [
+            'piojologa' => implode("\n", [
+                'Al usar este panel como piojóloga aceptas las siguientes condiciones:',
+                '',
+                '1. Atenderás únicamente los servicios asignados y confirmados dentro de la plataforma.',
+                '2. Debes presentarte puntualmente y reportar cualquier novedad al equipo administrativo.',
+                '3. La información de clientes, direcciones y teléfonos es confidencial y solo puede usarse para la prestación del servicio.',
+                '4. Debes registrar correctamente el estado de cada servicio y los valores correspondientes al finalizar.',
+                '5. El uso indebido de la plataforma, el maltrato a clientes o el incumplimiento reiterado podrá generar suspensión del acceso.',
+            ]),
+            'vendedor' => implode("\n", [
+                'Al usar este panel como vendedor aceptas las siguientes condiciones:',
+                '',
+                '1. Compartirás únicamente enlaces, mensajes y material autorizado por Chao Piojos.',
+                '2. No puedes ofrecer descuentos, beneficios o condiciones no aprobadas por la administración.',
+                '3. Las comisiones solo se reconocen sobre agendamientos validados dentro del sistema.',
+                '4. Debes manejar la información de prospectos y clientes con confidencialidad.',
+                '5. El uso fraudulento de enlaces, registros falsos o suplantación ocasionará bloqueo inmediato del acceso.',
+            ]),
+            'referido' => implode("\n", [
+                'Al usar este panel como establecimiento aceptas las siguientes condiciones:',
+                '',
+                '1. Compartirás el enlace o material comercial autorizado de Chao Piojos con tus clientes.',
+                '2. La información registrada debe ser veraz y corresponder a referidos reales del establecimiento.',
+                '3. La liquidación de valores o beneficios se realizará según la configuración vigente definida por la administración.',
+                '4. No está permitido modificar la identidad visual, las condiciones comerciales o los mensajes oficiales sin autorización.',
+                '5. El uso indebido del panel o el registro de información falsa podrá causar la suspensión del convenio y del acceso.',
+            ]),
+        ];
+    }
+
+    private function getTermsConditionsSettings(): array
+    {
+        $defaults = $this->getDefaultTermsConditions();
+
+        return [
+            'piojologa' => (string) AppSetting::getValue(self::TERMS_PIOJOLOGA_KEY, $defaults['piojologa']),
+            'vendedor' => (string) AppSetting::getValue(self::TERMS_SELLER_KEY, $defaults['vendedor']),
+            'referido' => (string) AppSetting::getValue(self::TERMS_PARTNER_KEY, $defaults['referido']),
+        ];
+    }
+
     private function normalizePartnerCommissionTiers($tiers): array
     {
         if (is_string($tiers) && trim($tiers) !== '') {
@@ -149,6 +196,7 @@ class AppSettingController extends Controller
                 'whatsappConfirmationTemplate' => (string) $whatsappTemplate,
                 'sellerReferralValue' => $sellerReferralValue,
                 'partnerCommissionTiers' => $partnerCommissionTiers,
+                'termsAndConditions' => $this->getTermsConditionsSettings(),
             ],
         ]);
     }
@@ -171,6 +219,10 @@ class AppSettingController extends Controller
             'partnerCommissionTiers.*.from' => 'required_with:partnerCommissionTiers|integer|min:1|max:999999',
             'partnerCommissionTiers.*.to' => 'nullable|integer|min:1|max:999999',
             'partnerCommissionTiers.*.value' => 'required_with:partnerCommissionTiers|numeric|min:0|max:99999999',
+            'termsAndConditions' => 'sometimes|array',
+            'termsAndConditions.piojologa' => 'sometimes|string|min:1|max:12000',
+            'termsAndConditions.vendedor' => 'sometimes|string|min:1|max:12000',
+            'termsAndConditions.referido' => 'sometimes|string|min:1|max:12000',
         ]);
 
         if (
@@ -178,6 +230,7 @@ class AppSettingController extends Controller
             && !array_key_exists('whatsappConfirmationTemplate', $validated)
             && !array_key_exists('sellerReferralValue', $validated)
             && !array_key_exists('partnerCommissionTiers', $validated)
+            && !array_key_exists('termsAndConditions', $validated)
         ) {
             return response()->json([
                 'success' => false,
@@ -200,6 +253,18 @@ class AppSettingController extends Controller
                 json_encode($this->normalizePartnerCommissionTiers($validated['partnerCommissionTiers']))
             );
         }
+        if (array_key_exists('termsAndConditions', $validated)) {
+            $terms = $validated['termsAndConditions'];
+            if (array_key_exists('piojologa', $terms)) {
+                AppSetting::setValue(self::TERMS_PIOJOLOGA_KEY, trim($terms['piojologa']));
+            }
+            if (array_key_exists('vendedor', $terms)) {
+                AppSetting::setValue(self::TERMS_SELLER_KEY, trim($terms['vendedor']));
+            }
+            if (array_key_exists('referido', $terms)) {
+                AppSetting::setValue(self::TERMS_PARTNER_KEY, trim($terms['referido']));
+            }
+        }
 
         $savedRequireAdvance12h = AppSetting::getValue(self::BOOKING_REQUIRE_12H_KEY, '1');
         $requireAdvance12h = !in_array((string) $savedRequireAdvance12h, ['0', 'false', 'False', 'FALSE'], true);
@@ -220,6 +285,7 @@ class AppSettingController extends Controller
                 'whatsappConfirmationTemplate' => (string) $whatsappTemplate,
                 'sellerReferralValue' => $sellerReferralValue,
                 'partnerCommissionTiers' => $partnerCommissionTiers,
+                'termsAndConditions' => $this->getTermsConditionsSettings(),
             ],
         ]);
     }

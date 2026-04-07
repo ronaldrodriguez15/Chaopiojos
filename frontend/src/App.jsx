@@ -7,14 +7,17 @@ import AdminView from '@/components/AdminView';
 import SellerView from '@/components/SellerView';
 import ReferralPartnerView from '@/components/ReferralPartnerView';
 import ProfileDialog from '@/components/ProfileDialog';
+import TermsDialog from '@/components/TermsDialog';
 import UserAvatar from '@/components/UserAvatar';
 import Login from '@/components/Login';
-import { LogOut, Bell, User } from 'lucide-react';
+import { LogOut, Bell, User, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { motion, AnimatePresence } from 'framer-motion';
-import { authService, userService, bookingService, serviceService } from '@/lib/api';
+import { authService, userService, bookingService, serviceService, settingsService } from '@/lib/api';
 import { API_URL } from '@/lib/config';
+import { getUserAvatarMode } from '@/lib/profileOptions';
+import { DEFAULT_TERMS_AND_CONDITIONS } from '@/lib/termsConditions';
 import { formatTime12Hour } from '@/lib/utils';
 
 const normalizeRejectionHistory = (value) => {
@@ -57,8 +60,12 @@ function App() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showTermsDialog, setShowTermsDialog] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [seenAppointmentIds, setSeenAppointmentIds] = useState([]);
+  const [termsSettings, setTermsSettings] = useState(DEFAULT_TERMS_AND_CONDITIONS);
+  const isInitialsAvatar = getUserAvatarMode(currentUser) === 'initials';
+  const canViewTerms = ['piojologa', 'vendedor', 'referido'].includes(currentUser?.role);
 
   const statusLabel = (status) => {
     const map = {
@@ -142,6 +149,40 @@ function App() {
     };
     
     checkAuth();
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadTermsSettings = async () => {
+      const result = await settingsService.getBookingSettings();
+      if (!isMounted) return;
+
+      if (result.success) {
+        setTermsSettings({
+          ...DEFAULT_TERMS_AND_CONDITIONS,
+          ...(result.settings?.termsAndConditions || {})
+        });
+      }
+    };
+
+    loadTermsSettings();
+
+    const onSettingsUpdated = (event) => {
+      const nextTerms = event.detail?.termsAndConditions;
+      if (!nextTerms) return;
+      setTermsSettings({
+        ...DEFAULT_TERMS_AND_CONDITIONS,
+        ...nextTerms
+      });
+    };
+
+    window.addEventListener('booking-settings-updated', onSettingsUpdated);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('booking-settings-updated', onSettingsUpdated);
+    };
   }, []);
 
   const [appointments, setAppointments] = useState(() => {
@@ -976,25 +1017,48 @@ function App() {
               transition={{ type: "spring", bounce: 0.4 }}
             >
               {/* Playful Header */}
-              <div className="flex md:flex-row justify-between items-center mb-4 md:mb-8 bg-white/80 backdrop-blur-md p-2 md:p-3 rounded-[1.5rem] md:rounded-[2rem] shadow-xl border-4 border-orange-200 relative">
-                <div className="flex items-center gap-2 md:gap-4 mb-0 min-w-0">
-                  <div className="bg-white p-1.5 md:p-2 rounded-xl md:rounded-2xl shadow-lg transform -rotate-3 hover:rotate-3 transition-transform border-2 border-orange-200 shrink-0">
-                    <img src="/logo.png" alt="Chao Piojos" className="w-10 h-10 md:w-14 md:h-14 object-contain" />
+              <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center mb-4 md:mb-8 bg-white/80 backdrop-blur-md p-3 md:p-3 rounded-[1.5rem] md:rounded-[2rem] shadow-xl border-4 border-orange-200 relative">
+                <div className="min-w-0 md:flex md:items-center md:gap-6 md:flex-1">
+                  <div className="flex items-center gap-3 md:gap-4 min-w-0">
+                    <div className="bg-white p-1.5 md:p-2 rounded-xl md:rounded-2xl shadow-lg transform -rotate-3 hover:rotate-3 transition-transform border-2 border-orange-200 shrink-0">
+                      <img src="/logo.png" alt="Chao Piojos" className="w-10 h-10 md:w-14 md:h-14 object-contain" />
+                    </div>
+                    <div className="min-w-0">
+                      <h1 className="text-3xl md:text-4xl font-black tracking-wide drop-shadow-sm leading-none">
+                        <span className="text-orange-500">Chao</span>{' '}
+                        <span className="text-blue-500">Piojos</span>
+                      </h1>
+                      <p className="text-xs md:text-lg text-gray-500 font-bold bg-orange-100 px-2 md:px-3 py-0.5 md:py-1 rounded-full inline-block mt-1 truncate max-w-[10.5rem] sm:max-w-none">
+                        Hola, {currentUser.name}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <h1 className="text-3xl md:text-4xl font-black tracking-wide drop-shadow-sm leading-none">
-                      <span className="text-orange-500">Chao</span>{' '}
-                      <span className="text-blue-500">Piojos</span>
-                    </h1>
-                    <p className="text-xs md:text-lg text-gray-500 font-bold bg-orange-100 px-2 md:px-3 py-0.5 md:py-1 rounded-full inline-block mt-1 truncate max-w-[10.5rem] sm:max-w-none">
-                      Hola, {currentUser.name}
-                    </p>
-                  </div>
+
+                  {canViewTerms && (
+                    <button
+                      type="button"
+                      onClick={() => setShowTermsDialog(true)}
+                      className="mt-3 ml-1 inline-flex items-start gap-2 text-left text-xs font-black text-rose-600 hover:text-rose-700 underline underline-offset-4 decoration-2 md:hidden"
+                    >
+                      <FileText className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span className="leading-tight">Términos y condiciones</span>
+                    </button>
+                  )}
+
+                  {canViewTerms && (
+                    <button
+                      type="button"
+                      onClick={() => setShowTermsDialog(true)}
+                      className="hidden md:inline-flex items-center gap-2 rounded-full border-2 border-rose-200 bg-rose-50 px-4 py-2 text-sm font-black text-rose-600 shadow-sm transition-all hover:bg-rose-100 hover:border-rose-300 hover:text-rose-700 whitespace-nowrap"
+                    >
+                      <FileText className="w-4 h-4 shrink-0" />
+                      <span>Términos y condiciones</span>
+                    </button>
+                  )}
                 </div>
-                
-                <div className="flex items-center gap-2 md:gap-4 relative z-50 shrink-0">
-                  {/* Notification Bell */}
-                  <div className="relative notification-container" id="notification-bell">
+
+                <div className="grid grid-cols-3 gap-2 md:flex md:items-center md:gap-4 relative z-50 shrink-0 w-full md:w-auto">
+                  <div className="relative notification-container w-full md:w-[72px] md:h-[72px] md:shrink-0" id="notification-bell">
                     <Button
                       onClick={() => {
                         setShowNotifications(!showNotifications);
@@ -1003,7 +1067,7 @@ function App() {
                           markAllAsRead();
                         }
                       }}
-                      className="bg-yellow-400 hover:bg-yellow-500 text-white rounded-xl md:rounded-2xl px-3 md:px-5 py-3 md:py-6 font-bold text-base md:text-lg shadow-md hover:shadow-lg transition-all border-b-4 border-yellow-600 hover:border-yellow-700 active:border-b-0 active:translate-y-1 relative"
+                      className="w-full h-[54px] md:w-[72px] md:h-[72px] bg-yellow-400 hover:bg-yellow-500 text-white rounded-xl md:rounded-2xl px-0 md:px-0 py-0 md:py-0 font-bold text-base md:text-lg shadow-md hover:shadow-lg transition-all border-b-4 border-yellow-600 hover:border-yellow-700 active:border-b-0 active:translate-y-1 relative"
                     >
                       <Bell className="w-5 h-5 md:w-6 md:h-6" />
                       {getFilteredNotifications().filter(n => !n.read).length > 0 && (
@@ -1012,7 +1076,6 @@ function App() {
                         </span>
                       )}
                     </Button>
-
                   </div>
 
                   <DropdownMenu.Root>
@@ -1020,9 +1083,13 @@ function App() {
                       <button
                         type="button"
                         aria-label="Abrir menú de perfil"
-                        className="w-[52px] h-[52px] md:w-[58px] md:h-[58px] bg-cyan-400 hover:bg-cyan-500 text-white rounded-xl md:rounded-2xl p-1 shadow-md hover:shadow-lg transition-all border-b-4 border-cyan-600 hover:border-cyan-700 active:border-b-0 active:translate-y-1"
+                        className="w-full h-[54px] md:w-[72px] md:h-[72px] md:min-w-[72px] md:max-w-[72px] md:shrink-0 bg-cyan-400 hover:bg-cyan-500 text-white rounded-xl md:rounded-2xl p-1 shadow-md hover:shadow-lg transition-all border-b-4 border-cyan-600 hover:border-cyan-700 active:border-b-0 active:translate-y-1 flex items-center justify-center"
                       >
-                        <UserAvatar user={currentUser} className="w-full h-full rounded-[0.85rem] md:rounded-[1rem] border-2 border-white/70 shadow-sm" textClassName="text-lg md:text-xl" />
+                        <UserAvatar
+                          user={currentUser}
+                          className={`w-full h-full rounded-[0.85rem] md:rounded-[1rem] ${isInitialsAvatar ? '' : 'border-2 border-white/70 shadow-sm'}`}
+                          textClassName={isInitialsAvatar ? 'text-lg md:text-2xl font-fredoka font-black text-white' : 'text-lg md:text-xl'}
+                        />
                       </button>
                     </DropdownMenu.Trigger>
 
@@ -1050,10 +1117,10 @@ function App() {
 
                   <Button 
                     onClick={handleLogout}
-                    className="bg-red-400 hover:bg-red-500 text-white rounded-xl md:rounded-2xl px-3 md:px-6 py-3 md:py-6 font-bold text-sm md:text-lg shadow-md hover:shadow-lg transition-all border-b-4 border-red-600 hover:border-red-700 active:border-b-0 active:translate-y-1"
+                    className="w-full h-[54px] md:h-[72px] bg-red-400 hover:bg-red-500 text-white rounded-xl md:rounded-2xl px-0 md:px-7 py-0 md:py-0 font-bold text-sm md:text-lg shadow-md hover:shadow-lg transition-all border-b-4 border-red-600 hover:border-red-700 active:border-b-0 active:translate-y-1"
                   >
-                    <LogOut className="w-5 h-5 md:w-6 md:h-6 mr-0 md:mr-2" />
-                    <span className="text-xs sm:text-sm md:text-lg">Salir</span>
+                    <LogOut className="w-5 h-5 md:w-6 md:h-6 md:mr-2" />
+                    <span className="hidden md:inline text-xs sm:text-sm md:text-lg">Salir</span>
                   </Button>
                 </div>
               </div>
@@ -1079,6 +1146,7 @@ function App() {
 
                 {currentUser.role === 'admin' && (
                   <AdminView 
+                    currentUser={currentUser}
                     users={users}
                     handleCreateUser={handleCreateUser}
                     handleUpdateUser={handleUpdateUser}
@@ -1130,6 +1198,12 @@ function App() {
         onOpenChange={setShowProfile}
         currentUser={currentUser}
         onProfileUpdated={handleProfileUpdated}
+      />
+      <TermsDialog
+        open={showTermsDialog}
+        onOpenChange={setShowTermsDialog}
+        role={currentUser?.role}
+        termsSettings={termsSettings}
       />
 
       {/* Decorative Background Blobs */}

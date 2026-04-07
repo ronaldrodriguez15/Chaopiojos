@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class SellerReferralController extends Controller
 {
@@ -75,9 +76,13 @@ class SellerReferralController extends Controller
             'chamber_of_commerce_path' => $referral->chamber_of_commerce_path,
             'rut_path' => $referral->rut_path,
             'place_photo_path' => $referral->place_photo_path,
+            'logo_path' => $referral->logo_path,
+            'citizenship_card_path' => $referral->citizenship_card_path,
             'chamber_of_commerce_url' => $referral->chamber_of_commerce_path ? asset('storage/' . $referral->chamber_of_commerce_path) : null,
             'rut_url' => $referral->rut_path ? asset('storage/' . $referral->rut_path) : null,
             'place_photo_url' => $referral->place_photo_path ? asset('storage/' . $referral->place_photo_path) : null,
+            'logo_url' => $referral->logo_path ? asset('storage/' . $referral->logo_path) : null,
+            'citizenship_card_url' => $referral->citizenship_card_path ? asset('storage/' . $referral->citizenship_card_path) : null,
             'created_at' => $referral->created_at,
             'updated_at' => $referral->updated_at,
             'seller' => $referral->relationLoaded('seller') && $referral->seller
@@ -129,6 +134,27 @@ class SellerReferralController extends Controller
         Storage::disk('public')->putFileAs('seller-referrals', $file, basename($filename));
 
         return $filename;
+    }
+
+    protected function deleteStoredDocument(?string $path): void
+    {
+        if (!$path) {
+            return;
+        }
+
+        Storage::disk('public')->delete($path);
+    }
+
+    protected function replaceStoredDocument(Request $request, SellerReferral $referral, string $inputName, string $attribute, string $prefix): ?string
+    {
+        if (!$request->hasFile($inputName)) {
+            return $referral->{$attribute};
+        }
+
+        $newPath = $this->storeDocument($request->file($inputName), $prefix);
+        $this->deleteStoredDocument($referral->{$attribute});
+
+        return $newPath;
     }
 
     protected function getDefaultPartnerCommissionTiers(): array
@@ -704,6 +730,8 @@ class SellerReferralController extends Controller
                 'chamber_of_commerce' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:5120',
                 'rut' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:5120',
                 'place_photo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+                'logo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+                'citizenship_card' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
             ]);
 
             $resolvedContactName = trim((string) ($validated['contact_name'] ?? ''));
@@ -743,6 +771,8 @@ class SellerReferralController extends Controller
                     'chamber_of_commerce_path' => $this->storeDocument($request->file('chamber_of_commerce'), 'camara-comercio'),
                     'rut_path' => $this->storeDocument($request->file('rut'), 'rut'),
                     'place_photo_path' => $this->storeDocument($request->file('place_photo'), 'foto-lugar'),
+                    'logo_path' => $this->storeDocument($request->file('logo'), 'logo-establecimiento'),
+                    'citizenship_card_path' => $this->storeDocument($request->file('citizenship_card'), 'cedula-ciudadania'),
                 ]);
             });
 
@@ -772,6 +802,171 @@ class SellerReferralController extends Controller
             ], 500);
         }
     }
+
+    public function update(Request $request, $id)
+    {
+        try {
+            $authUser = $request->user();
+            $isAdmin = $authUser?->role === 'admin';
+            $isSeller = $authUser?->role === 'vendedor';
+
+            if (!$isAdmin && !$isSeller) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Solo administradores o vendedores pueden editar establecimientos'
+                ], 403);
+            }
+
+            $query = SellerReferral::with([
+                'seller:id,name,email,referral_code,role',
+                'referredUser:id,name,email,is_active,address',
+                'reviewer:id,name,email',
+            ]);
+
+            if ($isSeller) {
+                $query->where('seller_user_id', $authUser->id);
+            }
+
+            $referral = $query->findOrFail($id);
+
+            $validated = $request->validate([
+                'business_name' => 'sometimes|required|string|max:255',
+                'owner_name' => 'sometimes|nullable|string|max:255',
+                'contact_name' => 'sometimes|nullable|string|max:255',
+                'phone' => 'sometimes|nullable|string|max:30',
+                'whatsapp' => 'sometimes|nullable|string|max:30',
+                'email' => ['sometimes', 'required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($referral->referred_user_id)],
+                'password' => 'sometimes|nullable|string|min:6|max:255',
+                'nit' => 'sometimes|nullable|string|max:50',
+                'city' => 'sometimes|nullable|string|max:120',
+                'address' => 'sometimes|nullable|string|max:255',
+                'notes' => 'sometimes|nullable|string|max:5000',
+                'chamber_of_commerce' => 'sometimes|nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:5120',
+                'rut' => 'sometimes|nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:5120',
+                'place_photo' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+                'logo' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+                'citizenship_card' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+            ]);
+
+            $businessName = array_key_exists('business_name', $validated)
+                ? $validated['business_name']
+                : $referral->business_name;
+            $ownerName = array_key_exists('owner_name', $validated)
+                ? ($validated['owner_name'] ?? null)
+                : $referral->owner_name;
+            $resolvedContactName = array_key_exists('contact_name', $validated)
+                ? trim((string) ($validated['contact_name'] ?? ''))
+                : trim((string) ($referral->contact_name ?? ''));
+
+            if ($resolvedContactName === '') {
+                $resolvedContactName = trim((string) ($ownerName ?? '')) ?: $businessName;
+            }
+
+            DB::transaction(function () use ($request, $validated, $referral, $businessName, $ownerName, $resolvedContactName, $isSeller) {
+                $referredUser = $referral->referredUser;
+
+                if ($referredUser) {
+                    $userUpdates = [];
+
+                    if (array_key_exists('business_name', $validated)) {
+                        $userUpdates['name'] = $businessName;
+                    }
+                    if (array_key_exists('email', $validated)) {
+                        $userUpdates['email'] = $validated['email'];
+                    }
+                    if (array_key_exists('address', $validated)) {
+                        $userUpdates['address'] = $validated['address'] ?? null;
+                    }
+                    if (!empty($validated['password'])) {
+                        $userUpdates['password'] = Hash::make($validated['password']);
+                    }
+                    if ($isSeller) {
+                        $userUpdates['is_active'] = true;
+                    }
+
+                    if (!empty($userUpdates)) {
+                        $referredUser->update($userUpdates);
+                    }
+                }
+
+                $referral->business_name = $businessName;
+                $referral->owner_name = $ownerName;
+                $referral->contact_name = $resolvedContactName;
+
+                if (array_key_exists('phone', $validated)) {
+                    $referral->phone = $validated['phone'] ?? null;
+                }
+                if (array_key_exists('whatsapp', $validated)) {
+                    $referral->whatsapp = $validated['whatsapp'] ?? null;
+                }
+                if (array_key_exists('email', $validated)) {
+                    $referral->email = $validated['email'];
+                }
+                if (array_key_exists('nit', $validated)) {
+                    $referral->nit = $validated['nit'] ?? null;
+                }
+                if (array_key_exists('city', $validated)) {
+                    $referral->city = $validated['city'] ?? null;
+                }
+                if (array_key_exists('address', $validated)) {
+                    $referral->address = $validated['address'] ?? null;
+                }
+                if (array_key_exists('notes', $validated)) {
+                    $referral->notes = $validated['notes'] ?? null;
+                }
+
+                $referral->chamber_of_commerce_path = $this->replaceStoredDocument($request, $referral, 'chamber_of_commerce', 'chamber_of_commerce_path', 'camara-comercio');
+                $referral->rut_path = $this->replaceStoredDocument($request, $referral, 'rut', 'rut_path', 'rut');
+                $referral->place_photo_path = $this->replaceStoredDocument($request, $referral, 'place_photo', 'place_photo_path', 'foto-lugar');
+                $referral->logo_path = $this->replaceStoredDocument($request, $referral, 'logo', 'logo_path', 'logo-establecimiento');
+                $referral->citizenship_card_path = $this->replaceStoredDocument($request, $referral, 'citizenship_card', 'citizenship_card_path', 'cedula-ciudadania');
+
+                if ($isSeller) {
+                    $referral->status = 'pending_review';
+                    $referral->review_notes = null;
+                    $referral->reviewed_at = null;
+                    $referral->reviewed_by_user_id = null;
+                }
+
+                $referral->save();
+            });
+
+            if ($referral->seller && $referral->seller->role === 'vendedor') {
+                $this->ensureSellerReferralCode($referral);
+            }
+
+            $referral->refresh()->load([
+                'seller:id,name,email,referral_code,role',
+                'referredUser:id,name,email,is_active',
+                'reviewer:id,name,email',
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => $isSeller
+                    ? 'Establecimiento actualizado y enviado nuevamente a revisión'
+                    : 'Establecimiento actualizado exitosamente',
+                'referral' => $this->serializeReferral($referral),
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Establecimiento no encontrado'
+            ], 404);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error de validación',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar establecimiento: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function review(Request $request, $id)
     {
         try {

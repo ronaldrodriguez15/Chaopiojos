@@ -31,6 +31,8 @@ class SellerReferral extends Model
         'chamber_of_commerce_path',
         'rut_path',
         'place_photo_path',
+        'logo_path',
+        'citizenship_card_path',
     ];
 
     protected $casts = [

@@ -1,10 +1,11 @@
 ﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Building2, Upload, FileText, Briefcase, Clock3, RefreshCw, Phone, MapPin, Wallet, Copy, Users, Eye, Link2, Lock, Mail, Menu, CircleDollarSign, Store, TrendingUp, Image as ImageIcon, Camera, ClipboardList } from 'lucide-react';
+import { Building2, Upload, FileText, Briefcase, Clock3, RefreshCw, Phone, MapPin, Wallet, Copy, Users, Eye, Link2, Lock, Mail, Menu, CircleDollarSign, Store, TrendingUp, Image as ImageIcon, Camera, ClipboardList, Pencil } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import MessagingModule from '@/components/MessagingModule';
 import { sellerReferralService, sellerVisitService } from '@/lib/api';
 import Pagination from '@/components/admin/Pagination';
 
@@ -20,6 +21,8 @@ const initialForm = {
   notes: '',
   chamber_of_commerce: null,
   rut: null,
+  logo: null,
+  citizenship_card: null,
   place_photo: null,
 };
 
@@ -37,6 +40,25 @@ const statusConfig = {
 };
 
 const normalizeKey = (value) => String(value || '').trim().toLowerCase();
+const buildSellerReferralLink = (referralCode) => (
+  referralCode ? `${window.location.origin}/agenda?ref=${encodeURIComponent(referralCode)}` : ''
+);
+const buildReferralFormFromItem = (item) => ({
+  business_name: item?.business_name || '',
+  owner_name: item?.owner_name || '',
+  whatsapp: item?.whatsapp || item?.phone || '',
+  email: item?.referred_user?.email || item?.email || '',
+  password: '',
+  nit: item?.nit || '',
+  city: item?.city || '',
+  address: item?.address || '',
+  notes: item?.notes || '',
+  chamber_of_commerce: null,
+  rut: null,
+  logo: null,
+  citizenship_card: null,
+  place_photo: null,
+});
 
 const SellerView = ({ currentUser }) => {
   const { toast } = useToast();
@@ -65,6 +87,7 @@ const SellerView = ({ currentUser }) => {
   const [visitsPage, setVisitsPage] = useState(1);
   const [selectedReferral, setSelectedReferral] = useState(null);
   const [selectedVisit, setSelectedVisit] = useState(null);
+  const [editingReferral, setEditingReferral] = useState(null);
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [placePhotoPreview, setPlacePhotoPreview] = useState('');
   const [visitPhotoPreview, setVisitPhotoPreview] = useState('');
@@ -145,6 +168,12 @@ const SellerView = ({ currentUser }) => {
   }).format(Number(amount || 0));
 
   const buildBookingUrl = (relativePath) => (relativePath ? `${window.location.origin}${relativePath}` : '');
+  const sellerReferralLink = useMemo(
+    () => buildSellerReferralLink(currentUser?.referral_code),
+    [currentUser?.referral_code]
+  );
+  const isEditingReferral = Boolean(editingReferral);
+  const currentPlacePhotoPreview = placePhotoPreview || (isEditingReferral ? editingReferral?.place_photo_url || '' : '');
 
   const activeLinkReferrals = useMemo(
     () => referrals.filter((item) => item.booking_link),
@@ -292,6 +321,26 @@ const SellerView = ({ currentUser }) => {
     }
   };
 
+  const handleCopySellerReferralLink = async () => {
+    if (!sellerReferralLink) return;
+
+    try {
+      await navigator.clipboard.writeText(sellerReferralLink);
+      toast({
+        title: 'Link copiado',
+        description: 'El link general del vendedor quedó copiado.',
+        className: 'bg-green-100 text-green-800 rounded-2xl border-2 border-green-200'
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudo copiar el link general del vendedor.',
+        variant: 'destructive',
+        className: 'rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold'
+      });
+    }
+  };
+
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     setFieldErrors((prev) => {
@@ -300,6 +349,22 @@ const SellerView = ({ currentUser }) => {
       delete next[field];
       return next;
     });
+  };
+
+  const resetReferralForm = () => {
+    setEditingReferral(null);
+    setFormData(initialForm);
+    setFieldErrors({});
+    setCreatedAccess(null);
+  };
+
+  const startEditingReferral = (item) => {
+    setEditingReferral(item);
+    setFormData(buildReferralFormFromItem(item));
+    setFieldErrors({});
+    setCreatedAccess(null);
+    setSelectedReferral(null);
+    handleTabChange('referrals');
   };
 
   const handleVisitInputChange = (field, value) => {
@@ -316,7 +381,7 @@ const SellerView = ({ currentUser }) => {
     const errors = {};
     if (!formData.business_name.trim()) errors.business_name = 'El nombre del referido es obligatorio';
     if (!formData.email.trim()) errors.email = 'El correo será el usuario de acceso';
-    if (!formData.password.trim()) errors.password = 'Debes definir una contraseña';
+    if (!isEditingReferral && !formData.password.trim()) errors.password = 'Debes definir una contraseña';
     if (!formData.whatsapp.trim()) errors.whatsapp = 'Debes registrar el WhatsApp del referido';
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
@@ -342,6 +407,7 @@ const SellerView = ({ currentUser }) => {
       return;
     }
 
+    const isEditing = Boolean(editingReferral);
     const accessSnapshot = {
       business_name: formData.business_name,
       email: formData.email,
@@ -349,31 +415,44 @@ const SellerView = ({ currentUser }) => {
     };
 
     setIsSubmitting(true);
-    const result = await sellerReferralService.create(formData);
+    const result = isEditing
+      ? await sellerReferralService.update(editingReferral.id, formData)
+      : await sellerReferralService.create(formData);
     setIsSubmitting(false);
 
     if (!result.success) {
       setFieldErrors(result.errors || {});
       toast({
         title: 'Error',
-        description: result.message || 'No se pudo registrar el referido',
+        description: result.message || (isEditing ? 'No se pudo actualizar el establecimiento' : 'No se pudo registrar el referido'),
         variant: 'destructive',
         className: 'rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold'
       });
       return;
     }
 
-    setFormData(initialForm);
-    setFieldErrors({});
-    setCreatedAccess({
-      ...accessSnapshot,
-      email: result.credentials?.email || accessSnapshot.email,
-    });
-    toast({
-      title: 'Referido creado',
-      description: 'El usuario del referido quedó listo con su acceso y su link.',
-      className: 'bg-green-100 text-green-800 rounded-2xl border-2 border-green-200'
-    });
+    if (isEditing) {
+      resetReferralForm();
+      toast({
+        title: 'Establecimiento actualizado',
+        description: result.message || 'Los cambios quedaron guardados y el establecimiento volvió a revisión.',
+        className: 'bg-green-100 text-green-800 rounded-2xl border-2 border-green-200'
+      });
+    } else {
+      setFormData(initialForm);
+      setFieldErrors({});
+      setCreatedAccess({
+        ...accessSnapshot,
+        email: result.credentials?.email || accessSnapshot.email,
+      });
+      toast({
+        title: 'Referido creado',
+        description: 'El usuario del referido quedó listo con su acceso y su link.',
+        className: 'bg-green-100 text-green-800 rounded-2xl border-2 border-green-200'
+      });
+    }
+
+    setSelectedReferral(null);
     await loadDashboard();
     handleTabChange('referrals');
   };
@@ -449,6 +528,9 @@ const SellerView = ({ currentUser }) => {
                 </TabsTrigger>
                 <TabsTrigger value="visits" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-orange-500 data-[state=active]:text-white transition-all">
                   🗂️ Visitas
+                </TabsTrigger>
+                <TabsTrigger value="messaging" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-teal-500 data-[state=active]:text-white transition-all">
+                  💬 Mensajería
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -531,36 +613,79 @@ const SellerView = ({ currentUser }) => {
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6">
-                <div className="bg-white rounded-[2rem] border-4 border-cyan-100 p-6 shadow-lg">
-                  <div className="flex items-center gap-3 mb-4">
-                    <Link2 className="w-6 h-6 text-cyan-600" />
-                    <h3 className="text-xl font-black text-gray-800">Links activos por establecimiento</h3>
-                  </div>
-                  {activeLinkReferrals.length === 0 ? (
-                    <div className="rounded-2xl border-2 border-dashed border-cyan-200 bg-cyan-50 p-8 text-center font-bold text-cyan-700">Aun no tienes establecimientos con link activo.</div>
-                  ) : (
-                    <div className="space-y-3">
-                      {activeLinkReferrals.slice(0, 3).map((item) => (
-                        <div key={item.id} className="rounded-2xl border-2 border-cyan-200 bg-cyan-50 p-4 space-y-3">
-                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                            <div>
-                              <p className="text-lg font-black text-gray-800">{item.business_name}</p>
-                              <p className="text-sm font-bold text-gray-600">{item.referred_user?.email || item.email}</p>
-                            </div>
-                            <Button type="button" onClick={() => handleCopyBookingUrl(item.booking_link)} className="bg-cyan-500 hover:bg-cyan-600 text-white rounded-2xl px-5 py-3 font-bold">
-                              <Copy className="w-4 h-4 mr-2" />
-                              Copiar link
-                            </Button>
-                          </div>
-                          <div className="rounded-2xl bg-white border-2 border-cyan-100 p-4">
-                            <p className="text-xs uppercase tracking-[0.2em] font-black text-cyan-600">Link directo</p>
-                            <p className="text-sm font-bold text-slate-700 break-all mt-2">{buildBookingUrl(item.booking_link)}</p>
-                          </div>
-                        </div>
-                      ))}
-                      <p className="text-sm font-bold text-gray-600">En el módulo de ganancias puedes ver cuánto genera cada establecimiento que has creado.</p>
+                <div className="space-y-6">
+                  <div className="bg-white rounded-[2rem] border-4 border-cyan-100 p-6 shadow-lg">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Link2 className="w-6 h-6 text-cyan-600" />
+                      <h3 className="text-xl font-black text-gray-800">Tu link general de referido</h3>
                     </div>
-                  )}
+                    {currentUser?.referral_code ? (
+                      <div className="space-y-4">
+                        <div className="rounded-2xl border-2 border-cyan-200 bg-cyan-50 p-4">
+                          <p className="text-xs uppercase tracking-[0.2em] font-black text-cyan-600">Código del vendedor</p>
+                          <p className="mt-2 text-3xl font-black text-gray-800">{currentUser.referral_code}</p>
+                        </div>
+                        <div className="rounded-2xl bg-white border-2 border-cyan-100 p-4">
+                          <p className="text-xs uppercase tracking-[0.2em] font-black text-cyan-600">Link directo</p>
+                          <p className="text-sm font-bold text-slate-700 break-all mt-2">{sellerReferralLink}</p>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <Button type="button" onClick={handleCopySellerReferralLink} className="bg-cyan-500 hover:bg-cyan-600 text-white rounded-2xl px-5 py-3 font-bold">
+                            <Copy className="w-4 h-4 mr-2" />
+                            Copiar link general
+                          </Button>
+                          <a
+                            href={sellerReferralLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center justify-center rounded-2xl border-2 border-cyan-200 bg-cyan-50 px-5 py-3 font-black text-cyan-700 hover:bg-cyan-100"
+                          >
+                            <Link2 className="w-4 h-4 mr-2" />
+                            Abrir link
+                          </a>
+                        </div>
+                        <p className="text-sm font-bold text-gray-600">
+                          Este link aplica tu código automáticamente en la agenda pública, incluso sin pasar por un establecimiento.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border-2 border-dashed border-cyan-200 bg-cyan-50 p-8 text-center font-bold text-cyan-700">
+                        Aún no tienes código de referido. Pide a administración que lo genere.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-white rounded-[2rem] border-4 border-cyan-100 p-6 shadow-lg">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Link2 className="w-6 h-6 text-cyan-600" />
+                      <h3 className="text-xl font-black text-gray-800">Links activos por establecimiento</h3>
+                    </div>
+                    {activeLinkReferrals.length === 0 ? (
+                      <div className="rounded-2xl border-2 border-dashed border-cyan-200 bg-cyan-50 p-8 text-center font-bold text-cyan-700">Aun no tienes establecimientos con link activo.</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {activeLinkReferrals.slice(0, 3).map((item) => (
+                          <div key={item.id} className="rounded-2xl border-2 border-cyan-200 bg-cyan-50 p-4 space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                              <div>
+                                <p className="text-lg font-black text-gray-800">{item.business_name}</p>
+                                <p className="text-sm font-bold text-gray-600">{item.referred_user?.email || item.email}</p>
+                              </div>
+                              <Button type="button" onClick={() => handleCopyBookingUrl(item.booking_link)} className="bg-cyan-500 hover:bg-cyan-600 text-white rounded-2xl px-5 py-3 font-bold">
+                                <Copy className="w-4 h-4 mr-2" />
+                                Copiar link
+                              </Button>
+                            </div>
+                            <div className="rounded-2xl bg-white border-2 border-cyan-100 p-4">
+                              <p className="text-xs uppercase tracking-[0.2em] font-black text-cyan-600">Link directo</p>
+                              <p className="text-sm font-bold text-slate-700 break-all mt-2">{buildBookingUrl(item.booking_link)}</p>
+                            </div>
+                          </div>
+                        ))}
+                        <p className="text-sm font-bold text-gray-600">En el módulo de ganancias puedes ver cuánto genera cada establecimiento que has creado.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="bg-gradient-to-br from-cyan-500 to-blue-600 rounded-[2rem] p-6 shadow-lg text-white border-4 border-cyan-300">
@@ -681,13 +806,15 @@ const SellerView = ({ currentUser }) => {
             <TabsContent value="referrals" className="space-y-6">
               <div className="grid grid-cols-1 xl:grid-cols-[0.95fr_1.05fr] gap-6">
             <div className="bg-white rounded-[2rem] border-4 border-cyan-100 p-6 shadow-lg space-y-5">
-              <div className="flex items-center gap-3"><Upload className="w-6 h-6 text-cyan-600" /><h3 className="text-xl font-black text-gray-800">Registrar nuevo establecimiento</h3></div>
+              <div className="flex items-center gap-3"><Upload className="w-6 h-6 text-cyan-600" /><h3 className="text-xl font-black text-gray-800">{isEditingReferral ? 'Editar establecimiento' : 'Registrar nuevo establecimiento'}</h3></div>
 
               <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50 p-4 text-sm font-bold text-gray-700">
-                Al registrar un referido se crea un usuario independiente. Ese referido podrá entrar con su correo y contraseña para ver únicamente su panel estadístico y su link.
+                {isEditingReferral
+                  ? 'Puedes actualizar datos y soportes del establecimiento. Si cambias la contraseña, se actualiza el acceso; si la dejas vacía, se conserva. Los cambios del vendedor vuelven a estado pendiente de revisión.'
+                  : 'Al registrar un referido se crea un usuario independiente. Ese referido podrá entrar con su correo y contraseña para ver únicamente su panel estadístico y su link.'}
               </div>
 
-              {createdAccess && (
+              {!isEditingReferral && createdAccess && (
                 <div className="rounded-2xl border-2 border-green-200 bg-green-50 p-4 space-y-2">
                   <p className="text-sm font-black uppercase tracking-wide text-green-700">Acceso creado</p>
                   <p className="text-lg font-black text-gray-800">{createdAccess.business_name}</p>
@@ -711,10 +838,10 @@ const SellerView = ({ currentUser }) => {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-gray-600 mb-2">Contraseña inicial *</label>
+                    <label className="block text-sm font-bold text-gray-600 mb-2">{isEditingReferral ? 'Nueva contraseña' : 'Contraseña inicial *'}</label>
                     <div className={`flex items-center gap-3 rounded-2xl border-2 p-4 ${fieldErrors.password ? 'border-red-300 bg-red-50' : 'border-cyan-200 bg-cyan-50'}`}>
                       <Lock className="w-4 h-4 text-cyan-600" />
-                      <input type="text" className="w-full bg-transparent font-bold outline-none text-gray-800" value={formData.password} onChange={(e) => handleInputChange('password', e.target.value)} placeholder="Mínimo 6 caracteres" />
+                      <input type="text" className="w-full bg-transparent font-bold outline-none text-gray-800" value={formData.password} onChange={(e) => handleInputChange('password', e.target.value)} placeholder={isEditingReferral ? 'Déjala vacía para conservar la actual' : 'Mínimo 6 caracteres'} />
                     </div>
                   </div>
                 </div>
@@ -727,8 +854,12 @@ const SellerView = ({ currentUser }) => {
                   <div><label className="block text-sm font-bold text-gray-600 mb-2">Observaciones</label><textarea rows={3} className="w-full rounded-2xl border-2 border-cyan-200 bg-cyan-50 p-4 font-bold outline-none focus:border-cyan-400 resize-none" value={formData.notes} onChange={(e) => handleInputChange('notes', e.target.value)} placeholder="Notas comerciales, condiciones o comentarios relevantes" /></div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <label className="block rounded-2xl border-2 border-dashed border-cyan-300 bg-cyan-50 p-4 cursor-pointer"><span className="block text-sm font-black text-cyan-700 mb-2">Cámara de Comercio</span><span className="block text-xs text-gray-500 font-bold mb-3">PDF o imagen, máximo 5 MB</span><input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => handleInputChange('chamber_of_commerce', e.target.files?.[0] || null)} /><span className="inline-flex items-center gap-2 text-sm font-black text-cyan-700"><FileText className="w-4 h-4" />{formData.chamber_of_commerce ? formData.chamber_of_commerce.name : 'Seleccionar archivo'}</span></label>
-                  <label className="block rounded-2xl border-2 border-dashed border-cyan-300 bg-cyan-50 p-4 cursor-pointer"><span className="block text-sm font-black text-cyan-700 mb-2">RUT</span><span className="block text-xs text-gray-500 font-bold mb-3">PDF o imagen, máximo 5 MB</span><input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => handleInputChange('rut', e.target.files?.[0] || null)} /><span className="inline-flex items-center gap-2 text-sm font-black text-cyan-700"><FileText className="w-4 h-4" />{formData.rut ? formData.rut.name : 'Seleccionar archivo'}</span></label>
+                  <label className="block rounded-2xl border-2 border-dashed border-cyan-300 bg-cyan-50 p-4 cursor-pointer"><span className="block text-sm font-black text-cyan-700 mb-2">Cámara de Comercio</span><span className="block text-xs text-gray-500 font-bold mb-3">PDF o imagen, máximo 5 MB</span><input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => handleInputChange('chamber_of_commerce', e.target.files?.[0] || null)} /><span className="inline-flex items-center gap-2 text-sm font-black text-cyan-700"><FileText className="w-4 h-4" />{formData.chamber_of_commerce ? formData.chamber_of_commerce.name : 'Seleccionar archivo'}</span>{isEditingReferral && editingReferral?.chamber_of_commerce_url ? <a href={editingReferral.chamber_of_commerce_url} target="_blank" rel="noreferrer" className="block mt-2 text-xs font-black text-cyan-700 underline">Ver archivo actual</a> : null}</label>
+                  <label className="block rounded-2xl border-2 border-dashed border-cyan-300 bg-cyan-50 p-4 cursor-pointer"><span className="block text-sm font-black text-cyan-700 mb-2">RUT</span><span className="block text-xs text-gray-500 font-bold mb-3">PDF o imagen, máximo 5 MB</span><input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => handleInputChange('rut', e.target.files?.[0] || null)} /><span className="inline-flex items-center gap-2 text-sm font-black text-cyan-700"><FileText className="w-4 h-4" />{formData.rut ? formData.rut.name : 'Seleccionar archivo'}</span>{isEditingReferral && editingReferral?.rut_url ? <a href={editingReferral.rut_url} target="_blank" rel="noreferrer" className="block mt-2 text-xs font-black text-cyan-700 underline">Ver archivo actual</a> : null}</label>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <label className="block rounded-2xl border-2 border-dashed border-cyan-300 bg-cyan-50 p-4 cursor-pointer"><span className="block text-sm font-black text-cyan-700 mb-2">Foto del logo</span><span className="block text-xs text-gray-500 font-bold mb-3">JPG, PNG o WEBP, máximo 5 MB</span><input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={(e) => handleInputChange('logo', e.target.files?.[0] || null)} /><span className="inline-flex items-center gap-2 text-sm font-black text-cyan-700"><FileText className="w-4 h-4" />{formData.logo ? formData.logo.name : 'Seleccionar archivo'}</span>{isEditingReferral && editingReferral?.logo_url ? <a href={editingReferral.logo_url} target="_blank" rel="noreferrer" className="block mt-2 text-xs font-black text-cyan-700 underline">Ver archivo actual</a> : null}</label>
+                  <label className="block rounded-2xl border-2 border-dashed border-cyan-300 bg-cyan-50 p-4 cursor-pointer"><span className="block text-sm font-black text-cyan-700 mb-2">Foto de la cédula</span><span className="block text-xs text-gray-500 font-bold mb-3">JPG, PNG o WEBP, máximo 5 MB</span><input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={(e) => handleInputChange('citizenship_card', e.target.files?.[0] || null)} /><span className="inline-flex items-center gap-2 text-sm font-black text-cyan-700"><FileText className="w-4 h-4" />{formData.citizenship_card ? formData.citizenship_card.name : 'Seleccionar archivo'}</span>{isEditingReferral && editingReferral?.citizenship_card_url ? <a href={editingReferral.citizenship_card_url} target="_blank" rel="noreferrer" className="block mt-2 text-xs font-black text-cyan-700 underline">Ver archivo actual</a> : null}</label>
                 </div>
                 <div className="rounded-2xl border-2 border-dashed border-cyan-300 bg-cyan-50 p-4 space-y-3">
                   <div>
@@ -753,16 +884,19 @@ const SellerView = ({ currentUser }) => {
                   </div>
                   <div className="inline-flex items-center gap-2 text-sm font-black text-cyan-700">
                     <ImageIcon className="w-4 h-4" />
-                    {formData.place_photo ? formData.place_photo.name : 'Ninguna foto seleccionada'}
+                    {formData.place_photo ? formData.place_photo.name : isEditingReferral && editingReferral?.place_photo_url ? 'Usando foto actual' : 'Ninguna foto seleccionada'}
                   </div>
                 </div>
-                {placePhotoPreview ? (
+                {currentPlacePhotoPreview ? (
                   <div className="rounded-2xl border-2 border-cyan-200 bg-white p-4 space-y-3">
                     <p className="text-sm font-black text-cyan-700">Previsualización</p>
-                    <img src={placePhotoPreview} alt="Vista previa del establecimiento" className="w-full h-56 rounded-2xl object-cover border border-cyan-100" />
+                    <img src={currentPlacePhotoPreview} alt="Vista previa del establecimiento" className="w-full h-56 rounded-2xl object-cover border border-cyan-100" />
                   </div>
                 ) : null}
-                <Button type="submit" disabled={isSubmitting} className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white rounded-2xl py-4 font-black text-lg shadow-lg border-b-4 border-cyan-700 active:border-b-0 active:translate-y-1">{isSubmitting ? 'Guardando...' : 'Crear usuario referido'}</Button>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button type="submit" disabled={isSubmitting} className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white rounded-2xl py-4 font-black text-lg shadow-lg border-b-4 border-cyan-700 active:border-b-0 active:translate-y-1">{isSubmitting ? 'Guardando...' : isEditingReferral ? 'Guardar cambios' : 'Crear usuario referido'}</Button>
+                  {isEditingReferral ? <Button type="button" onClick={resetReferralForm} className="sm:w-auto bg-white hover:bg-slate-100 text-slate-700 border-2 border-slate-200 rounded-2xl px-6 py-4 font-black">Cancelar edición</Button> : null}
+                </div>
               </form>
             </div>
 
@@ -803,7 +937,10 @@ const SellerView = ({ currentUser }) => {
                           </div>
                         )}
 
-                        <div className="mt-4 flex justify-end"><Button type="button" onClick={() => setSelectedReferral(item)} className="bg-cyan-500 hover:bg-cyan-600 text-white rounded-xl px-4 py-2 font-bold"><Eye className="w-4 h-4 mr-2" />Ver detalle</Button></div>
+                        <div className="mt-4 flex flex-wrap justify-end gap-2">
+                          <Button type="button" onClick={() => startEditingReferral(item)} className="bg-white hover:bg-cyan-100 text-cyan-700 border-2 border-cyan-200 rounded-xl px-4 py-2 font-bold"><Pencil className="w-4 h-4 mr-2" />Editar</Button>
+                          <Button type="button" onClick={() => setSelectedReferral(item)} className="bg-cyan-500 hover:bg-cyan-600 text-white rounded-xl px-4 py-2 font-bold"><Eye className="w-4 h-4 mr-2" />Ver detalle</Button>
+                        </div>
                       </div>
                     );
                   })}
@@ -813,7 +950,7 @@ const SellerView = ({ currentUser }) => {
               )}
             </div>
             </div>
-          </TabsContent>
+            </TabsContent>
 
             <TabsContent value="visits" className="space-y-6">
               {!supportsSellerVisits ? (
@@ -931,6 +1068,10 @@ const SellerView = ({ currentUser }) => {
               )}
             </TabsContent>
 
+            <TabsContent value="messaging" className="space-y-6">
+              <MessagingModule currentUser={currentUser} />
+            </TabsContent>
+
           </section>
         </div>
 
@@ -959,6 +1100,7 @@ const SellerView = ({ currentUser }) => {
                     <div className="bg-white rounded-xl border-2 border-cyan-100 p-3 md:col-span-2">Dirección: <span className="font-bold text-gray-900">{selectedReferral.address || 'No registrada'}</span></div>
                   </div>
                   {selectedReferral.booking_link && <div className="bg-white rounded-xl border-2 border-cyan-100 p-4"><p className="text-xs font-black text-cyan-600 uppercase mb-2">Link de agendamiento</p><p className="text-sm font-bold text-gray-700 break-all">{buildBookingUrl(selectedReferral.booking_link)}</p></div>}
+                  <div className="flex justify-end"><Button type="button" onClick={() => startEditingReferral(selectedReferral)} className="bg-cyan-500 hover:bg-cyan-600 text-white rounded-xl px-4 py-2 font-bold"><Pencil className="w-4 h-4 mr-2" />Editar establecimiento</Button></div>
                 </div>
               </div>
             )}

@@ -14,12 +14,18 @@ import ScheduleManagement from '@/components/ScheduleManagement';
 import PiojologistMap from '@/components/PiojologistMap';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import DashboardModule from '@/components/admin/DashboardModule';
+import MessagingModule from '@/components/MessagingModule';
 import { geocodeAddress } from '@/lib/geocoding';
-import { bookingService, referralService, sellerReferralService, settingsService } from '@/lib/api';
+import { bookingService, referralService, sellerReferralService, settingsService, userService } from '@/lib/api';
 import {
   DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE,
   SMS_TEMPLATE_VARIABLES
 } from '@/lib/bookingSmsTemplate';
+import {
+  DEFAULT_TERMS_AND_CONDITIONS,
+  TERMS_ROLE_DESCRIPTIONS,
+  TERMS_ROLE_LABELS
+} from '@/lib/termsConditions';
 
 const DEFAULT_PARTNER_COMMISSION_TIERS = [
   { from: 1, to: 20, value: 5000 },
@@ -43,6 +49,10 @@ const normalizePartnerCommissionTiers = (tiers) => {
   return normalized.length > 0 ? normalized : DEFAULT_PARTNER_COMMISSION_TIERS;
 };
 
+const buildReferralBookingLink = (referralCode) => (
+  referralCode ? `${window.location.origin}/agenda?ref=${encodeURIComponent(referralCode)}` : ''
+);
+
 const INITIAL_USER_FORM_DATA = {
   name: '',
   email: '',
@@ -64,7 +74,30 @@ const INITIAL_USER_FORM_DATA = {
   notes: '',
   chamber_of_commerce: null,
   rut: null,
+  logo: null,
+  citizenship_card: null,
 };
+
+const buildEstablishmentFormData = (referral = null, user = null) => ({
+  ...INITIAL_USER_FORM_DATA,
+  role: 'referido',
+  available: false,
+  is_active: referral?.referred_user?.is_active ?? user?.is_active ?? true,
+  business_name: referral?.business_name || user?.name || '',
+  name: referral?.business_name || user?.name || '',
+  owner_name: referral?.owner_name || '',
+  whatsapp: referral?.whatsapp || referral?.phone || '',
+  email: referral?.referred_user?.email || referral?.email || user?.email || '',
+  password: '',
+  nit: referral?.nit || '',
+  city: referral?.city || '',
+  address: referral?.address || user?.address || '',
+  notes: referral?.notes || '',
+  chamber_of_commerce: null,
+  rut: null,
+  logo: null,
+  citizenship_card: null,
+});
 
 // Lazy load módulos pesados para mejor rendimiento
 const UsersModule = lazy(() => import('@/components/admin/UsersModule'));
@@ -73,6 +106,7 @@ const ServicesModule = lazy(() => import('@/components/admin/ServicesModule'));
 const EarningsModule = lazy(() => import('@/components/admin/EarningsModule'));
 const RequestsModule = lazy(() => import('@/components/admin/RequestsModule'));
 const SellerReferralsModule = lazy(() => import('@/components/admin/SellerReferralsModule'));
+const SellerVisitsModule = lazy(() => import('@/components/admin/SellerVisitsModule'));
 const ProductDetailDialog = lazy(() => import('@/components/admin/dialogs/ProductDetailDialog'));
 
 // Lazy load diálogos para mejor rendimiento
@@ -81,7 +115,7 @@ const DeleteConfirmDialog = lazy(() => import('@/components/admin/dialogs/Delete
 const UserDetailDialog = lazy(() => import('@/components/admin/dialogs/UserDetailDialog'));
 const EarningsDialog = lazy(() => import('@/components/admin/dialogs/EarningsDialog'));
 
-const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUserActive, appointments, baseAppointments = [], bookings = [], updateAppointments, updateBookings, reloadUsers, reloadBookings, onDeleteBooking, piojologists, products, updateProducts, services = [], onCreateService, onUpdateService, onDeleteService, serviceCatalog, formatCurrency, syncICalEvents, productRequests, onApproveRequest, onRejectRequest, onNotify }) => {
+const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, handleToggleUserActive, appointments, baseAppointments = [], bookings = [], updateAppointments, updateBookings, reloadUsers, reloadBookings, onDeleteBooking, piojologists, products, updateProducts, services = [], onCreateService, onUpdateService, onDeleteService, serviceCatalog, formatCurrency, syncICalEvents, productRequests, onApproveRequest, onRejectRequest, onNotify }) => {
   const { toast } = useToast();
   
   // User Management State
@@ -118,11 +152,14 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
   const [sellerReferralSettingsSaving, setSellerReferralSettingsSaving] = useState(false);
   const [partnerCommissionTiersDraft, setPartnerCommissionTiersDraft] = useState(DEFAULT_PARTNER_COMMISSION_TIERS);
   const [partnerCommissionSettingsSaving, setPartnerCommissionSettingsSaving] = useState(false);
+  const [termsSettingsDraft, setTermsSettingsDraft] = useState(DEFAULT_TERMS_AND_CONDITIONS);
+  const [termsSettingsSaving, setTermsSettingsSaving] = useState(false);
 
 
   // Persist active tab across refresh
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('adminTab') || 'dashboard');
   const [settingsTab, setSettingsTab] = useState(() => localStorage.getItem('adminSettingsTab') || 'agenda');
+  const [termsRoleTab, setTermsRoleTab] = useState(() => localStorage.getItem('adminTermsSettingsTab') || 'piojologa');
   const [dashboardFocus, setDashboardFocus] = useState(null);
   const handleTabChange = (value) => {
     startTransition(() => {
@@ -133,6 +170,10 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
   const handleSettingsTabChange = (value) => {
     setSettingsTab(value);
     localStorage.setItem('adminSettingsTab', value);
+  };
+  const handleTermsRoleTabChange = (value) => {
+    setTermsRoleTab(value);
+    localStorage.setItem('adminTermsSettingsTab', value);
   };
   const handleOpenUserStats = useCallback((user) => {
     const tabMap = {
@@ -216,6 +257,10 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
         setSellerReferralValueDraft(Number(result.settings?.sellerReferralValue ?? 5000));
         setPartnerCommissionTiersDraft(normalizePartnerCommissionTiers(result.settings?.partnerCommissionTiers));
         setWhatsappTemplateDraft(template);
+        setTermsSettingsDraft({
+          ...DEFAULT_TERMS_AND_CONDITIONS,
+          ...(result.settings?.termsAndConditions || {})
+        });
         try {
           localStorage.setItem('booking_whatsapp_template', template);
         } catch (e) {
@@ -236,7 +281,8 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
       window.dispatchEvent(new CustomEvent('booking-settings-updated', {
         detail: {
           requireAdvance12h: checked,
-          whatsappConfirmationTemplate: whatsappTemplateDraft
+          whatsappConfirmationTemplate: whatsappTemplateDraft,
+          termsAndConditions: termsSettingsDraft
         }
       }));
     } catch (e) {
@@ -250,7 +296,8 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
         window.dispatchEvent(new CustomEvent('booking-settings-updated', {
           detail: {
             requireAdvance12h: previous,
-            whatsappConfirmationTemplate: whatsappTemplateDraft
+            whatsappConfirmationTemplate: whatsappTemplateDraft,
+            termsAndConditions: termsSettingsDraft
           }
         }));
       } catch (e) {
@@ -305,7 +352,8 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
       window.dispatchEvent(new CustomEvent('booking-settings-updated', {
         detail: {
           requireAdvance12h: bookingRequireAdvance12h,
-          whatsappConfirmationTemplate: savedTemplate
+          whatsappConfirmationTemplate: savedTemplate,
+          termsAndConditions: termsSettingsDraft
         }
       }));
     } catch (e) {
@@ -320,6 +368,64 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
 
   const handleResetSmsTemplate = () => {
     setWhatsappTemplateDraft(DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE);
+  };
+
+  const handleTermsDraftChange = (role, value) => {
+    setTermsSettingsDraft((current) => ({
+      ...current,
+      [role]: value,
+    }));
+  };
+
+  const handleSaveTermsSettings = async () => {
+    const normalizedTerms = Object.entries(termsSettingsDraft).reduce((acc, [role, value]) => {
+      acc[role] = String(value || '').trim();
+      return acc;
+    }, {});
+
+    const hasEmptyTerms = Object.values(normalizedTerms).some((value) => !value);
+    if (hasEmptyTerms) {
+      toast({
+        title: "❌ Términos incompletos",
+        description: "Debes escribir el contenido de términos y condiciones para los tres roles.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setTermsSettingsSaving(true);
+    const result = await settingsService.updateBookingSettings({
+      termsAndConditions: normalizedTerms
+    });
+    setTermsSettingsSaving(false);
+
+    if (!result.success) {
+      toast({
+        title: "❌ Error",
+        description: result.message || "No se pudieron actualizar los términos y condiciones",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const savedTerms = {
+      ...DEFAULT_TERMS_AND_CONDITIONS,
+      ...(result.settings?.termsAndConditions || normalizedTerms)
+    };
+    setTermsSettingsDraft(savedTerms);
+
+    window.dispatchEvent(new CustomEvent('booking-settings-updated', {
+      detail: {
+        requireAdvance12h: bookingRequireAdvance12h,
+        whatsappConfirmationTemplate: whatsappTemplateDraft,
+        termsAndConditions: savedTerms
+      }
+    }));
+
+    toast({
+      title: "✅ Configuración actualizada",
+      description: "Los términos y condiciones por rol quedaron guardados."
+    });
   };
 
   const handleSaveSellerReferralSettings = async () => {
@@ -571,14 +677,47 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
     }
   };
 
-  const handleOpenUserDialog = (user = null) => {
+  const handleOpenUserDialog = async (user = null) => {
     if (user) {
-      setEditingUser(user);
-      setUserFormData({
-        ...INITIAL_USER_FORM_DATA,
-        ...user,
-        referral_value: Number(user.referral_value ?? (user.role === 'vendedor' ? sellerReferralValueDraft : 15000))
-      });
+      if (user.role === 'referido') {
+        const referralsResult = await sellerReferralService.getAll();
+        if (!referralsResult.success) {
+          toast({
+            title: 'Error',
+            description: referralsResult.message || 'No se pudo cargar la información del establecimiento',
+            variant: 'destructive',
+            className: 'rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold'
+          });
+          return;
+        }
+
+        const referral = (referralsResult.referrals || []).find((item) => (
+          Number(item?.referred_user_id) === Number(user.id)
+          || Number(item?.referred_user?.id) === Number(user.id)
+          || (item?.referred_user?.email && item.referred_user.email === user.email)
+          || (item?.email && item.email === user.email)
+        ));
+
+        if (!referral) {
+          toast({
+            title: 'Error',
+            description: 'No se encontró el registro comercial asociado a este establecimiento.',
+            variant: 'destructive',
+            className: 'rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold'
+          });
+          return;
+        }
+
+        setEditingUser({ ...referral, role: 'referido' });
+        setUserFormData(buildEstablishmentFormData(referral, user));
+      } else {
+        setEditingUser(user);
+        setUserFormData({
+          ...INITIAL_USER_FORM_DATA,
+          ...user,
+          referral_value: Number(user.referral_value ?? (user.role === 'vendedor' ? sellerReferralValueDraft : 15000))
+        });
+      }
     } else {
       resetUserForm();
     }
@@ -587,11 +726,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
 
   const handleOpenEstablishmentDialog = () => {
     setEditingUser(null);
-    setUserFormData({
-      ...INITIAL_USER_FORM_DATA,
-      role: 'referido',
-      available: false,
-    });
+    setUserFormData(buildEstablishmentFormData());
     setReferralCodeValidation({ isValid: true, message: '' });
     setIsUserDialogOpen(true);
   };
@@ -601,6 +736,64 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
     const freshUser = users.find(u => u.id === user.id) || user;
     setDetailUser(freshUser);
     setIsUserDetailOpen(true);
+  };
+
+  const handleCopyReferralLink = async (referralCode) => {
+    const referralLink = buildReferralBookingLink(referralCode);
+    if (!referralLink) return;
+
+    try {
+      await navigator.clipboard.writeText(referralLink);
+      toast({
+        title: 'Link copiado',
+        description: 'El link de referido quedó copiado.',
+        className: 'bg-green-100 border-2 border-green-200 text-green-800 rounded-2xl font-bold'
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudo copiar el link de referido.',
+        variant: 'destructive',
+        className: 'rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold'
+      });
+    }
+  };
+
+  const handleRegenerateReferralCode = async (userId) => {
+    const result = await userService.regenerateReferralCode(userId);
+
+    if (!result.success) {
+      toast({
+        title: '❌ Error',
+        description: result.message || 'No se pudo regenerar el código',
+        variant: 'destructive',
+        className: 'rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold'
+      });
+      return;
+    }
+
+    const refreshedUser = result.data?.user || null;
+    const nextCode = result.data?.referral_code || refreshedUser?.referral_code || '';
+
+    setUserFormData((prev) => ({
+      ...prev,
+      referral_code: nextCode,
+    }));
+
+    if (refreshedUser) {
+      setEditingUser(refreshedUser);
+      setDetailUser((prev) => (prev?.id === refreshedUser.id ? refreshedUser : prev));
+    }
+
+    if (typeof reloadUsers === 'function') {
+      await reloadUsers();
+    }
+
+    toast({
+      title: '🎯 Código regenerado',
+      description: `Nuevo código: ${nextCode}`,
+      className: 'bg-blue-100 text-blue-800 rounded-2xl border-2 border-blue-200'
+    });
   };
 
   const handleOpenEarningsModal = async () => {
@@ -746,12 +939,40 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
       let result;
       if (editingUser) {
         if (userToSave.role === 'referido') {
-          toast({
-            title: "Edición no disponible",
-            description: "Los establecimientos se crean desde este módulo, pero su edición aún no está habilitada aquí.",
-            variant: "destructive",
-            className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
-          });
+          const establishmentPayload = {
+            business_name: userToSave.business_name,
+            owner_name: userToSave.owner_name?.trim() || '',
+            whatsapp: userToSave.whatsapp?.trim() || '',
+            email: userToSave.email?.trim() || '',
+            password: userToSave.password || '',
+            city: userToSave.city?.trim() || '',
+            address: userToSave.address?.trim() || '',
+            nit: userToSave.nit?.trim() || '',
+            notes: userToSave.notes?.trim() || '',
+            chamber_of_commerce: userToSave.chamber_of_commerce || null,
+            rut: userToSave.rut || null,
+            logo: userToSave.logo || null,
+            citizenship_card: userToSave.citizenship_card || null,
+          };
+
+          result = await sellerReferralService.update(editingUser.id, establishmentPayload);
+          if (result.success) {
+            toast({
+              title: "Establecimiento actualizado",
+              description: result.message || "Los cambios del establecimiento quedaron guardados.",
+              className: "bg-green-100 text-green-800 rounded-2xl border-2 border-green-200"
+            });
+            setIsUserDialogOpen(false);
+            resetUserForm();
+            await reloadUsers?.();
+          } else {
+            toast({
+              title: "Error al actualizar",
+              description: buildValidationMessage(result, "No se pudo actualizar el establecimiento"),
+              variant: "destructive",
+              className: "rounded-3xl border-4 border-red-200 bg-red-50 text-red-600 font-bold"
+            });
+          }
           return;
         }
 
@@ -787,6 +1008,8 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
             notes: userToSave.notes?.trim() || '',
             chamber_of_commerce: userToSave.chamber_of_commerce || null,
             rut: userToSave.rut || null,
+            logo: userToSave.logo || null,
+            citizenship_card: userToSave.citizenship_card || null,
           };
 
           result = await sellerReferralService.create(establishmentPayload);
@@ -1260,6 +1483,12 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
                 <TabsTrigger value="seller-referrals" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-cyan-500 data-[state=active]:text-white transition-all">
                   🤝 Referidos
                 </TabsTrigger>
+                <TabsTrigger value="seller-visits" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-orange-500 data-[state=active]:text-white transition-all">
+                  🗂️ Visitas vendedores
+                </TabsTrigger>
+                <TabsTrigger value="messaging" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-teal-500 data-[state=active]:text-white transition-all">
+                  💬 Mensajería
+                </TabsTrigger>
                 <TabsTrigger value="settings" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-slate-500 data-[state=active]:text-white transition-all">
                   ⚙️ Configuración
                 </TabsTrigger>
@@ -1427,6 +1656,16 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
           </Suspense>
         </TabsContent>
 
+        <TabsContent value="seller-visits" className="space-y-6">
+          <Suspense fallback={<div>Cargando...</div>}>
+            <SellerVisitsModule />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="messaging" className="space-y-6">
+          <MessagingModule currentUser={currentUser} users={users} isAdmin />
+        </TabsContent>
+
         <TabsContent value="settings" className="space-y-6">
           <div className="bg-white rounded-[2.5rem] p-4 sm:p-6 md:p-8 shadow-xl border-4 border-slate-100">
             <div className="flex items-center gap-3 mb-6">
@@ -1440,11 +1679,12 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
             </div>
 
             <Tabs value={settingsTab} onValueChange={handleSettingsTabChange} className="space-y-6">
-              <TabsList className="grid grid-cols-2 xl:grid-cols-4 bg-slate-50 border-2 border-slate-200 rounded-2xl p-2 h-auto gap-2">
+              <TabsList className="grid grid-cols-2 xl:grid-cols-5 bg-slate-50 border-2 border-slate-200 rounded-2xl p-2 h-auto gap-2">
                 <TabsTrigger value="agenda" className="rounded-xl py-3 font-black data-[state=active]:bg-slate-500 data-[state=active]:text-white">Agenda</TabsTrigger>
                 <TabsTrigger value="vendedores" className="rounded-xl py-3 font-black data-[state=active]:bg-emerald-500 data-[state=active]:text-white">Vendedores</TabsTrigger>
                 <TabsTrigger value="establecimientos" className="rounded-xl py-3 font-black data-[state=active]:bg-sky-500 data-[state=active]:text-white">Establecimientos</TabsTrigger>
                 <TabsTrigger value="mensajes" className="rounded-xl py-3 font-black data-[state=active]:bg-teal-500 data-[state=active]:text-white">Mensajes</TabsTrigger>
+                <TabsTrigger value="terminos" className="rounded-xl py-3 font-black data-[state=active]:bg-rose-500 data-[state=active]:text-white">Términos</TabsTrigger>
               </TabsList>
 
               <TabsContent value="agenda" className="space-y-4">
@@ -1625,6 +1865,54 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
                   </div>
                 </div>
               </TabsContent>
+
+              <TabsContent value="terminos" className="space-y-4">
+                <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-4 md:p-5 space-y-4">
+                  <div>
+                    <p className="text-xs font-black text-rose-600 uppercase tracking-wide">Submódulo</p>
+                    <h4 className="text-xl font-black text-rose-800">Términos y condiciones</h4>
+                    <p className="text-sm font-bold text-rose-700">
+                      Configura el texto que verán piojólogas, vendedores y establecimientos desde su panel.
+                    </p>
+                  </div>
+
+                  <Tabs value={termsRoleTab} onValueChange={handleTermsRoleTabChange} className="space-y-4">
+                    <TabsList className="grid grid-cols-1 md:grid-cols-3 bg-white border-2 border-rose-200 rounded-2xl p-2 h-auto gap-2">
+                      <TabsTrigger value="piojologa" className="rounded-xl py-3 font-black data-[state=active]:bg-fuchsia-500 data-[state=active]:text-white">Piojóloga</TabsTrigger>
+                      <TabsTrigger value="vendedor" className="rounded-xl py-3 font-black data-[state=active]:bg-emerald-500 data-[state=active]:text-white">Vendedor</TabsTrigger>
+                      <TabsTrigger value="referido" className="rounded-xl py-3 font-black data-[state=active]:bg-sky-500 data-[state=active]:text-white">Establecimiento</TabsTrigger>
+                    </TabsList>
+
+                    {Object.keys(TERMS_ROLE_LABELS).map((roleKey) => (
+                      <TabsContent key={roleKey} value={roleKey} className="space-y-4">
+                        <div className="bg-white border-2 border-rose-200 rounded-2xl p-4 space-y-3">
+                          <div>
+                            <p className="text-sm font-black text-gray-800">{TERMS_ROLE_LABELS[roleKey]}</p>
+                            <p className="text-xs text-gray-500 font-bold mt-1">{TERMS_ROLE_DESCRIPTIONS[roleKey]}</p>
+                          </div>
+                          <textarea
+                            value={termsSettingsDraft[roleKey] || ''}
+                            onChange={(e) => handleTermsDraftChange(roleKey, e.target.value)}
+                            className="w-full min-h-[320px] rounded-2xl border-2 border-rose-200 bg-white px-4 py-3 text-sm font-bold text-gray-800 focus:outline-none focus:border-rose-400 resize-y"
+                            placeholder={`Escribe los términos y condiciones para ${TERMS_ROLE_LABELS[roleKey].toLowerCase()}`}
+                          />
+                        </div>
+                      </TabsContent>
+                    ))}
+                  </Tabs>
+
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      type="button"
+                      onClick={handleSaveTermsSettings}
+                      disabled={termsSettingsSaving}
+                      className="bg-rose-500 hover:bg-rose-600 text-white font-black rounded-xl px-5"
+                    >
+                      {termsSettingsSaving ? 'Guardando...' : 'Guardar términos y condiciones'}
+                    </Button>
+                  </div>
+                </div>
+              </TabsContent>
             </Tabs>
           </div>
         </TabsContent>
@@ -1643,7 +1931,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
             <div className="flex items-center justify-center gap-3 mb-2">
               {isEstablishmentForm ? <Building2 className="w-6 h-6 text-blue-600" /> : <User className="w-6 h-6 text-blue-600" />}
               <h2 className="text-2xl font-black text-blue-600 uppercase tracking-wide" style={{WebkitTextStroke: '0.5px currentColor'}}>
-                {editingUser ? 'EDITAR MIEMBRO' : isEstablishmentForm ? 'NUEVO ESTABLECIMIENTO' : 'NUEVO MIEMBRO'}
+                {editingUser ? (isEstablishmentForm ? 'EDITAR ESTABLECIMIENTO' : 'EDITAR MIEMBRO') : isEstablishmentForm ? 'NUEVO ESTABLECIMIENTO' : 'NUEVO MIEMBRO'}
               </h2>
             </div>
           </div>
@@ -1761,7 +2049,9 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-2">Contraseña inicial *</label>
+                    <label className="block text-sm font-medium text-gray-600 mb-2">
+                      {editingUser ? 'Nueva contraseña' : 'Contraseña inicial *'}
+                    </label>
                     <div className="flex items-center gap-3 rounded-2xl border-2 border-blue-400 bg-white p-4">
                       <Lock className="w-4 h-4 text-blue-600" />
                       <input
@@ -1770,7 +2060,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
                         className="w-full bg-transparent text-gray-700 outline-none"
                         value={userFormData.password}
                         onChange={e => setUserFormData({...userFormData, password: e.target.value})}
-                        placeholder="Mínimo 6 caracteres"
+                        placeholder={editingUser ? "Déjala vacía para conservar la actual" : "Mínimo 6 caracteres"}
                       />
                     </div>
                   </div>
@@ -1822,6 +2112,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
                       <FileText className="w-4 h-4" />
                       {userFormData.chamber_of_commerce ? userFormData.chamber_of_commerce.name : 'Seleccionar archivo'}
                     </span>
+                    {editingUser?.chamber_of_commerce_url ? <a href={editingUser.chamber_of_commerce_url} target="_blank" rel="noreferrer" className="block mt-2 text-xs font-black text-blue-700 underline">Ver archivo actual</a> : null}
                   </label>
                   <label className="block rounded-2xl border-2 border-dashed border-blue-300 bg-white p-4 cursor-pointer">
                     <span className="block text-sm font-black text-blue-700 mb-2">RUT</span>
@@ -1836,6 +2127,41 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
                       <FileText className="w-4 h-4" />
                       {userFormData.rut ? userFormData.rut.name : 'Seleccionar archivo'}
                     </span>
+                    {editingUser?.rut_url ? <a href={editingUser.rut_url} target="_blank" rel="noreferrer" className="block mt-2 text-xs font-black text-blue-700 underline">Ver archivo actual</a> : null}
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <label className="block rounded-2xl border-2 border-dashed border-blue-300 bg-white p-4 cursor-pointer">
+                    <span className="block text-sm font-black text-blue-700 mb-2">Foto del logo</span>
+                    <span className="block text-xs text-gray-500 font-bold mb-3">JPG, PNG o WEBP, máximo 5 MB</span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".jpg,.jpeg,.png,.webp"
+                      onChange={(e) => setUserFormData({...userFormData, logo: e.target.files?.[0] || null})}
+                    />
+                    <span className="inline-flex items-center gap-2 text-sm font-black text-blue-700">
+                      <FileText className="w-4 h-4" />
+                      {userFormData.logo ? userFormData.logo.name : 'Seleccionar archivo'}
+                    </span>
+                    {editingUser?.logo_url ? <a href={editingUser.logo_url} target="_blank" rel="noreferrer" className="block mt-2 text-xs font-black text-blue-700 underline">Ver archivo actual</a> : null}
+                  </label>
+
+                  <label className="block rounded-2xl border-2 border-dashed border-blue-300 bg-white p-4 cursor-pointer">
+                    <span className="block text-sm font-black text-blue-700 mb-2">Foto de la Cédula de ciudadanía</span>
+                    <span className="block text-xs text-gray-500 font-bold mb-3">JPG, PNG o WEBP, máximo 5 MB</span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".jpg,.jpeg,.png,.webp"
+                      onChange={(e) => setUserFormData({...userFormData, citizenship_card: e.target.files?.[0] || null})}
+                    />
+                    <span className="inline-flex items-center gap-2 text-sm font-black text-blue-700">
+                      <FileText className="w-4 h-4" />
+                      {userFormData.citizenship_card ? userFormData.citizenship_card.name : 'Seleccionar archivo'}
+                    </span>
+                    {editingUser?.citizenship_card_url ? <a href={editingUser.citizenship_card_url} target="_blank" rel="noreferrer" className="block mt-2 text-xs font-black text-blue-700 underline">Ver archivo actual</a> : null}
                   </label>
                 </div>
               </motion.div>
@@ -1932,7 +2258,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
                 )}
 
                 {/* Código de Referido Propio */}
-                {editingUser && userFormData.role === 'piojologa' && (
+                {editingUser && (userFormData.role === 'piojologa' || userFormData.role === 'vendedor') && (
                   <div>
                     <label className="block text-sm font-medium text-gray-600 mb-2">
                       🔗 Código de Referido Único
@@ -1948,28 +2274,7 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
                       </div>
                       <Button
                         type="button"
-                        onClick={async () => {
-                          try {
-                            // Generar código único simple
-                            const timestamp = Date.now().toString(36);
-                            const randomStr = Math.random().toString(36).substr(2, 5).toUpperCase();
-                            const newCode = `${userFormData.name?.substring(0,3).toUpperCase() || 'REF'}${randomStr}${timestamp.substr(-2)}`;
-                            
-                            setUserFormData({...userFormData, referral_code: newCode});
-                            
-                            toast({
-                              title: "🎯 Código Regenerado",
-                              description: `Nuevo código: ${newCode}`,
-                              className: "bg-blue-100 text-blue-800 rounded-2xl border-2 border-blue-200"
-                            });
-                          } catch (error) {
-                            toast({
-                              title: "❌ Error",
-                              description: "No se pudo regenerar el código",
-                              variant: "destructive"
-                            });
-                          }
-                        }}
+                        onClick={() => handleRegenerateReferralCode(editingUser.id)}
                         className="flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white rounded-2xl w-14 h-14 shadow-lg transition-all"
                         title="Regenerar Código"
                       >
@@ -1977,7 +2282,38 @@ const AdminView = ({ users, handleCreateUser, handleUpdateUser, handleToggleUser
                       </Button>
                     </div>
                     <p className="text-xs text-gray-500 mt-2">
-                      Este código puede ser usado por otras piojólogas para referenciarla
+                      {userFormData.role === 'vendedor'
+                        ? 'Este código alimenta el link directo que el vendedor comparte con sus clientes.'
+                        : 'Este código puede ser usado por otras piojólogas para referenciarla.'}
+                    </p>
+                  </div>
+                )}
+
+                {editingUser && userFormData.role === 'vendedor' && (
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-600 mb-2">
+                      🌐 Link de Referido del Vendedor
+                    </label>
+                    <div className="flex flex-col lg:flex-row gap-3">
+                      <div className="flex-1">
+                        <input
+                          className="w-full bg-white border-2 border-blue-400 rounded-2xl p-4 text-gray-700 font-bold outline-none h-14"
+                          value={buildReferralBookingLink(userFormData.referral_code)}
+                          readOnly
+                          placeholder="Primero genera el código de referido"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={() => handleCopyReferralLink(userFormData.referral_code)}
+                        disabled={!userFormData.referral_code}
+                        className="bg-cyan-500 hover:bg-cyan-600 text-white rounded-2xl px-5 h-14 font-black shadow-lg disabled:opacity-50"
+                      >
+                        Copiar link
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Este link abre la agenda pública con el referido del vendedor aplicado automáticamente.
                     </p>
                   </div>
                 )}

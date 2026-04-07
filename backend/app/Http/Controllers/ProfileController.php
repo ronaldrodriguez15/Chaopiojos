@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -43,6 +44,23 @@ class ProfileController extends Controller
         return response()->json([
             'success' => true,
             'user' => $request->user()?->fresh(),
+        ]);
+    }
+
+    public function photo(User $user)
+    {
+        $path = $user->profile_photo_path;
+
+        if (!$path || !Storage::disk('public')->exists($path)) {
+            abort(404);
+        }
+
+        $absolutePath = Storage::disk('public')->path($path);
+        $mimeType = Storage::disk('public')->mimeType($path) ?: 'application/octet-stream';
+
+        return response()->file($absolutePath, [
+            'Content-Type' => $mimeType,
+            'Cache-Control' => 'public, max-age=31536000',
         ]);
     }
 
@@ -95,6 +113,7 @@ class ProfileController extends Controller
                 if ($newPath) {
                     $this->deleteProfilePhoto($user->profile_photo_path);
                     $user->profile_photo_path = $newPath;
+                    $user->avatar_key = null;
                 }
             }
 

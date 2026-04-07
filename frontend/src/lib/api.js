@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { API_URL } from '@/lib/config';
 import { DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE } from '@/lib/bookingSmsTemplate';
+import { DEFAULT_TERMS_AND_CONDITIONS } from '@/lib/termsConditions';
 
 // Crear instancia de axios con configuración
 const api = axios.create({
@@ -611,6 +612,39 @@ export const sellerReferralService = {
     }
   },
 
+  async update(referralId, payload) {
+    try {
+      const formData = new FormData();
+      formData.append('_method', 'PUT');
+      Object.entries(payload || {}).forEach(([key, value]) => {
+        if (value === undefined) return;
+        if (value === null) {
+          formData.append(key, '');
+          return;
+        }
+        formData.append(key, value);
+      });
+
+      const response = await api.post(`/seller-referrals/${referralId}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      return {
+        success: true,
+        referral: response.data.referral,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Error actualizando establecimiento:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al actualizar establecimiento',
+        errors: error.response?.data?.errors
+      };
+    }
+  },
+
   async review(referralId, payload) {
     try {
       const response = await api.put(`/seller-referrals/${referralId}/review`, payload);
@@ -745,6 +779,71 @@ export const sellerVisitService = {
   }
 };
 
+export const messagingService = {
+  async getAll() {
+    try {
+      const response = await api.get('/messages');
+      return {
+        success: true,
+        messages: response.data.messages || [],
+      };
+    } catch (error) {
+      console.error('Error obteniendo mensajes:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al obtener mensajes'
+      };
+    }
+  },
+
+  async create(payload) {
+    try {
+      const formData = new FormData();
+      Object.entries(payload || {}).forEach(([key, value]) => {
+        if (value === null || value === undefined || value === '') return;
+        formData.append(key, value);
+      });
+
+      const response = await api.post('/messages', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      return {
+        success: true,
+        message: response.data.message,
+        adminMessage: response.data.admin_message || null,
+      };
+    } catch (error) {
+      console.error('Error enviando mensaje a administración:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al enviar el mensaje',
+        errors: error.response?.data?.errors
+      };
+    }
+  },
+
+  async reply(messageId, payload) {
+    try {
+      const response = await api.put(`/messages/${messageId}/reply`, payload);
+      return {
+        success: true,
+        message: response.data.message,
+        adminMessage: response.data.admin_message || null,
+      };
+    } catch (error) {
+      console.error('Error respondiendo mensaje:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al responder el mensaje',
+        errors: error.response?.data?.errors
+      };
+    }
+  }
+};
+
 export const settingsService = {
   async getBookingSettings() {
     const defaultSettings = {
@@ -755,15 +854,21 @@ export const settingsService = {
         { from: 1, to: 20, value: 5000 },
         { from: 21, to: 40, value: 7000 },
         { from: 41, to: null, value: 100000 },
-      ]
+      ],
+      termsAndConditions: DEFAULT_TERMS_AND_CONDITIONS
     };
     try {
       const response = await api.get('/booking-settings');
+      const responseSettings = response.data?.settings || {};
       return {
         success: true,
         settings: {
           ...defaultSettings,
-          ...(response.data?.settings || {})
+          ...responseSettings,
+          termsAndConditions: {
+            ...DEFAULT_TERMS_AND_CONDITIONS,
+            ...(responseSettings.termsAndConditions || {})
+          }
         }
       };
     } catch (error) {
@@ -785,16 +890,23 @@ export const settingsService = {
         { from: 1, to: 20, value: 5000 },
         { from: 21, to: 40, value: 7000 },
         { from: 41, to: null, value: 100000 },
-      ]
+      ],
+      termsAndConditions: DEFAULT_TERMS_AND_CONDITIONS
     };
     try {
       const response = await api.put('/booking-settings', payload);
+      const responseSettings = response.data?.settings || {};
       return {
         success: true,
         settings: {
           ...defaultSettings,
           ...payload,
-          ...(response.data?.settings || {})
+          ...responseSettings,
+          termsAndConditions: {
+            ...DEFAULT_TERMS_AND_CONDITIONS,
+            ...(payload.termsAndConditions || {}),
+            ...(responseSettings.termsAndConditions || {})
+          }
         }
       };
     } catch (error) {

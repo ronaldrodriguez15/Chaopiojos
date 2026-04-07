@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Copy, Eye, FileText, Building2, Wallet, X, Users, Image as ImageIcon, Phone } from 'lucide-react';
+import { CheckCircle2, Copy, Eye, FileText, Building2, Wallet, X, Users, Image as ImageIcon, Phone, Download } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -135,6 +135,12 @@ const SellerReferralsModule = React.memo(() => {
 
   const formatCurrency = (amount) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(Number(amount || 0));
   const buildBookingUrl = (relativePath) => (relativePath ? `${window.location.origin}${relativePath}` : '');
+  const documentActions = [
+    { key: 'chamber_of_commerce_url', label: 'Camara de Comercio', icon: FileText },
+    { key: 'rut_url', label: 'RUT', icon: FileText },
+    { key: 'logo_url', label: 'Logo del establecimiento', icon: ImageIcon },
+    { key: 'citizenship_card_url', label: 'Cedula de ciudadania', icon: ImageIcon },
+  ];
 
   const copyBookingLink = async (relativePath) => {
     const bookingUrl = buildBookingUrl(relativePath);
@@ -349,6 +355,32 @@ const SellerReferralsModule = React.memo(() => {
           {selectedReferral && (
             <div className="max-h-[80vh] overflow-y-auto p-6 md:p-8 space-y-4">
               <div className="text-center"><h2 className="text-2xl font-black text-cyan-600 uppercase tracking-wide">Detalle del Referido</h2></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {selectedReferral.logo_url ? (
+                  <div className="bg-white rounded-2xl border-2 border-cyan-200 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-black uppercase tracking-wide text-cyan-600">Logo</p>
+                      <a href={selectedReferral.logo_url} download className="inline-flex items-center gap-2 text-xs font-black text-cyan-700 hover:text-cyan-900">
+                        <Download className="w-4 h-4" />
+                        Descargar
+                      </a>
+                    </div>
+                    <img src={selectedReferral.logo_url} alt={`Logo de ${selectedReferral.business_name}`} className="w-full h-44 object-contain rounded-2xl border border-cyan-100 bg-cyan-50" />
+                  </div>
+                ) : null}
+                {selectedReferral.citizenship_card_url ? (
+                  <div className="bg-white rounded-2xl border-2 border-cyan-200 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-black uppercase tracking-wide text-cyan-600">Cedula</p>
+                      <a href={selectedReferral.citizenship_card_url} download className="inline-flex items-center gap-2 text-xs font-black text-cyan-700 hover:text-cyan-900">
+                        <Download className="w-4 h-4" />
+                        Descargar
+                      </a>
+                    </div>
+                    <img src={selectedReferral.citizenship_card_url} alt={`Cedula de ${selectedReferral.business_name}`} className="w-full h-44 object-contain rounded-2xl border border-cyan-100 bg-cyan-50" />
+                  </div>
+                ) : null}
+              </div>
               <div className="bg-white rounded-2xl border-2 border-cyan-200 p-4"><p className="text-xl font-black text-gray-800">{selectedReferral.business_name}</p><p className="text-sm font-bold text-gray-600 mt-1">Contacto: {selectedReferral.contact_name}</p><p className="text-xs font-bold text-gray-500 mt-2">Vendedor: {selectedReferral.seller?.name || 'Sin dato'}</p></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm font-semibold text-gray-700">
                 <div className="bg-white rounded-xl border-2 border-cyan-100 p-3">Email: <span className="font-bold text-gray-900">{selectedReferral.referred_user?.email || selectedReferral.email || 'No registrado'}</span></div>
@@ -358,9 +390,29 @@ const SellerReferralsModule = React.memo(() => {
                 <div className="bg-white rounded-xl border-2 border-cyan-100 p-3 md:col-span-2">Direccion: <span className="font-bold text-gray-900">{selectedReferral.address || 'No registrada'}</span></div>
                 {selectedReferral.booking_link && <div className="bg-white rounded-xl border-2 border-cyan-100 p-3 md:col-span-2">Link: <span className="font-bold text-gray-900 break-all">{buildBookingUrl(selectedReferral.booking_link)}</span></div>}
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {documentActions.map(({ key, label, icon: Icon }) => {
+                  const url = selectedReferral[key];
+                  if (!url) return null;
+
+                  return (
+                    <div key={key} className="bg-white rounded-xl border-2 border-cyan-100 p-4 space-y-3">
+                      <p className="text-xs font-black uppercase tracking-wide text-cyan-600">{label}</p>
+                      <div className="flex flex-wrap gap-2">
+                        <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-cyan-50 border-2 border-cyan-200 px-4 py-3 text-sm font-black text-cyan-700 hover:bg-cyan-100">
+                          <Icon className="w-4 h-4" />
+                          Ver archivo
+                        </a>
+                        <a href={url} download className="inline-flex items-center gap-2 rounded-xl bg-white border-2 border-cyan-200 px-4 py-3 text-sm font-black text-cyan-700 hover:bg-cyan-100">
+                          <Download className="w-4 h-4" />
+                          Descargar
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
               <div className="flex flex-wrap gap-3">
-                {selectedReferral.chamber_of_commerce_url && <a href={selectedReferral.chamber_of_commerce_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-white border-2 border-cyan-200 px-4 py-3 text-sm font-black text-cyan-700 hover:bg-cyan-100"><FileText className="w-4 h-4" />Ver Camara de Comercio</a>}
-                {selectedReferral.rut_url && <a href={selectedReferral.rut_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-white border-2 border-cyan-200 px-4 py-3 text-sm font-black text-cyan-700 hover:bg-cyan-100"><FileText className="w-4 h-4" />Ver RUT</a>}
                 {selectedReferral.booking_link && <Button type="button" onClick={() => copyBookingLink(selectedReferral.booking_link)} className="rounded-xl bg-cyan-500 hover:bg-cyan-600 text-white px-4 py-3 text-sm font-black"><Copy className="w-4 h-4 mr-2" />Copiar link</Button>}
               </div>
             </div>
