@@ -6,6 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
 import Pagination from './Pagination';
 import { sellerReferralService, sellerVisitService } from '@/lib/api';
+import BackendImage from '@/components/BackendImage';
+import { resolveMediaUrl } from '@/lib/media';
 
 const statusConfig = {
   pending_review: { label: 'Pendiente', card: 'bg-amber-50 border-amber-200', badge: 'bg-amber-100 text-amber-700 border-amber-200' },
@@ -315,13 +317,14 @@ const SellerReferralsModule = React.memo(() => {
                     <div key={item.id} className="rounded-[2rem] border-4 border-orange-100 bg-orange-50/70 p-5 shadow-sm">
                       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                         <div className="flex items-start gap-3">
-                          {item.place_photo_url ? (
-                            <img src={item.place_photo_url} alt={item.business_name} className="w-16 h-16 rounded-2xl object-cover border-2 border-orange-200 bg-white flex-shrink-0" />
-                          ) : (
-                            <div className="w-16 h-16 rounded-2xl bg-white border-2 border-orange-200 flex items-center justify-center flex-shrink-0">
-                              <ImageIcon className="w-6 h-6 text-orange-400" />
-                            </div>
-                          )}
+                          <BackendImage
+                            src={item.place_photo_url}
+                            alt={item.business_name}
+                            className="w-16 h-16 rounded-2xl border-2 border-orange-200 bg-white flex-shrink-0"
+                            imgClassName="object-cover"
+                            fallbackClassName="border-orange-200"
+                            iconClassName="w-6 h-6 text-orange-400"
+                          />
                           <div className="space-y-1">
                             <p className="text-lg font-black text-gray-800">{item.business_name}</p>
                             <p className="text-sm font-bold text-gray-600">{item.owner_name || 'Dueno sin registrar'}</p>
@@ -428,7 +431,20 @@ const SellerReferralsModule = React.memo(() => {
               <div className="text-center"><h2 className="text-2xl font-black text-orange-600 uppercase tracking-wide">Detalle de la Visita</h2></div>
               {selectedVisit.place_photo_url && (
                 <div className="bg-white rounded-2xl border-2 border-orange-200 p-4">
-                  <img src={selectedVisit.place_photo_url} alt={selectedVisit.business_name} className="w-full h-56 object-cover rounded-2xl" />
+                  <div className="flex justify-end mb-3">
+                    <a href={resolveMediaUrl(selectedVisit.place_photo_url)} download className="inline-flex items-center gap-2 text-xs font-black text-orange-700 hover:text-orange-900">
+                      <Download className="w-4 h-4" />
+                      Descargar
+                    </a>
+                  </div>
+                  <BackendImage
+                    src={selectedVisit.place_photo_url}
+                    alt={selectedVisit.business_name}
+                    className="w-full h-56 rounded-2xl border border-orange-100 bg-orange-50"
+                    imgClassName="object-contain"
+                    fallbackClassName="border-orange-100"
+                    iconClassName="w-12 h-12 text-orange-300"
+                  />
                 </div>
               )}
               <div className="bg-white rounded-2xl border-2 border-orange-200 p-4">

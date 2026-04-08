@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { getAvatarPreset, getUserInitials } from '@/lib/profileOptions';
+import { resolveMediaUrl } from '@/lib/media';
 
 const hairStyleMap = {
   idol: {
@@ -167,6 +168,23 @@ const CharacterAvatar = ({ preset, className = '' }) => {
 const UserAvatar = ({ user, className = '', textClassName = '' }) => {
   const preset = getAvatarPreset(user?.avatar_key);
   const initials = getUserInitials(user?.name);
+  const photoUrl = useMemo(() => resolveMediaUrl(user?.profile_photo_url), [user?.profile_photo_url]);
+  const [photoFailed, setPhotoFailed] = useState(false);
+
+  useEffect(() => {
+    setPhotoFailed(false);
+  }, [photoUrl]);
+
+  if (photoUrl && !photoFailed) {
+    return (
+      <img
+        src={photoUrl}
+        alt={user?.name || 'Avatar'}
+        className={`${className} object-cover bg-white`.trim()}
+        onError={() => setPhotoFailed(true)}
+      />
+    );
+  }
 
   if (preset) {
     return <CharacterAvatar preset={preset} className={className} />;

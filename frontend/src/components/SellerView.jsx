@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import MessagingModule from '@/components/MessagingModule';
+import StatsHighlightCard from '@/components/StatsHighlightCard';
 import { sellerReferralService, sellerVisitService } from '@/lib/api';
 import Pagination from '@/components/admin/Pagination';
 
@@ -186,11 +187,11 @@ const SellerView = ({ currentUser }) => {
   );
 
   const cards = useMemo(() => ([
-    { label: 'Referidos registrados', value: stats.total || 0, tone: 'bg-blue-50 border-blue-200 text-blue-700', icon: Briefcase },
-    { label: 'Pendientes de revisión', value: stats.pending_review || 0, tone: 'bg-amber-50 border-amber-200 text-amber-700', icon: Clock3 },
-    { label: 'Cabezas agendadas', value: earnings.summary?.heads_count || 0, tone: 'bg-emerald-50 border-emerald-200 text-emerald-700', icon: Users },
-    { label: 'Ganancia pendiente', value: formatCurrency(earnings.summary?.pending_amount || 0), tone: 'bg-purple-50 border-purple-200 text-purple-700', icon: Wallet },
-    { label: 'Visitas comerciales', value: sellerVisits.length, tone: 'bg-orange-50 border-orange-200 text-orange-700', icon: ClipboardList },
+    { label: 'Referidos registrados', value: stats.total || 0, tone: 'from-blue-50 to-blue-100 border-blue-200 text-blue-700', icon: Briefcase },
+    { label: 'Pendientes de revision', value: stats.pending_review || 0, tone: 'from-amber-50 to-yellow-100 border-yellow-200 text-yellow-700', icon: Clock3 },
+    { label: 'Cabezas agendadas', value: earnings.summary?.heads_count || 0, tone: 'from-emerald-50 to-emerald-100 border-emerald-200 text-emerald-700', icon: Users },
+    { label: 'Ganancia pendiente', value: formatCurrency(earnings.summary?.pending_amount || 0), tone: 'from-purple-50 to-purple-100 border-purple-200 text-purple-700', icon: Wallet },
+    { label: 'Visitas comerciales', value: sellerVisits.length, tone: 'from-orange-50 to-orange-100 border-orange-200 text-orange-700', icon: ClipboardList },
   ]), [stats, earnings.summary, sellerVisits.length]);
 
   const referralEarnings = useMemo(() => {
@@ -256,10 +257,10 @@ const SellerView = ({ currentUser }) => {
   }, [earnings.commissions, referrals]);
 
   const earningsCards = useMemo(() => ([
-    { label: 'Total generado', value: formatCurrency(earnings.summary?.total_amount || 0), helper: `${earnings.summary?.bookings_count || 0} reservas por link`, tone: 'bg-white border-cyan-200 text-cyan-700', icon: CircleDollarSign },
-    { label: 'Pagado', value: formatCurrency(earnings.summary?.paid_amount || 0), helper: 'comisiones liquidadas', tone: 'bg-white border-emerald-200 text-emerald-700', icon: Wallet },
-    { label: 'Pendiente', value: formatCurrency(earnings.summary?.pending_amount || 0), helper: 'por confirmar o pagar', tone: 'bg-white border-amber-200 text-amber-700', icon: TrendingUp },
-    { label: 'Establecimientos', value: referralEarnings.length, helper: `${stats.approved || 0} aprobados`, tone: 'bg-white border-blue-200 text-blue-700', icon: Store },
+    { label: 'Total generado', value: formatCurrency(earnings.summary?.total_amount || 0), helper: `${earnings.summary?.bookings_count || 0} reservas por link`, tone: 'from-cyan-50 to-cyan-100 border-cyan-200 text-cyan-700', icon: CircleDollarSign },
+    { label: 'Pagado', value: formatCurrency(earnings.summary?.paid_amount || 0), helper: 'comisiones liquidadas', tone: 'from-emerald-50 to-emerald-100 border-emerald-200 text-emerald-700', icon: Wallet },
+    { label: 'Pendiente', value: formatCurrency(earnings.summary?.pending_amount || 0), helper: 'por confirmar o pagar', tone: 'from-amber-50 to-yellow-100 border-yellow-200 text-yellow-700', icon: TrendingUp },
+    { label: 'Establecimientos', value: referralEarnings.length, helper: `${stats.approved || 0} aprobados`, tone: 'from-blue-50 to-blue-100 border-blue-200 text-blue-700', icon: Store },
   ]), [earnings.summary, formatCurrency, referralEarnings.length, stats.approved]);
 
   useEffect(() => {
@@ -597,16 +598,9 @@ const SellerView = ({ currentUser }) => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                 {cards.map((card) => {
-                  const Icon = card.icon;
                   return (
-                    <motion.div key={card.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className={`rounded-[2rem] border-4 p-5 shadow-lg ${card.tone}`}>
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-xs uppercase tracking-wide font-black opacity-80">{card.label}</p>
-                          <p className="text-3xl font-black mt-2">{card.value}</p>
-                        </div>
-                        <div className="w-14 h-14 rounded-2xl bg-white/80 flex items-center justify-center shadow-sm"><Icon className="w-7 h-7" /></div>
-                      </div>
+                    <motion.div key={card.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                      <StatsHighlightCard label={card.label} value={card.value} icon={card.icon} tone={card.tone} />
                     </motion.div>
                   );
                 })}
@@ -711,18 +705,8 @@ const SellerView = ({ currentUser }) => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                   {earningsCards.map((card) => {
-                    const Icon = card.icon;
                     return (
-                      <div key={card.label} className={`rounded-[1.75rem] border-4 p-5 shadow-lg ${card.tone}`}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-xs uppercase tracking-wide font-black opacity-80">{card.label}</p>
-                            <p className="text-3xl font-black mt-2">{card.value}</p>
-                            <p className="text-xs font-bold mt-2 opacity-80">{card.helper}</p>
-                          </div>
-                          <div className="w-12 h-12 rounded-2xl bg-white/80 flex items-center justify-center shadow-sm"><Icon className="w-6 h-6" /></div>
-                        </div>
-                      </div>
+                      <StatsHighlightCard key={card.label} label={card.label} value={card.value} helper={card.helper} icon={card.icon} tone={card.tone} />
                     );
                   })}
                 </div>

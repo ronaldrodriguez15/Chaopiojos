@@ -35,6 +35,7 @@ Route::get('/services', [ServiceController::class, 'index']);
 Route::post('/validate-referral-code', [UserController::class, 'validateReferralCode']); // Validar código de referido
 Route::get('/booking-settings', [AppSettingController::class, 'bookingSettings']);
 Route::get('/seller-referrals/link/{token}', [SellerReferralController::class, 'resolveLink']);
+Route::get('/seller-visits/photo/{sellerVisit}/thumb', [SellerVisitController::class, 'photoThumb']);
 Route::get('/seller-visits/photo/{sellerVisit}', [SellerVisitController::class, 'photo']);
 Route::get('/profile-photo/{user}', [ProfileController::class, 'photo']);
 

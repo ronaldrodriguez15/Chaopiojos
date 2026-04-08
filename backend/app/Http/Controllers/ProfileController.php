@@ -39,6 +39,45 @@ class ProfileController extends Controller
         return $filename;
     }
 
+    protected function resolveProfilePhotoAbsolutePath(?string $path): ?string
+    {
+        if (!$path) {
+            return null;
+        }
+
+        $normalizedPath = ltrim($path, '/\\');
+        $baseName = basename($normalizedPath);
+        $pathCandidates = array_values(array_unique(array_filter([
+            $normalizedPath,
+            $baseName,
+            'profile-photos/' . $baseName,
+        ])));
+
+        foreach ($pathCandidates as $candidate) {
+            if (Storage::disk('public')->exists($candidate)) {
+                return Storage::disk('public')->path($candidate);
+            }
+        }
+
+        $publicCandidates = [];
+        foreach ($pathCandidates as $candidate) {
+            $publicCandidates[] = public_path($candidate);
+            $publicCandidates[] = public_path('storage/' . $candidate);
+        }
+
+        $publicCandidates[] = public_path('profile-photos/' . $baseName);
+        $publicCandidates[] = public_path('storage/profile-photos/' . $baseName);
+        $publicCandidates = array_values(array_unique($publicCandidates));
+
+        foreach ($publicCandidates as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
     public function show(Request $request)
     {
         return response()->json([
@@ -49,18 +88,25 @@ class ProfileController extends Controller
 
     public function photo(User $user)
     {
-        $path = $user->profile_photo_path;
+        $absolutePath = $this->resolveProfilePhotoAbsolutePath($user->profile_photo_path);
 
-        if (!$path || !Storage::disk('public')->exists($path)) {
+        if (!$absolutePath) {
             abort(404);
         }
 
-        $absolutePath = Storage::disk('public')->path($path);
-        $mimeType = Storage::disk('public')->mimeType($path) ?: 'application/octet-stream';
+        $mimeType = mime_content_type($absolutePath) ?: 'application/octet-stream';
+        $contents = file_get_contents($absolutePath);
 
-        return response()->file($absolutePath, [
+        if ($contents === false) {
+            abort(404);
+        }
+
+        return response($contents, 200, [
             'Content-Type' => $mimeType,
+            'Content-Length' => (string) filesize($absolutePath),
             'Cache-Control' => 'public, max-age=31536000',
+            'Accept-Ranges' => 'none',
+            'Content-Disposition' => 'inline; filename="' . basename($absolutePath) . '"',
         ]);
     }
 

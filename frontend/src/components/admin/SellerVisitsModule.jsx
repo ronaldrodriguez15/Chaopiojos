@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Eye, Image as ImageIcon, Phone, RefreshCw, Search, Store, UserSquare2, Download, CalendarDays } from 'lucide-react';
+import { Eye, Image as ImageIcon, Phone, RefreshCw, Search, Store, UserSquare2, Download } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import Pagination from './Pagination';
+import StatsHighlightCard from '@/components/StatsHighlightCard';
 import { sellerVisitService } from '@/lib/api';
+import BackendImage from '@/components/BackendImage';
+import { resolveMediaUrl } from '@/lib/media';
 
 const ITEMS_PER_PAGE = 8;
 
@@ -13,7 +16,7 @@ const normalize = (value) => String(value || '').trim().toLowerCase();
 const formatDateTime = (value) => {
   if (!value) return 'Sin fecha';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Fecha inválida';
+  if (Number.isNaN(date.getTime())) return 'Fecha invalida';
   return date.toLocaleString('es-CO', {
     year: 'numeric',
     month: 'long',
@@ -29,6 +32,47 @@ const getMonthValue = (value) => {
   if (Number.isNaN(date.getTime())) return '';
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
   return `${date.getFullYear()}-${month}`;
+};
+
+const getPhotoMeta = (visit) => {
+  switch (visit?.photo_status) {
+    case 'available':
+      return {
+        hasPhoto: true,
+        badgeClassName: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+        badgeLabel: 'Con foto',
+        buttonLabel: 'Ver registro',
+        detailLabel: 'Con evidencia fotografica',
+        emptyMessage: 'Este registro no tiene foto adjunta.',
+      };
+    case 'invalid':
+      return {
+        hasPhoto: false,
+        badgeClassName: 'border-rose-200 bg-rose-50 text-rose-700',
+        badgeLabel: 'Foto no disponible',
+        buttonLabel: 'Ver registro sin foto',
+        detailLabel: 'El archivo de la foto no se puede mostrar',
+        emptyMessage: 'Este registro tiene una foto cargada, pero el archivo no se puede mostrar.',
+      };
+    case 'missing':
+      return {
+        hasPhoto: false,
+        badgeClassName: 'border-rose-200 bg-rose-50 text-rose-700',
+        badgeLabel: 'Foto perdida',
+        buttonLabel: 'Ver registro sin foto',
+        detailLabel: 'La foto ya no existe en el servidor',
+        emptyMessage: 'Este registro tenia una foto, pero el archivo ya no existe en el servidor.',
+      };
+    default:
+      return {
+        hasPhoto: false,
+        badgeClassName: 'border-amber-200 bg-amber-50 text-amber-700',
+        badgeLabel: 'Sin foto',
+        buttonLabel: 'Ver registro sin foto',
+        detailLabel: 'Sin foto cargada',
+        emptyMessage: 'Este registro no tiene foto adjunta.',
+      };
+  }
 };
 
 const SellerVisitsModule = React.memo(() => {
@@ -150,26 +194,11 @@ const SellerVisitsModule = React.memo(() => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
-        <div className="rounded-2xl border-2 border-orange-100 bg-orange-50 p-4">
-          <p className="text-xs uppercase tracking-wide font-black text-orange-600">Total</p>
-          <p className="text-3xl font-black text-gray-800 mt-2">{summary.total}</p>
-        </div>
-        <div className="rounded-2xl border-2 border-orange-100 bg-orange-50 p-4">
-          <p className="text-xs uppercase tracking-wide font-black text-orange-600">Filtradas</p>
-          <p className="text-3xl font-black text-gray-800 mt-2">{summary.filtered}</p>
-        </div>
-        <div className="rounded-2xl border-2 border-orange-100 bg-orange-50 p-4">
-          <p className="text-xs uppercase tracking-wide font-black text-orange-600">Este mes</p>
-          <p className="text-3xl font-black text-gray-800 mt-2">{summary.thisMonth}</p>
-        </div>
-        <div className="rounded-2xl border-2 border-orange-100 bg-orange-50 p-4">
-          <p className="text-xs uppercase tracking-wide font-black text-orange-600">Con foto</p>
-          <p className="text-3xl font-black text-gray-800 mt-2">{summary.withPhoto}</p>
-        </div>
-        <div className="rounded-2xl border-2 border-orange-100 bg-orange-50 p-4">
-          <p className="text-xs uppercase tracking-wide font-black text-orange-600">Vendedores</p>
-          <p className="text-3xl font-black text-gray-800 mt-2">{summary.sellers}</p>
-        </div>
+        <StatsHighlightCard label="Total visitas" value={summary.total} icon={Store} tone="from-orange-50 to-orange-100 border-orange-200 text-orange-700" />
+        <StatsHighlightCard label="Filtradas" value={summary.filtered} icon={Search} tone="from-amber-50 to-yellow-100 border-yellow-200 text-yellow-700" />
+        <StatsHighlightCard label="Este mes" value={summary.thisMonth} icon={RefreshCw} tone="from-emerald-50 to-emerald-100 border-emerald-200 text-emerald-700" />
+        <StatsHighlightCard label="Con foto" value={summary.withPhoto} icon={ImageIcon} tone="from-cyan-50 to-cyan-100 border-cyan-200 text-cyan-700" />
+        <StatsHighlightCard label="Vendedores" value={summary.sellers} icon={UserSquare2} tone="from-purple-50 to-purple-100 border-purple-200 text-purple-700" />
       </div>
 
       <div className="rounded-[2rem] border-4 border-orange-100 bg-orange-50/70 p-5 space-y-4">
@@ -199,7 +228,7 @@ const SellerVisitsModule = React.memo(() => {
               value={filters.search}
               onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
               className="w-full rounded-2xl border-2 border-orange-200 bg-white p-3 font-bold text-gray-700 outline-none focus:border-orange-400"
-              placeholder="Buscar negocio, dueño, WhatsApp..."
+              placeholder="Buscar negocio, dueno, WhatsApp..."
             />
           </div>
 
@@ -240,31 +269,33 @@ const SellerVisitsModule = React.memo(() => {
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-1">
             <p className="text-sm font-bold text-gray-600">Mostrando {visibleStart}-{visibleEnd} de {filteredVisits.length} visitas</p>
-            <p className="text-xs font-black uppercase tracking-wide text-orange-600">Página {currentPage}</p>
+            <p className="text-xs font-black uppercase tracking-wide text-orange-600">Pagina {currentPage}</p>
           </div>
 
           {paginatedVisits.map((item) => (
             <div key={item.id} className="rounded-[2rem] border-4 border-orange-100 bg-orange-50/60 p-5 shadow-sm">
+              {(() => {
+                const photoMeta = getPhotoMeta(item);
+
+                return (
+                  <>
               <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  {item.place_photo_url ? (
-                    <img src={item.place_photo_url} alt={item.business_name} className="w-16 h-16 rounded-2xl object-cover border-2 border-orange-200 bg-white flex-shrink-0" />
-                  ) : (
-                    <div className="w-16 h-16 rounded-2xl bg-white border-2 border-orange-200 flex items-center justify-center flex-shrink-0">
-                      <ImageIcon className="w-6 h-6 text-orange-400" />
-                    </div>
-                  )}
+                <div className="space-y-2">
                   <div className="space-y-1">
                     <p className="text-lg font-black text-gray-800">{item.business_name}</p>
-                    <p className="text-sm font-bold text-gray-600">{item.owner_name || 'Dueño sin registrar'}</p>
+                    <p className="text-sm font-bold text-gray-600">{item.owner_name || 'Dueno sin registrar'}</p>
                     <p className="text-xs font-bold text-gray-500">{formatDateTime(item.created_at)}</p>
+                  </div>
+                  <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-black uppercase tracking-wide ${photoMeta.badgeClassName}`}>
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    {photoMeta.badgeLabel}
                   </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
                   <Button type="button" onClick={() => setSelectedVisit(item)} className="bg-orange-500 hover:bg-orange-600 text-white rounded-xl px-4 py-2 font-bold">
                     <Eye className="w-4 h-4 mr-2" />
-                    Ver registro
+                    {photoMeta.buttonLabel}
                   </Button>
                 </div>
               </div>
@@ -288,10 +319,13 @@ const SellerVisitsModule = React.memo(() => {
                   <Store className="w-4 h-4 mt-0.5 text-orange-600" />
                   <div>
                     <p>{item.business_name || 'Sin negocio'}</p>
-                    <p className="text-xs text-gray-500 mt-1">{item.place_photo_url ? 'Con evidencia fotográfica' : 'Sin foto cargada'}</p>
+                    <p className="text-xs text-gray-500 mt-1">{photoMeta.detailLabel}</p>
                   </div>
                 </div>
               </div>
+                  </>
+                );
+              })()}
             </div>
           ))}
 
@@ -312,24 +346,37 @@ const SellerVisitsModule = React.memo(() => {
           </DialogHeader>
           {selectedVisit && (
             <div className="max-h-[80vh] overflow-y-auto p-6 md:p-8 space-y-4">
+              {(() => {
+                const photoMeta = getPhotoMeta(selectedVisit);
+
+                return (
+                  <>
               <div className="text-center">
                 <h2 className="text-2xl font-black text-orange-600 uppercase tracking-wide">Detalle de la visita</h2>
               </div>
 
-              {selectedVisit.place_photo_url ? (
+              {photoMeta.hasPhoto ? (
                 <div className="bg-white rounded-2xl border-2 border-orange-200 p-4 space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-black uppercase tracking-wide text-orange-600">Foto cargada</p>
-                    <a href={selectedVisit.place_photo_url} download className="inline-flex items-center gap-2 text-xs font-black text-orange-700 hover:text-orange-900">
+                    <a href={resolveMediaUrl(selectedVisit.place_photo_url)} download className="inline-flex items-center gap-2 text-xs font-black text-orange-700 hover:text-orange-900">
                       <Download className="w-4 h-4" />
                       Descargar
                     </a>
                   </div>
-                  <img src={selectedVisit.place_photo_url} alt={selectedVisit.business_name} className="w-full h-[22rem] object-contain rounded-2xl border border-orange-100 bg-orange-50" />
+                  <BackendImage
+                    src={selectedVisit.place_photo_url}
+                    alt={selectedVisit.business_name}
+                    className="w-full h-[22rem] rounded-2xl border border-orange-100 bg-orange-50"
+                    imgClassName="object-contain"
+                    fallbackClassName="border-orange-100"
+                    iconClassName="w-12 h-12 text-orange-300"
+                    loading="eager"
+                  />
                 </div>
               ) : (
                 <div className="bg-white rounded-2xl border-2 border-orange-200 p-8 text-center font-bold text-orange-700">
-                  Este registro no tiene foto adjunta.
+                  {photoMeta.emptyMessage}
                 </div>
               )}
 
@@ -346,6 +393,9 @@ const SellerVisitsModule = React.memo(() => {
                   Cerrar
                 </Button>
               </div>
+                  </>
+                );
+              })()}
             </div>
           )}
         </DialogContent>

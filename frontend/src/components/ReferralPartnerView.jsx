@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import MessagingModule from '@/components/MessagingModule';
+import StatsHighlightCard from '@/components/StatsHighlightCard';
 import { sellerReferralService } from '@/lib/api';
 
 const emptyEarnings = {
@@ -118,16 +119,16 @@ const ReferralPartnerView = ({ currentUser }) => {
   );
 
   const cards = [
-    { label: 'Clientes registrados', value: statistics.registered_clients || 0, icon: Users, tone: 'bg-cyan-50 border-cyan-200 text-cyan-700' },
-    { label: 'Cabezas registradas', value: statistics.heads_count || 0, icon: Building2, tone: 'bg-emerald-50 border-emerald-200 text-emerald-700' },
-    { label: 'Servicios completados', value: statistics.completed_bookings || 0, icon: RefreshCw, tone: 'bg-purple-50 border-purple-200 text-purple-700' },
-    { label: 'Registros este mes', value: statistics.this_month || 0, icon: CalendarDays, tone: 'bg-amber-50 border-amber-200 text-amber-700' },
+    { label: 'Clientes registrados', value: statistics.registered_clients || 0, icon: Users, tone: 'from-cyan-50 to-cyan-100 border-cyan-200 text-cyan-700' },
+    { label: 'Cabezas registradas', value: statistics.heads_count || 0, icon: Building2, tone: 'from-emerald-50 to-emerald-100 border-emerald-200 text-emerald-700' },
+    { label: 'Servicios completados', value: statistics.completed_bookings || 0, icon: RefreshCw, tone: 'from-purple-50 to-purple-100 border-purple-200 text-purple-700' },
+    { label: 'Registros este mes', value: statistics.this_month || 0, icon: CalendarDays, tone: 'from-amber-50 to-yellow-100 border-yellow-200 text-yellow-700' },
   ];
   const earningsCards = [
-    { label: 'Total generado', value: formatCurrency(earnings.summary?.total_amount || 0), tone: 'bg-cyan-50 border-cyan-200 text-cyan-700' },
-    { label: 'Ganancia confirmada', value: formatCurrency(earnings.summary?.completed_amount || 0), tone: 'bg-emerald-50 border-emerald-200 text-emerald-700' },
-    { label: 'Por confirmar', value: formatCurrency(earnings.summary?.pending_amount || 0), tone: 'bg-amber-50 border-amber-200 text-amber-700' },
-    { label: 'Generado este mes', value: formatCurrency(earnings.summary?.this_month_amount || 0), tone: 'bg-blue-50 border-blue-200 text-blue-700' },
+    { label: 'Total generado', value: formatCurrency(earnings.summary?.total_amount || 0), tone: 'from-cyan-50 to-cyan-100 border-cyan-200 text-cyan-700' },
+    { label: 'Ganancia confirmada', value: formatCurrency(earnings.summary?.completed_amount || 0), tone: 'from-emerald-50 to-emerald-100 border-emerald-200 text-emerald-700' },
+    { label: 'Por confirmar', value: formatCurrency(earnings.summary?.pending_amount || 0), tone: 'from-amber-50 to-yellow-100 border-yellow-200 text-yellow-700' },
+    { label: 'Generado este mes', value: formatCurrency(earnings.summary?.this_month_amount || 0), tone: 'from-blue-50 to-blue-100 border-blue-200 text-blue-700' },
   ];
   const partnerCommissionTiers = Array.isArray(earnings.summary?.commission_tiers)
     ? earnings.summary.commission_tiers
@@ -312,10 +313,7 @@ const ReferralPartnerView = ({ currentUser }) => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                 {earningsCards.map((card) => (
-                  <div key={card.label} className={`rounded-[1.75rem] border-4 p-5 shadow-lg ${card.tone}`}>
-                    <p className="text-xs uppercase tracking-wide font-black opacity-80">{card.label}</p>
-                    <p className="text-3xl font-black mt-2">{card.value}</p>
-                  </div>
+                  <StatsHighlightCard key={card.label} label={card.label} value={card.value} icon={Wallet} tone={card.tone} />
                 ))}
               </div>
 
@@ -323,19 +321,8 @@ const ReferralPartnerView = ({ currentUser }) => {
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {cards.map((card) => {
-                      const Icon = card.icon;
                       return (
-                        <div key={card.label} className={`rounded-[1.75rem] border-4 p-5 shadow-lg ${card.tone}`}>
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="text-xs uppercase tracking-wide font-black opacity-80">{card.label}</p>
-                              <p className="text-3xl font-black mt-2">{card.value}</p>
-                            </div>
-                            <div className="w-14 h-14 rounded-2xl bg-white/80 flex items-center justify-center shadow-sm">
-                              <Icon className="w-7 h-7" />
-                            </div>
-                          </div>
-                        </div>
+                        <StatsHighlightCard key={card.label} label={card.label} value={card.value} icon={card.icon} tone={card.tone} />
                       );
                     })}
                   </div>

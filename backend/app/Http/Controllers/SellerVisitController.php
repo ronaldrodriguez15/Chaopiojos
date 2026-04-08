@@ -9,21 +9,60 @@ use Illuminate\Support\Facades\Storage;
 
 class SellerVisitController extends Controller
 {
+    protected function isRenderableImage(?string $absolutePath): bool
+    {
+        if (!$absolutePath || !is_file($absolutePath) || !is_readable($absolutePath)) {
+            return false;
+        }
+
+        $imageInfo = @getimagesize($absolutePath);
+
+        return is_array($imageInfo) && !empty($imageInfo['mime']);
+    }
+
+    protected function getPhotoStatus(SellerVisit $visit): string
+    {
+        if (!$visit->place_photo_path) {
+            return 'none';
+        }
+
+        $absolutePath = $this->resolvePhotoAbsolutePath($visit->place_photo_path);
+        if (!$absolutePath) {
+            return 'missing';
+        }
+
+        return $this->isRenderableImage($absolutePath) ? 'available' : 'invalid';
+    }
+
     protected function resolvePhotoAbsolutePath(?string $path): ?string
     {
         if (!$path) {
             return null;
         }
 
-        if (Storage::disk('public')->exists($path)) {
-            return Storage::disk('public')->path($path);
+        $normalizedPath = ltrim($path, '/\\');
+        $baseName = basename($normalizedPath);
+        $pathCandidates = array_values(array_unique(array_filter([
+            $normalizedPath,
+            $baseName,
+            'seller-visits/' . $baseName,
+        ])));
+
+        foreach ($pathCandidates as $candidate) {
+            if (Storage::disk('public')->exists($candidate)) {
+                return Storage::disk('public')->path($candidate);
+            }
         }
 
-        $normalizedPath = ltrim($path, '/\\');
-        $publicCandidates = [
-            public_path($normalizedPath),
-            public_path('storage/' . $normalizedPath),
-        ];
+        $publicCandidates = [];
+        foreach ($pathCandidates as $candidate) {
+            $publicCandidates[] = public_path($candidate);
+            $publicCandidates[] = public_path('storage/' . $candidate);
+        }
+
+        $publicCandidates[] = public_path('seller-visits/' . $baseName);
+        $publicCandidates[] = public_path('storage/seller-visits/' . $baseName);
+        $publicCandidates = array_values(array_unique($publicCandidates));
 
         foreach ($publicCandidates as $candidate) {
             if (is_file($candidate)) {
@@ -32,6 +71,92 @@ class SellerVisitController extends Controller
         }
 
         return null;
+    }
+
+    protected function getThumbnailAbsolutePath(SellerVisit $sellerVisit, int $maxSize = 160): ?string
+    {
+        $sourcePath = $this->resolvePhotoAbsolutePath($sellerVisit->place_photo_path);
+        if (!$sourcePath || !is_file($sourcePath)) {
+            return null;
+        }
+
+        if (!function_exists('imagecreatefromstring')) {
+            return $sourcePath;
+        }
+
+        $extension = strtolower(pathinfo($sourcePath, PATHINFO_EXTENSION) ?: 'jpg');
+        $thumbDirectory = storage_path('app/public/seller-visits/thumbs');
+        if (!is_dir($thumbDirectory)) {
+            @mkdir($thumbDirectory, 0775, true);
+        }
+
+        $version = $sellerVisit->updated_at?->timestamp ?? $sellerVisit->id;
+        $thumbFileName = sprintf('visit-%d-%d-%d.%s', $sellerVisit->id, $version, $maxSize, $extension === 'png' ? 'png' : ($extension === 'webp' ? 'webp' : 'jpg'));
+        $thumbPath = $thumbDirectory . DIRECTORY_SEPARATOR . $thumbFileName;
+
+        if (is_file($thumbPath)) {
+            return $thumbPath;
+        }
+
+        $binary = @file_get_contents($sourcePath);
+        if ($binary === false) {
+            return $sourcePath;
+        }
+
+        $image = @imagecreatefromstring($binary);
+        if (!$image) {
+            return $sourcePath;
+        }
+
+        $width = imagesx($image);
+        $height = imagesy($image);
+        if ($width < 1 || $height < 1) {
+            imagedestroy($image);
+            return $sourcePath;
+        }
+
+        $scale = min($maxSize / $width, $maxSize / $height, 1);
+        $targetWidth = max(1, (int) round($width * $scale));
+        $targetHeight = max(1, (int) round($height * $scale));
+        $thumb = imagecreatetruecolor($targetWidth, $targetHeight);
+
+        if (in_array($extension, ['png', 'webp'], true)) {
+            imagealphablending($thumb, false);
+            imagesavealpha($thumb, true);
+            $transparent = imagecolorallocatealpha($thumb, 0, 0, 0, 127);
+            imagefill($thumb, 0, 0, $transparent);
+        }
+
+        imagecopyresampled($thumb, $image, 0, 0, 0, 0, $targetWidth, $targetHeight, $width, $height);
+
+        $written = match ($extension) {
+            'png' => @imagepng($thumb, $thumbPath, 7),
+            'webp' => function_exists('imagewebp') ? @imagewebp($thumb, $thumbPath, 82) : @imagejpeg($thumb, $thumbPath, 82),
+            default => @imagejpeg($thumb, $thumbPath, 82),
+        };
+
+        imagedestroy($thumb);
+        imagedestroy($image);
+
+        return $written && is_file($thumbPath) ? $thumbPath : $sourcePath;
+    }
+
+    protected function buildFileResponse(string $absolutePath)
+    {
+        $mimeType = mime_content_type($absolutePath) ?: 'application/octet-stream';
+        $contents = file_get_contents($absolutePath);
+
+        if ($contents === false) {
+            abort(404);
+        }
+
+        return response($contents, 200, [
+            'Content-Type' => $mimeType,
+            'Content-Length' => (string) filesize($absolutePath),
+            'Cache-Control' => 'public, max-age=31536000',
+            'Accept-Ranges' => 'none',
+            'Content-Disposition' => 'inline; filename="' . basename($absolutePath) . '"',
+        ]);
     }
 
     protected function canAccessVisits(Request $request): bool
@@ -63,6 +188,12 @@ class SellerVisitController extends Controller
 
     protected function serializeVisit(SellerVisit $visit): array
     {
+        $photoStatus = $this->getPhotoStatus($visit);
+        $hasUsablePhoto = $photoStatus === 'available';
+        $photoVersion = $hasUsablePhoto
+            ? 'media-v2-' . $photoStatus . '-' . ($visit->updated_at?->timestamp ?? $visit->id)
+            : null;
+
         return [
             'id' => $visit->id,
             'seller_user_id' => $visit->seller_user_id,
@@ -70,8 +201,12 @@ class SellerVisitController extends Controller
             'owner_name' => $visit->owner_name,
             'whatsapp' => $visit->whatsapp,
             'place_photo_path' => $visit->place_photo_path,
-            'place_photo_url' => $visit->place_photo_path
-                ? url('/api/seller-visits/photo/' . $visit->id) . '?v=' . ($visit->updated_at?->timestamp ?? $visit->id)
+            'photo_status' => $photoStatus,
+            'place_photo_url' => $hasUsablePhoto
+                ? '/api/seller-visits/photo/' . $visit->id . '?v=' . $photoVersion
+                : null,
+            'place_photo_thumb_url' => $hasUsablePhoto
+                ? '/api/seller-visits/photo/' . $visit->id . '/thumb?v=' . $photoVersion
                 : null,
             'created_at' => $visit->created_at,
             'updated_at' => $visit->updated_at,
@@ -90,16 +225,26 @@ class SellerVisitController extends Controller
     {
         $absolutePath = $this->resolvePhotoAbsolutePath($sellerVisit->place_photo_path);
 
+        if (!$this->isRenderableImage($absolutePath)) {
+            abort(404);
+        }
+
+        return $this->buildFileResponse($absolutePath);
+    }
+
+    public function photoThumb(SellerVisit $sellerVisit)
+    {
+        if ($this->getPhotoStatus($sellerVisit) !== 'available') {
+            abort(404);
+        }
+
+        $absolutePath = $this->getThumbnailAbsolutePath($sellerVisit, 160);
+
         if (!$absolutePath) {
             abort(404);
         }
 
-        $mimeType = mime_content_type($absolutePath) ?: 'application/octet-stream';
-
-        return response()->file($absolutePath, [
-            'Content-Type' => $mimeType,
-            'Cache-Control' => 'public, max-age=31536000',
-        ]);
+        return $this->buildFileResponse($absolutePath);
     }
 
     public function index(Request $request)

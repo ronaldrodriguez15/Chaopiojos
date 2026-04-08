@@ -106,6 +106,7 @@ export const AVATAR_PRESETS = [
 export const getAvatarPreset = (avatarKey) => AVATAR_PRESETS.find((item) => item.id === avatarKey) || null;
 
 export const getUserAvatarMode = (user) => {
+  if (user?.profile_photo_url || user?.profile_photo_path) return 'photo';
   if (getAvatarPreset(user?.avatar_key)) return 'preset';
   return 'initials';
 };

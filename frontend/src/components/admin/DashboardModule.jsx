@@ -142,17 +142,31 @@ const chartOptions = (overrides = {}) => ({
   ...overrides,
 });
 
+const normalizeStatTone = (tone = '') => {
+  const replacements = [
+    ['bg-white border-sky-200 text-sky-700', 'from-sky-50 to-sky-100 border-sky-200 text-sky-700'],
+    ['bg-white border-cyan-200 text-cyan-700', 'from-cyan-50 to-cyan-100 border-cyan-200 text-cyan-700'],
+    ['bg-white border-blue-200 text-blue-700', 'from-blue-50 to-blue-100 border-blue-200 text-blue-700'],
+    ['bg-white border-amber-200 text-amber-700', 'from-amber-50 to-yellow-100 border-yellow-200 text-yellow-700'],
+    ['bg-white border-violet-200 text-violet-700', 'from-violet-50 to-violet-100 border-violet-200 text-violet-700'],
+    ['bg-white border-purple-200 text-purple-700', 'from-purple-50 to-purple-100 border-purple-200 text-purple-700'],
+    ['bg-white border-emerald-200 text-emerald-700', 'from-emerald-50 to-emerald-100 border-emerald-200 text-emerald-700'],
+    ['bg-white border-green-200 text-green-700', 'from-green-50 to-green-100 border-green-200 text-green-700'],
+    ['bg-white border-teal-200 text-teal-700', 'from-teal-50 to-teal-100 border-teal-200 text-teal-700'],
+  ];
+
+  return replacements.reduce((current, [search, next]) => current.replace(search, next), tone);
+};
+
 const StatCard = ({ label, value, helper, icon: Icon, tone }) => (
-  <div className={`rounded-2xl border-2 p-4 shadow-sm ${tone}`}>
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <p className="text-xs uppercase tracking-wide font-black opacity-75">{label}</p>
-        <p className="text-2xl font-black mt-2">{value}</p>
-        {helper ? <p className="text-xs font-bold mt-2 opacity-80">{helper}</p> : null}
-      </div>
-      <div className="w-12 h-12 rounded-2xl bg-white/80 flex items-center justify-center shadow-sm">
-        <Icon className="w-6 h-6" />
-      </div>
+  <div className={`rounded-[1.75rem] border-4 p-4 sm:p-6 shadow-xl bg-gradient-to-br flex items-center gap-3 sm:gap-4 ${normalizeStatTone(tone)}`}>
+    <div className="p-2 sm:p-3 rounded-2xl bg-white/70 border-2 border-white/60 shadow-sm">
+      <Icon className="w-7 h-7 sm:w-8 sm:h-8" />
+    </div>
+    <div className="min-w-0">
+      <p className="text-sm font-black opacity-90">{label}</p>
+      <p className="text-3xl sm:text-4xl font-black leading-tight break-words mt-1">{value}</p>
+      {helper ? <p className="mt-2 text-xs sm:text-sm font-bold opacity-80">{helper}</p> : null}
     </div>
   </div>
 );
