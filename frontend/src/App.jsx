@@ -9,6 +9,7 @@ import ReferralPartnerView from '@/components/ReferralPartnerView';
 import ProfileDialog from '@/components/ProfileDialog';
 import TermsDialog from '@/components/TermsDialog';
 import UserAvatar from '@/components/UserAvatar';
+import LocationPermissionPrompt from '@/components/LocationPermissionPrompt';
 import Login from '@/components/Login';
 import { LogOut, Bell, User, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { motion, AnimatePresence } from 'framer-motion';
 import { authService, userService, bookingService, serviceService, settingsService } from '@/lib/api';
 import { API_URL } from '@/lib/config';
+import { useGeolocationTracker } from '@/hooks/useGeolocationTracker';
 import { getUserAvatarMode } from '@/lib/profileOptions';
 import { DEFAULT_TERMS_AND_CONDITIONS } from '@/lib/termsConditions';
 import { formatTime12Hour } from '@/lib/utils';
@@ -66,6 +68,7 @@ function App() {
   const [termsSettings, setTermsSettings] = useState(DEFAULT_TERMS_AND_CONDITIONS);
   const isInitialsAvatar = getUserAvatarMode(currentUser) === 'initials';
   const canViewTerms = ['piojologa', 'vendedor', 'referido'].includes(currentUser?.role);
+  const geolocationTracker = useGeolocationTracker(currentUser);
 
   const statusLabel = (status) => {
     const map = {
@@ -1124,6 +1127,15 @@ function App() {
                   </Button>
                 </div>
               </div>
+
+              {['admin', 'piojologa', 'vendedor'].includes(currentUser.role) && (
+                <LocationPermissionPrompt
+                  status={geolocationTracker.permissionStatus}
+                  errorMessage={geolocationTracker.errorMessage}
+                  isRequesting={geolocationTracker.isRequesting}
+                  onRequest={geolocationTracker.requestLocation}
+                />
+              )}
 
               {/* Main Content Area */}
               <div className="bg-white/60 backdrop-blur-sm rounded-[2.5rem] p-1 shadow-2xl border-4 border-white relative z-0">

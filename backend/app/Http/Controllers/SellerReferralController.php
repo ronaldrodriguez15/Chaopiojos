@@ -67,6 +67,8 @@ class SellerReferralController extends Controller
             'nit' => $referral->nit,
             'city' => $referral->city,
             'address' => $referral->address,
+            'lat' => $referral->lat !== null ? (float) $referral->lat : null,
+            'lng' => $referral->lng !== null ? (float) $referral->lng : null,
             'notes' => $referral->notes,
             'status' => $referral->status,
             'link_token' => $referral->link_token,
@@ -99,6 +101,9 @@ class SellerReferralController extends Controller
                     'name' => $referral->referredUser->name,
                     'email' => $referral->referredUser->email,
                     'is_active' => (bool) $referral->referredUser->is_active,
+                    'address' => $referral->referredUser->address,
+                    'lat' => $referral->referredUser->lat !== null ? (float) $referral->referredUser->lat : null,
+                    'lng' => $referral->referredUser->lng !== null ? (float) $referral->referredUser->lng : null,
                 ]
                 : null,
             'reviewer' => $referral->relationLoaded('reviewer') && $referral->reviewer
@@ -457,7 +462,7 @@ class SellerReferralController extends Controller
         try {
             $referral = SellerReferral::with([
                 'seller:id,name,email,role,referral_code',
-                'referredUser:id,name,email,is_active',
+                'referredUser:id,name,email,is_active,address,lat,lng',
             ])
                 ->where('link_token', $token)
                 ->whereIn('status', ['pending_review', 'approved'])
@@ -475,7 +480,7 @@ class SellerReferralController extends Controller
             }
             $referral->refresh()->load([
                 'seller:id,name,email,role,referral_code',
-                'referredUser:id,name,email,is_active',
+                'referredUser:id,name,email,is_active,address,lat,lng',
             ]);
 
             return response()->json([
@@ -503,7 +508,7 @@ class SellerReferralController extends Controller
             $user = $request->user();
             $query = SellerReferral::with([
                 'seller:id,name,email,referral_code',
-                'referredUser:id,name,email,is_active',
+                'referredUser:id,name,email,is_active,address,lat,lng',
                 'reviewer:id,name,email',
             ])->orderBy('created_at', 'desc');
 
@@ -676,7 +681,7 @@ class SellerReferralController extends Controller
 
             $referral = SellerReferral::with([
                 'seller:id,name,email,referral_code',
-                'referredUser:id,name,email,is_active',
+                'referredUser:id,name,email,is_active,address,lat,lng',
             ])
                 ->where('referred_user_id', $request->user()->id)
                 ->first();
@@ -726,6 +731,8 @@ class SellerReferralController extends Controller
                 'nit' => 'nullable|string|max:50',
                 'city' => 'nullable|string|max:120',
                 'address' => 'nullable|string|max:255',
+                'lat' => 'nullable|numeric|between:-90,90',
+                'lng' => 'nullable|numeric|between:-180,180',
                 'notes' => 'nullable|string|max:5000',
                 'chamber_of_commerce' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:5120',
                 'rut' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:5120',
@@ -750,6 +757,8 @@ class SellerReferralController extends Controller
                     'is_active' => true,
                     'earnings' => 0,
                     'address' => $validated['address'] ?? null,
+                    'lat' => $validated['lat'] ?? null,
+                    'lng' => $validated['lng'] ?? null,
                 ]);
 
                 return SellerReferral::create([
@@ -764,6 +773,8 @@ class SellerReferralController extends Controller
                     'nit' => $validated['nit'] ?? null,
                     'city' => $validated['city'] ?? null,
                     'address' => $validated['address'] ?? null,
+                    'lat' => $validated['lat'] ?? null,
+                    'lng' => $validated['lng'] ?? null,
                     'notes' => $validated['notes'] ?? null,
                     'status' => $isAdmin ? 'approved' : 'pending_review',
                     'reviewed_by_user_id' => $isAdmin ? $authUser?->id : null,
@@ -778,7 +789,7 @@ class SellerReferralController extends Controller
 
             $referral->load([
                 'seller:id,name,email,referral_code',
-                'referredUser:id,name,email,is_active',
+                'referredUser:id,name,email,is_active,address,lat,lng',
             ]);
 
             return response()->json([
@@ -819,7 +830,7 @@ class SellerReferralController extends Controller
 
             $query = SellerReferral::with([
                 'seller:id,name,email,referral_code,role',
-                'referredUser:id,name,email,is_active,address',
+                'referredUser:id,name,email,is_active,address,lat,lng',
                 'reviewer:id,name,email',
             ]);
 
@@ -840,6 +851,8 @@ class SellerReferralController extends Controller
                 'nit' => 'sometimes|nullable|string|max:50',
                 'city' => 'sometimes|nullable|string|max:120',
                 'address' => 'sometimes|nullable|string|max:255',
+                'lat' => 'sometimes|nullable|numeric|between:-90,90',
+                'lng' => 'sometimes|nullable|numeric|between:-180,180',
                 'notes' => 'sometimes|nullable|string|max:5000',
                 'chamber_of_commerce' => 'sometimes|nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:5120',
                 'rut' => 'sometimes|nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:5120',
@@ -877,6 +890,12 @@ class SellerReferralController extends Controller
                     if (array_key_exists('address', $validated)) {
                         $userUpdates['address'] = $validated['address'] ?? null;
                     }
+                    if (array_key_exists('lat', $validated)) {
+                        $userUpdates['lat'] = $validated['lat'] ?? null;
+                    }
+                    if (array_key_exists('lng', $validated)) {
+                        $userUpdates['lng'] = $validated['lng'] ?? null;
+                    }
                     if (!empty($validated['password'])) {
                         $userUpdates['password'] = Hash::make($validated['password']);
                     }
@@ -911,6 +930,12 @@ class SellerReferralController extends Controller
                 if (array_key_exists('address', $validated)) {
                     $referral->address = $validated['address'] ?? null;
                 }
+                if (array_key_exists('lat', $validated)) {
+                    $referral->lat = $validated['lat'] ?? null;
+                }
+                if (array_key_exists('lng', $validated)) {
+                    $referral->lng = $validated['lng'] ?? null;
+                }
                 if (array_key_exists('notes', $validated)) {
                     $referral->notes = $validated['notes'] ?? null;
                 }
@@ -937,7 +962,7 @@ class SellerReferralController extends Controller
 
             $referral->refresh()->load([
                 'seller:id,name,email,referral_code,role',
-                'referredUser:id,name,email,is_active',
+                'referredUser:id,name,email,is_active,address,lat,lng',
                 'reviewer:id,name,email',
             ]);
 
@@ -996,7 +1021,7 @@ class SellerReferralController extends Controller
 
             $referral->load([
                 'seller:id,name,email,referral_code',
-                'referredUser:id,name,email,is_active',
+                'referredUser:id,name,email,is_active,address,lat,lng',
                 'reviewer:id,name,email',
             ]);
 
@@ -1004,7 +1029,7 @@ class SellerReferralController extends Controller
                 $this->ensureSellerReferralCode($referral);
                 $referral->refresh()->load([
                     'seller:id,name,email,referral_code',
-                    'referredUser:id,name,email,is_active',
+                    'referredUser:id,name,email,is_active,address,lat,lng',
                     'reviewer:id,name,email',
                 ]);
             }

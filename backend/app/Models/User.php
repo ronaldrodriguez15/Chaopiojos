@@ -9,6 +9,7 @@ use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Support\Str;
 use App\Models\SellerReferral;
 use App\Models\SellerVisit;
+use App\Models\UserLocation;
 
 class User extends Authenticatable
 {
@@ -139,6 +140,11 @@ class User extends Authenticatable
     public function sellerVisits()
     {
         return $this->hasMany(SellerVisit::class, 'seller_user_id');
+    }
+
+    public function latestLocation()
+    {
+        return $this->hasOne(UserLocation::class);
     }
 
     public function getProfilePhotoUrlAttribute(): ?string

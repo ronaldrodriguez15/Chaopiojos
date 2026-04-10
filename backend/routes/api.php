@@ -15,6 +15,7 @@ use App\Http\Controllers\AdminMessageController;
 use App\Http\Controllers\SellerReferralController;
 use App\Http\Controllers\SellerVisitController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\GeolocationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -91,6 +92,10 @@ Route::middleware(['auth:sanctum', 'active.user'])->group(function () {
     Route::post('/messages', [AdminMessageController::class, 'store']);
     Route::put('/messages/{id}/reply', [AdminMessageController::class, 'reply']);
     Route::delete('/product-requests/{productRequest}', [ProductRequestController::class, 'destroy']);
+
+    // Geolocalizacion en tiempo real
+    Route::get('/geolocations', [GeolocationController::class, 'index']);
+    Route::put('/geolocation', [GeolocationController::class, 'update']);
 
     // App settings (admin)
     Route::put('/booking-settings', [AppSettingController::class, 'updateBookingSettings']);

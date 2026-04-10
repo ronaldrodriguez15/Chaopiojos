@@ -22,6 +22,8 @@ class SellerReferral extends Model
         'nit',
         'city',
         'address',
+        'lat',
+        'lng',
         'notes',
         'status',
         'link_token',
@@ -37,6 +39,8 @@ class SellerReferral extends Model
 
     protected $casts = [
         'reviewed_at' => 'datetime',
+        'lat' => 'decimal:7',
+        'lng' => 'decimal:7',
     ];
 
     protected static function boot()

@@ -92,6 +92,8 @@ const buildEstablishmentFormData = (referral = null, user = null) => ({
   nit: referral?.nit || '',
   city: referral?.city || '',
   address: referral?.address || user?.address || '',
+  lat: referral?.lat ?? user?.lat ?? null,
+  lng: referral?.lng ?? user?.lng ?? null,
   notes: referral?.notes || '',
   chamber_of_commerce: null,
   rut: null,
@@ -107,6 +109,7 @@ const EarningsModule = lazy(() => import('@/components/admin/EarningsModule'));
 const RequestsModule = lazy(() => import('@/components/admin/RequestsModule'));
 const SellerReferralsModule = lazy(() => import('@/components/admin/SellerReferralsModule'));
 const SellerVisitsModule = lazy(() => import('@/components/admin/SellerVisitsModule'));
+const GeolocationModule = lazy(() => import('@/components/admin/GeolocationModule'));
 const ProductDetailDialog = lazy(() => import('@/components/admin/dialogs/ProductDetailDialog'));
 
 // Lazy load diálogos para mejor rendimiento
@@ -911,9 +914,8 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
         }
       }
 
-      // Si la piojóloga tiene dirección y es piojologa, ya tiene coordenadas del autocomplete
-      if (userToSave.role === 'piojologa' && userToSave.address && !userToSave.lat) {
-        // Si no tiene coordenadas (edición de usuario sin autocomplete), geocodificar
+      // Si tiene dirección pero no coordenadas (edición sin autocomplete), geocodificar.
+      if (['piojologa', 'referido'].includes(userToSave.role) && userToSave.address && !userToSave.lat) {
         const coordinates = await geocodeAddress(userToSave.address);
         if (coordinates) {
           userToSave = {
@@ -929,7 +931,7 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
         } else {
           toast({
             title: "⚠️ Ubicación no encontrada",
-            description: "Se guardará sin coordenadas. Verifica la dirección.",
+            description: "Se guardará la dirección sin coordenadas. Verifica la dirección.",
             variant: "destructive",
             className: "rounded-3xl border-4 border-yellow-200 bg-yellow-50 text-yellow-600 font-bold"
           });
@@ -947,6 +949,8 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
             password: userToSave.password || '',
             city: userToSave.city?.trim() || '',
             address: userToSave.address?.trim() || '',
+            lat: userToSave.lat ?? null,
+            lng: userToSave.lng ?? null,
             nit: userToSave.nit?.trim() || '',
             notes: userToSave.notes?.trim() || '',
             chamber_of_commerce: userToSave.chamber_of_commerce || null,
@@ -1004,6 +1008,8 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
             password: userToSave.password || '',
             city: userToSave.city?.trim() || '',
             address: userToSave.address?.trim() || '',
+            lat: userToSave.lat ?? null,
+            lng: userToSave.lng ?? null,
             nit: userToSave.nit?.trim() || '',
             notes: userToSave.notes?.trim() || '',
             chamber_of_commerce: userToSave.chamber_of_commerce || null,
@@ -1468,6 +1474,9 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
                 <TabsTrigger value="map" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-cyan-400 data-[state=active]:text-white transition-all">
                   🗺️ Mapa
                 </TabsTrigger>
+                <TabsTrigger value="geolocation" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-sky-500 data-[state=active]:text-white transition-all">
+                  📡 Geolocalización
+                </TabsTrigger>
                 <TabsTrigger value="products" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-pink-400 data-[state=active]:text-white transition-all">
                   🛍️ Productos
                 </TabsTrigger>
@@ -1611,11 +1620,11 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
                   <Map className="w-6 h-6 sm:w-8 sm:h-8" />
                 </div>
                 <h3 className="text-xl sm:text-2xl font-black text-gray-800">
-                  Ubicaciones de Piojólogas
+                  Mapa de Piojólogas y Establecimientos
                 </h3>
               </div>
               <div className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded-full text-sm font-bold self-start sm:self-auto">
-                🎯 {users.filter(u => u.role === 'piojologa' && u.lat && u.lng).length} ubicadas
+                🎯 {users.filter(u => (u.role === 'piojologa' && u.lat && u.lng) || (u.role === 'referido' && (u.managed_seller_referral?.address || u.managedSellerReferral?.address || u.address))).length} ubicaciones
               </div>
             </div>
             
@@ -1626,16 +1635,22 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
             <div className="mt-4 sm:mt-6 grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
               <div className="bg-cyan-50 p-3 sm:p-4 rounded-2xl border-2 border-cyan-200">
                 <p className="text-xs sm:text-sm text-gray-600">
-                  <span className="font-bold">📍 Nota:</span> El mapa se actualiza automáticamente cuando agregas piojólogas con dirección.
+                  <span className="font-bold">📍 Nota:</span> Los establecimientos usan la dirección fija registrada.
                 </p>
               </div>
               <div className="bg-green-50 p-3 sm:p-4 rounded-2xl border-2 border-green-200">
                 <p className="text-xs sm:text-sm text-gray-600">
-                  <span className="font-bold">💡 Tip:</span> Usa el autocomplete al crear piojólogas para ubicaciones precisas.
+                  <span className="font-bold">💡 Tip:</span> Usa el autocomplete al crear piojólogas o establecimientos para ubicaciones precisas.
                 </p>
               </div>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="geolocation" className="space-y-6">
+          <Suspense fallback={<div>Cargando...</div>}>
+            <GeolocationModule />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="requests" className="space-y-6">

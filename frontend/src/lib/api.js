@@ -779,6 +779,41 @@ export const sellerVisitService = {
   }
 };
 
+export const geolocationService = {
+  async getAll() {
+    try {
+      const response = await api.get('/geolocations');
+      return {
+        success: true,
+        locations: response.data.locations || [],
+        serverTime: response.data.server_time || null,
+      };
+    } catch (error) {
+      console.error('Error obteniendo geolocalizaciones:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al obtener geolocalizaciones',
+      };
+    }
+  },
+
+  async update(payload) {
+    try {
+      const response = await api.put('/geolocation', payload);
+      return {
+        success: true,
+        location: response.data.location || null,
+      };
+    } catch (error) {
+      console.error('Error actualizando geolocalizacion:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al actualizar geolocalizacion',
+      };
+    }
+  },
+};
+
 export const messagingService = {
   async getAll() {
     try {
