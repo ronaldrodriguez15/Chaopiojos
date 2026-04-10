@@ -5,11 +5,29 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Models\UserLocation;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class GeolocationController extends Controller
 {
     protected array $reportingRoles = ['admin', 'piojologa', 'vendedor'];
     protected array $visibleRoles = ['piojologa', 'vendedor'];
+    protected array $requiredLocationColumns = [
+        'user_id',
+        'lat',
+        'lng',
+        'accuracy',
+        'heading',
+        'speed',
+        'source',
+        'permission_status',
+        'reported_at',
+    ];
+
+    protected function geolocationStorageReady(): bool
+    {
+        return Schema::hasTable('user_locations')
+            && Schema::hasColumns('user_locations', $this->requiredLocationColumns);
+    }
 
     protected function ensureAdmin(Request $request)
     {
@@ -69,6 +87,16 @@ class GeolocationController extends Controller
             return $response;
         }
 
+        if (!$this->geolocationStorageReady()) {
+            return response()->json([
+                'success' => true,
+                'supported' => false,
+                'locations' => [],
+                'message' => 'La tabla de geolocalizacion todavia no esta migrada en este servidor.',
+                'server_time' => now()->toIso8601String(),
+            ]);
+        }
+
         $locations = User::with(['latestLocation', 'managedSellerReferral'])
             ->whereIn('role', $this->visibleRoles)
             ->orderBy('role')
@@ -93,6 +121,14 @@ class GeolocationController extends Controller
                 'success' => false,
                 'message' => 'Este rol no reporta ubicacion en tiempo real',
             ], 403);
+        }
+
+        if (!$this->geolocationStorageReady()) {
+            return response()->json([
+                'success' => false,
+                'supported' => false,
+                'message' => 'La tabla de geolocalizacion todavia no esta migrada en este servidor.',
+            ]);
         }
 
         $validated = $request->validate([

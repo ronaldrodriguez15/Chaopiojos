@@ -1,11 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Activity, Loader, LocateFixed, RefreshCw, Search, Wifi, WifiOff } from 'lucide-react';
+import { Activity, Clock3, Loader, LocateFixed, RefreshCw, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { authService, geolocationService } from '@/lib/api';
-import { GEOLOCATION_WS_URL } from '@/lib/config';
+import { geolocationService } from '@/lib/api';
 
 const ROLE_LABELS = {
   piojologa: 'Piojóloga',
@@ -87,27 +86,13 @@ const FitMapBounds = ({ locations }) => {
   return null;
 };
 
-const upsertLocation = (current, incoming) => {
-  const next = Array.isArray(incoming) ? incoming : [incoming];
-  const byId = new Map(current.map((item) => [item.user_id || item.id, item]));
-  next.forEach((item) => {
-    if (!item) return;
-    const key = item.user_id || item.id;
-    if (!key) return;
-    byId.set(key, { ...byId.get(key), ...item });
-  });
-  return Array.from(byId.values());
-};
-
 const GeolocationModule = () => {
   const [locations, setLocations] = useState([]);
   const [roleFilter, setRoleFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [wsStatus, setWsStatus] = useState(GEOLOCATION_WS_URL ? 'connecting' : 'disabled');
   const [errorMessage, setErrorMessage] = useState('');
-  const wsRef = useRef(null);
 
   const loadLocations = async ({ silent = false } = {}) => {
     if (silent) {
@@ -120,7 +105,7 @@ const GeolocationModule = () => {
 
     if (result.success) {
       setLocations(result.locations || []);
-      setErrorMessage('');
+      setErrorMessage(result.supported === false ? (result.message || 'La geolocalización aún no está habilitada en el servidor.') : '');
     } else {
       setErrorMessage(result.message || 'No se pudieron cargar las ubicaciones');
     }
@@ -136,39 +121,6 @@ const GeolocationModule = () => {
   useEffect(() => {
     const intervalId = setInterval(() => loadLocations({ silent: true }), 10000);
     return () => clearInterval(intervalId);
-  }, []);
-
-  useEffect(() => {
-    if (!GEOLOCATION_WS_URL || typeof WebSocket === 'undefined') {
-      setWsStatus('disabled');
-      return undefined;
-    }
-
-    const token = authService.getToken();
-    const separator = GEOLOCATION_WS_URL.includes('?') ? '&' : '?';
-    const url = token ? `${GEOLOCATION_WS_URL}${separator}token=${encodeURIComponent(token)}` : GEOLOCATION_WS_URL;
-    const socket = new WebSocket(url);
-    wsRef.current = socket;
-
-    socket.onopen = () => setWsStatus('connected');
-    socket.onerror = () => setWsStatus('error');
-    socket.onclose = () => {
-      setWsStatus('closed');
-      wsRef.current = null;
-    };
-    socket.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        const payload = message.payload || message.location || message;
-        setLocations((current) => upsertLocation(current, payload));
-      } catch (error) {
-        // Ignore malformed WebSocket payloads; polling remains active.
-      }
-    };
-
-    return () => {
-      socket.close();
-    };
   }, []);
 
   const normalizedLocations = useMemo(() => (
@@ -202,8 +154,6 @@ const GeolocationModule = () => {
   const mappableLocations = filteredLocations.filter((location) => Number.isFinite(location.lat) && Number.isFinite(location.lng));
   const liveCount = normalizedLocations.filter((location) => getFreshness(location).isLive).length;
   const pendingPermissionCount = normalizedLocations.filter((location) => location.permission_status && location.permission_status !== 'granted').length;
-  const wsConnected = wsStatus === 'connected';
-
   return (
     <div className="space-y-5">
       <div className="bg-white rounded-[2rem] border-4 border-cyan-100 p-4 md:p-6 shadow-xl">
@@ -228,9 +178,9 @@ const GeolocationModule = () => {
             <div className="rounded-xl border-2 border-amber-200 bg-amber-50 px-3 py-2 text-sm font-black text-amber-700">
               {pendingPermissionCount} con permiso pendiente
             </div>
-            <div className={`rounded-xl border-2 px-3 py-2 text-sm font-black ${wsConnected ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
-              {wsConnected ? <Wifi className="mr-1 inline h-4 w-4" /> : <WifiOff className="mr-1 inline h-4 w-4" />}
-              {wsConnected ? 'WebSocket activo' : 'WebSocket en espera'}
+            <div className="rounded-xl border-2 border-sky-200 bg-sky-50 px-3 py-2 text-sm font-black text-sky-700">
+              <Clock3 className="mr-1 inline h-4 w-4" />
+              Actualización cada 10s
             </div>
           </div>
         </div>
@@ -374,7 +324,7 @@ const GeolocationModule = () => {
       </div>
 
       <div className="rounded-2xl border-2 border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">
-        OpenStreetMap activo. WebSocket disponible cuando exista una URL configurada; respaldo automático por API cada 10 segundos.
+        OpenStreetMap activo. Las ubicaciones se actualizan por API cada 10 segundos.
       </div>
     </div>
   );

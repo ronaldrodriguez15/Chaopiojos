@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { authService, geolocationService } from '@/lib/api';
-import { GEOLOCATION_WS_URL } from '@/lib/config';
 
 const GEOLOCATION_OPTIONS = {
   enableHighAccuracy: true,
@@ -45,22 +44,12 @@ const buildPayloadFromPosition = (position) => ({
   reported_at: new Date(position.timestamp || Date.now()).toISOString(),
 });
 
-const buildWebSocketUrl = () => {
-  if (!GEOLOCATION_WS_URL) return '';
-  const token = authService.getToken();
-  if (!token) return GEOLOCATION_WS_URL;
-  const separator = GEOLOCATION_WS_URL.includes('?') ? '&' : '?';
-  return `${GEOLOCATION_WS_URL}${separator}token=${encodeURIComponent(token)}`;
-};
-
 export function useGeolocationTracker(currentUser) {
   const [permissionStatus, setPermissionStatus] = useState('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [isRequesting, setIsRequesting] = useState(false);
   const [lastSentAt, setLastSentAt] = useState(null);
-  const [wsStatus, setWsStatus] = useState(GEOLOCATION_WS_URL ? 'idle' : 'disabled');
   const watchIdRef = useRef(null);
-  const wsRef = useRef(null);
   const lastSentMsRef = useRef(0);
 
   const canTrack = Boolean(
@@ -68,33 +57,6 @@ export function useGeolocationTracker(currentUser) {
     && authService.isAuthenticated()
     && ['admin', 'piojologa', 'vendedor'].includes(currentUser.role)
   );
-
-  const closeWebSocket = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-  }, []);
-
-  const connectWebSocket = useCallback(() => {
-    if (!canTrack || !GEOLOCATION_WS_URL || typeof WebSocket === 'undefined' || wsRef.current) return;
-
-    try {
-      const socket = new WebSocket(buildWebSocketUrl());
-      wsRef.current = socket;
-      setWsStatus('connecting');
-
-      socket.onopen = () => setWsStatus('connected');
-      socket.onerror = () => setWsStatus('error');
-      socket.onclose = () => {
-        wsRef.current = null;
-        setWsStatus('closed');
-      };
-    } catch (error) {
-      wsRef.current = null;
-      setWsStatus('error');
-    }
-  }, [canTrack]);
 
   const sendPayload = useCallback(async (payload, { force = false } = {}) => {
     if (!canTrack) return { success: false };
@@ -118,13 +80,6 @@ export function useGeolocationTracker(currentUser) {
 
     if (hasCoordinates) {
       lastSentMsRef.current = nowMs;
-    }
-
-    if (typeof WebSocket !== 'undefined' && wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        event: 'geolocation.update',
-        payload: enrichedPayload,
-      }));
     }
 
     const result = await geolocationService.update(enrichedPayload);
@@ -217,7 +172,6 @@ export function useGeolocationTracker(currentUser) {
   useEffect(() => {
     if (!canTrack) return undefined;
 
-    connectWebSocket();
     requestLocation();
 
     return () => {
@@ -225,16 +179,14 @@ export function useGeolocationTracker(currentUser) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
-      closeWebSocket();
     };
-  }, [canTrack, closeWebSocket, connectWebSocket, requestLocation]);
+  }, [canTrack, requestLocation]);
 
   return {
     permissionStatus,
     errorMessage,
     isRequesting,
     lastSentAt,
-    wsStatus,
     requestLocation,
   };
 }

@@ -784,9 +784,11 @@ export const geolocationService = {
     try {
       const response = await api.get('/geolocations');
       return {
-        success: true,
+        success: response.data?.success !== false,
+        supported: response.data?.supported !== false,
         locations: response.data.locations || [],
         serverTime: response.data.server_time || null,
+        message: response.data?.message || '',
       };
     } catch (error) {
       console.error('Error obteniendo geolocalizaciones:', error.response?.data);
@@ -801,8 +803,10 @@ export const geolocationService = {
     try {
       const response = await api.put('/geolocation', payload);
       return {
-        success: true,
+        success: response.data?.success !== false,
+        supported: response.data?.supported !== false,
         location: response.data.location || null,
+        message: response.data?.message || '',
       };
     } catch (error) {
       console.error('Error actualizando geolocalizacion:', error.response?.data);
