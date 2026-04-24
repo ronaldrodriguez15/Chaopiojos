@@ -33,6 +33,11 @@ const money = (value) => {
 
 const heads = (item) => Math.max(1, Number(item?.numPersonas || 1));
 
+const isBoldPaidService = (item = {}) => (
+  (item?.customer_payment_provider || item?.customerPaymentProvider) === 'bold'
+  && (item?.customer_payment_status || item?.customerPaymentStatus) === 'paid'
+);
+
 const normalizeStatus = (value) => {
   const status = String(value || '').toLowerCase();
   return ({
@@ -166,6 +171,8 @@ const EarningsModule = React.memo(({
     status: normalizeStatus(item?.status || item?.estado),
     piojologistId: item?.piojologistId ?? item?.piojologist_id ?? null,
     paymentStatusToPiojologist: item?.payment_status_to_piojologist || item?.paymentStatusToPiojologist || 'pending',
+    customerPaymentProvider: item?.customer_payment_provider || item?.customerPaymentProvider || null,
+    customerPaymentStatus: item?.customer_payment_status || item?.customerPaymentStatus || null,
     sellerReferralId: item?.seller_referral_id ?? item?.sellerReferralId ?? item?.seller_referral?.id ?? null,
     sellerReferralName: item?.seller_referral_name || item?.seller_referral?.business_name || '',
     sellerName: item?.seller_referral?.seller?.name || '',
@@ -723,6 +730,7 @@ const EarningsModule = React.memo(({
                       const servicePrice = getServicePrice(appointment);
                       const piojologistShare = getPiojologistShareByService(appointment, commissionRate);
                       const breakdown = getServiceCommissionBreakdown(appointment, commissionRate);
+                      const wasBoldPaid = isBoldPaidService(appointment);
 
                       return (
                         <div key={appointment.id} className="bg-white border-2 border-gray-200 rounded-xl p-4 hover:border-green-300 transition-colors">
@@ -730,6 +738,7 @@ const EarningsModule = React.memo(({
                             <div>
                               <p className="font-bold text-gray-800">{appointment.clientName}</p>
                               <p className="text-sm text-gray-500">{appointment.serviceType}</p>
+                              {wasBoldPaid ? <p className="text-xs font-black text-blue-600 mt-1">Pagado con Bold</p> : null}
                             </div>
                             <div className="text-right">
                               <p className="font-black text-blue-700 text-sm">Servicio: {formatCurrency(servicePrice)}</p>
@@ -868,6 +877,7 @@ const EarningsModule = React.memo(({
                         const servicePrice = getServicePrice(appointment);
                         const piojologistShare = getPiojologistShareByService(appointment, commissionRate);
                         const isPaid = (appointment.payment_status_to_piojologist || appointment.paymentStatusToPiojologist || 'pending') === 'paid';
+                        const wasBoldPaid = isBoldPaidService(appointment);
 
                         return (
                           <div key={appointment.id} className={`border-2 rounded-xl p-3 sm:p-4 ${isPaid ? 'bg-green-50 border-green-300' : 'bg-amber-50 border-amber-300'}`}>
@@ -878,6 +888,7 @@ const EarningsModule = React.memo(({
                                   <span className={`px-2 py-0.5 rounded-full text-xs font-black whitespace-nowrap ${isPaid ? 'bg-green-200 text-green-800' : 'bg-amber-200 text-amber-800'}`}>
                                     {isPaid ? '✔ Pagado' : 'Pendiente'}
                                   </span>
+                                  {wasBoldPaid ? <span className="px-2 py-0.5 rounded-full text-xs font-black whitespace-nowrap bg-blue-100 text-blue-700">Bold</span> : null}
                                 </div>
                                 <p className="text-xs sm:text-sm text-gray-600 truncate">{appointment.serviceType}</p>
                               </div>
@@ -890,7 +901,7 @@ const EarningsModule = React.memo(({
                               <span>📅 {new Date(appointment.date).toLocaleDateString('es-ES')}</span>
                               <span>⏰ {formatTime12Hour(appointment.time) || 'Sin hora'}</span>
                             </div>
-                            {isPaid && (
+                            {isPaid && !wasBoldPaid && (
                               <div className="mt-3 pt-3 border-t border-green-200">
                                 <Button
                                   type="button"
@@ -911,6 +922,11 @@ const EarningsModule = React.memo(({
                                   <RotateCcw className="w-4 h-4 mr-2" />
                                   Revertir pago
                                 </Button>
+                              </div>
+                            )}
+                            {isPaid && wasBoldPaid && (
+                              <div className="mt-3 pt-3 border-t border-blue-200">
+                                <p className="text-xs font-black text-blue-700">Pago confirmado por Bold. No requiere gestión manual.</p>
                               </div>
                             )}
                           </div>

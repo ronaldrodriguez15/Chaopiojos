@@ -13,6 +13,7 @@ use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\AppSettingController;
 use App\Http\Controllers\AdminMessageController;
 use App\Http\Controllers\BoldPaymentController;
+use App\Http\Controllers\BoldWebhookController;
 use App\Http\Controllers\SellerReferralController;
 use App\Http\Controllers\SellerVisitController;
 use App\Http\Controllers\ProfileController;
@@ -34,6 +35,7 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::get('/ical-proxy', [ICalProxyController::class, 'fetchICalFeed']);
 Route::post('/bookings', [BookingController::class, 'store']); // Ruta publica para crear reservas
 Route::post('/payments/bold/link', [BoldPaymentController::class, 'createLink']);
+Route::post('/payments/bold/webhook', [BoldWebhookController::class, 'handle']);
 Route::get('/services', [ServiceController::class, 'index']);
 Route::post('/validate-referral-code', [UserController::class, 'validateReferralCode']); // Validar código de referido
 Route::get('/booking-settings', [AppSettingController::class, 'bookingSettings']);

@@ -4,6 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatTime12Hour } from '@/lib/utils';
 
+const isBoldPaidService = (item = {}) => (
+  (item?.customer_payment_provider || item?.customerPaymentProvider) === 'bold'
+  && (item?.customer_payment_status || item?.customerPaymentStatus) === 'paid'
+);
+
 const HistoryTab = ({
   completedHistory,
   commissionRate,
@@ -174,6 +179,7 @@ const HistoryTab = ({
                   <div className="flex-grow">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="bg-amber-500 text-white px-2 py-0.5 rounded-full text-xs font-black">PENDIENTE</span>
+                      {isBoldPaidService(apt) ? <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-black">Bold</span> : null}
                     </div>
                     <p className="font-black text-gray-800">{apt.clientName}</p>
                     <p className="text-xs text-gray-500">{formatServiceDate(apt.date)} - {apt.serviceType}</p>
@@ -267,9 +273,11 @@ const HistoryTab = ({
                   <div className="flex-grow">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="bg-green-500 text-white px-2 py-0.5 rounded-full text-xs font-black">PAGADO</span>
+                      {isBoldPaidService(apt) ? <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-black">Bold</span> : null}
                     </div>
                     <p className="font-black text-gray-800">{apt.clientName}</p>
                     <p className="text-xs text-gray-500">{formatServiceDate(apt.date)} - {apt.serviceType}</p>
+                    {isBoldPaidService(apt) ? <p className="text-xs text-blue-600 font-black mt-1">Pago confirmado por Bold.</p> : null}
                     {(apt.yourLoss || apt.ourPayment || apt.age) && (
                       <p className="text-xs text-yellow-600 font-bold mt-1">
                         {apt.age ? `${apt.age}a ` : ''}| Pierdes: {formatCurrency(parseFloat(apt.yourLoss) || 0)} | Te pagamos: {formatCurrency(parseFloat(apt.ourPayment) || 0)}

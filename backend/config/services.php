@@ -33,6 +33,7 @@ return [
     'bold' => [
         'api_base_url' => env('BOLD_API_BASE_URL', 'https://integrations.api.bold.co'),
         'api_key' => env('BOLD_API_KEY'),
+        'secret_key' => env('BOLD_SECRET_KEY'),
         'callback_url' => env('BOLD_CALLBACK_URL'),
         'image_url' => env('BOLD_IMAGE_URL'),
     ],

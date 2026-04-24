@@ -396,7 +396,23 @@ function App() {
               seller_referral: booking.seller_referral,
               payment_method: booking.payment_method,
               paymentMethod: booking.payment_method,
+              customer_payment_provider: booking.customer_payment_provider,
+              customerPaymentProvider: booking.customer_payment_provider,
+              customer_payment_status: booking.customer_payment_status,
+              customerPaymentStatus: booking.customer_payment_status,
+              customer_payment_link_id: booking.customer_payment_link_id,
+              customerPaymentLinkId: booking.customer_payment_link_id,
+              customer_payment_transaction_id: booking.customer_payment_transaction_id,
+              customerPaymentTransactionId: booking.customer_payment_transaction_id,
+              customer_payment_method: booking.customer_payment_method,
+              customerPaymentMethod: booking.customer_payment_method,
+              customer_payment_amount: booking.customer_payment_amount,
+              customerPaymentAmount: booking.customer_payment_amount,
+              customer_payment_paid_at: booking.customer_payment_paid_at,
+              customerPaymentPaidAt: booking.customer_payment_paid_at,
               price_confirmed: booking.price_confirmed,
+              additional_costs: booking.additional_costs,
+              additionalCosts: booking.additional_costs,
               estimatedPrice: serviceCatalog[booking.serviceType] || 0,
               status: normalizedStatus,
               piojologistId: booking.piojologist_id || null,
@@ -852,6 +868,9 @@ function App() {
     const effectiveServicePrice = Number.isFinite(confirmedServicePrice) && confirmedServicePrice > 0
       ? confirmedServicePrice
       : servicePrice;
+    const isBoldPaidService = (appointment.customerPaymentProvider || appointment.customer_payment_provider) === 'bold'
+      && (appointment.customerPaymentStatus || appointment.customer_payment_status) === 'paid';
+    const resolvedPaymentStatusToPiojologist = isBoldPaidService ? 'paid' : 'pending';
     
     // Get piojologist's commission rate (default to 50% if not set)
     const piojologist = users.find(u => u.id === appointment.piojologistId);
@@ -878,8 +897,7 @@ function App() {
           numPersonas: completionData.numPersonas || appointment.numPersonas || 1,
           price_confirmed: completionData.priceConfirmed ?? servicePrice,
           service_notes: completionData.notes || null,
-          additional_costs: completionData.additionalCosts || 0,
-          payment_status_to_piojologist: 'pending' // Marcar como pendiente de pago
+          additional_costs: completionData.additionalCosts || 0
         });
       } catch (err) {
         console.error('Error actualizando booking a completed', err);
@@ -902,14 +920,14 @@ function App() {
     if (appointment.isPublicBooking || isBookingId || bookingMatch) {
       const updatedBookings = bookings.map(apt => 
         (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId || (isBookingId && apt.backendId === Number(appointmentId.replace('booking-',''))))
-          ? { ...apt, status: 'completed', price: effectiveServicePrice, price_confirmed: effectiveServicePrice, serviceType: completionData.servicesPerPerson?.[0] || completionData.planType || apt.serviceType, services_per_person: completionData.servicesPerPerson || apt.services_per_person, numPersonas: completionData.numPersonas || apt.numPersonas || 1, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions, payment_status_to_piojologist: 'pending', paymentStatusToPiojologist: 'pending' }
+          ? { ...apt, status: 'completed', price: effectiveServicePrice, price_confirmed: effectiveServicePrice, serviceType: completionData.servicesPerPerson?.[0] || completionData.planType || apt.serviceType, services_per_person: completionData.servicesPerPerson || apt.services_per_person, numPersonas: completionData.numPersonas || apt.numPersonas || 1, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions, payment_status_to_piojologist: resolvedPaymentStatusToPiojologist, paymentStatusToPiojologist: resolvedPaymentStatusToPiojologist }
           : apt
       );
       setBookings(updatedBookings);
     } else {
       const updatedAppointments = appointments.map(apt => 
         (apt.id === appointmentId || apt.backendId === appointmentId || apt.bookingId === appointmentId)
-          ? { ...apt, status: 'completed', price: effectiveServicePrice, price_confirmed: effectiveServicePrice, serviceType: completionData.servicesPerPerson?.[0] || completionData.planType || apt.serviceType, services_per_person: completionData.servicesPerPerson || apt.services_per_person, numPersonas: completionData.numPersonas || apt.numPersonas || 1, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions, payment_status_to_piojologist: 'pending', paymentStatusToPiojologist: 'pending' }
+          ? { ...apt, status: 'completed', price: effectiveServicePrice, price_confirmed: effectiveServicePrice, serviceType: completionData.servicesPerPerson?.[0] || completionData.planType || apt.serviceType, services_per_person: completionData.servicesPerPerson || apt.services_per_person, numPersonas: completionData.numPersonas || apt.numPersonas || 1, planType: completionData.planType || apt.planType || apt.serviceType, serviceNotes: completionData.notes || apt.serviceNotes, additionalCosts: completionData.additionalCosts || 0, earnings: netEarnings, deductions: productDeductions, payment_status_to_piojologist: resolvedPaymentStatusToPiojologist, paymentStatusToPiojologist: resolvedPaymentStatusToPiojologist }
           : apt
       );
       setAppointments(updatedAppointments);

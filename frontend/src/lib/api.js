@@ -356,6 +356,7 @@ export const boldPaymentService = {
         success: true,
         url: response.data?.url,
         paymentLink: response.data?.payment_link,
+        paymentLinkId: response.data?.payment_link,
         amount: response.data?.amount,
         currency: response.data?.currency,
         description: response.data?.description,

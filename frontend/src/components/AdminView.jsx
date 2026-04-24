@@ -1101,6 +1101,20 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
         return;
       }
 
+      const isBoldPaidService = (appointment.customerPaymentProvider || appointment.customer_payment_provider) === 'bold'
+        && (appointment.customerPaymentStatus || appointment.customer_payment_status) === 'paid';
+      if (isBoldPaidService) {
+        toast({
+          title: "ℹ️ Pago gestionado por Bold",
+          description: "Este servicio ya quedó registrado como pagado por Bold y no requiere pago manual.",
+          className: "bg-blue-100 text-blue-800 rounded-2xl border-2 border-blue-200"
+        });
+        if (typeof reloadBookings === 'function') {
+          await reloadBookings();
+        }
+        return;
+      }
+
       // Obtener el ID correcto para la API (backendId, bookingId o id)
       const backendId = appointment.backendId || appointment.bookingId || appointment.id;
       
@@ -1163,6 +1177,20 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
           description: "No se encontró el servicio",
           variant: "destructive"
         });
+        return;
+      }
+
+      const isBoldPaidService = (appointment.customerPaymentProvider || appointment.customer_payment_provider) === 'bold'
+        && (appointment.customerPaymentStatus || appointment.customer_payment_status) === 'paid';
+      if (isBoldPaidService) {
+        toast({
+          title: "ℹ️ Pago protegido",
+          description: "Los servicios pagados por Bold no se pueden revertir desde este módulo.",
+          className: "bg-blue-100 text-blue-800 rounded-2xl border-2 border-blue-200"
+        });
+        if (typeof reloadBookings === 'function') {
+          await reloadBookings();
+        }
         return;
       }
 

@@ -159,6 +159,7 @@ const PublicBooking = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingBoldLink, setIsGeneratingBoldLink] = useState(false);
   const [hasOpenedBoldCheckout, setHasOpenedBoldCheckout] = useState(false);
+  const [boldCheckoutSession, setBoldCheckoutSession] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [isEmbeddedMobile, setIsEmbeddedMobile] = useState(false);
   const [requireAdvance12h, setRequireAdvance12h] = useState(() => {
@@ -228,6 +229,7 @@ const PublicBooking = () => {
 
   useEffect(() => {
     setHasOpenedBoldCheckout(false);
+    setBoldCheckoutSession(null);
   }, [paymentFingerprint]);
 
   useEffect(() => {
@@ -572,6 +574,7 @@ const PublicBooking = () => {
     setSelectedDate(null);
     setIsModalOpen(false);
     setHasOpenedBoldCheckout(false);
+    setBoldCheckoutSession(null);
     setForm(buildDefaultFormState(serviceOptions));
   };
 
@@ -603,6 +606,15 @@ const PublicBooking = () => {
     let checkoutWindow = null;
 
     try {
+      if (boldCheckoutSession?.url) {
+        const reopenedWindow = window.open(boldCheckoutSession.url, '_blank', 'noopener,noreferrer');
+        if (!reopenedWindow) {
+          window.location.href = boldCheckoutSession.url;
+        }
+        setHasOpenedBoldCheckout(true);
+        return;
+      }
+
       checkoutWindow = window.open('', '_blank');
       if (checkoutWindow) {
         checkoutWindow.opener = null;
@@ -645,6 +657,11 @@ const PublicBooking = () => {
         return;
       }
 
+      setBoldCheckoutSession({
+        url: result.url,
+        paymentLinkId: result.paymentLinkId || result.paymentLink || null,
+        amount: result.amount || finalTotal,
+      });
       setHasOpenedBoldCheckout(true);
 
       if (checkoutWindow && !checkoutWindow.closed) {
@@ -784,6 +801,16 @@ const PublicBooking = () => {
       }
     }
 
+    if (form.paymentMethod === 'pay_now' && !boldCheckoutSession?.paymentLinkId) {
+      toast({
+        title: '⚠️ Pago pendiente',
+        description: 'Debes generar el link de Bold antes de confirmar la reserva.',
+        duration: 4000,
+        variant: 'destructive'
+      });
+      return;
+    }
+
     try {
       // Activar estado de carga
       setIsSubmitting(true);
@@ -810,6 +837,7 @@ const PublicBooking = () => {
         detalleAlergias: form.detalleAlergias || null,
         referidoPor: form.referidoPor || null,
         paymentMethod: form.paymentMethod,
+        paymentLinkId: form.paymentMethod === 'pay_now' ? (boldCheckoutSession?.paymentLinkId || null) : null,
         referralCode: referralValidation.isValid ? referralCode : null, // Enviar código si es válido
         sellerReferralToken: sellerReferralContext.isActive ? sellerReferralContext.token : null
       };
@@ -1279,6 +1307,7 @@ const PublicBooking = () => {
           setShowForm(false);
           setSelectedSlot('');
           setHasOpenedBoldCheckout(false);
+          setBoldCheckoutSession(null);
         }
       }}>
         <DialogContent className={`text-[20px] md:text-xl leading-relaxed md:leading-normal bg-gradient-to-b from-blue-50 to-white font-sans ${
