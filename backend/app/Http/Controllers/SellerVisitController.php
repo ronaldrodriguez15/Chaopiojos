@@ -9,6 +9,22 @@ use Illuminate\Support\Facades\Storage;
 
 class SellerVisitController extends Controller
 {
+    protected function getPhotoPathCandidates(?string $path): array
+    {
+        if (!$path) {
+            return [];
+        }
+
+        $normalizedPath = ltrim($path, '/\\');
+        $baseName = basename($normalizedPath);
+
+        return array_values(array_unique(array_filter([
+            $normalizedPath,
+            $baseName,
+            'seller-visits/' . $baseName,
+        ])));
+    }
+
     protected function isRenderableImage(?string $absolutePath): bool
     {
         if (!$absolutePath || !is_file($absolutePath) || !is_readable($absolutePath)) {
@@ -40,13 +56,8 @@ class SellerVisitController extends Controller
             return null;
         }
 
-        $normalizedPath = ltrim($path, '/\\');
-        $baseName = basename($normalizedPath);
-        $pathCandidates = array_values(array_unique(array_filter([
-            $normalizedPath,
-            $baseName,
-            'seller-visits/' . $baseName,
-        ])));
+        $pathCandidates = $this->getPhotoPathCandidates($path);
+        $baseName = basename(ltrim($path, '/\\'));
 
         foreach ($pathCandidates as $candidate) {
             if (Storage::disk('public')->exists($candidate)) {
@@ -143,8 +154,12 @@ class SellerVisitController extends Controller
 
     protected function buildFileResponse(string $absolutePath)
     {
-        $mimeType = mime_content_type($absolutePath) ?: 'application/octet-stream';
-        $contents = file_get_contents($absolutePath);
+        $imageInfo = @getimagesize($absolutePath);
+        $mimeType = is_array($imageInfo) && !empty($imageInfo['mime'])
+            ? $imageInfo['mime']
+            : (mime_content_type($absolutePath) ?: 'application/octet-stream');
+
+        $contents = @file_get_contents($absolutePath);
 
         if ($contents === false) {
             abort(404);
@@ -155,8 +170,39 @@ class SellerVisitController extends Controller
             'Content-Length' => (string) filesize($absolutePath),
             'Cache-Control' => 'public, max-age=31536000',
             'Accept-Ranges' => 'none',
+            'Cross-Origin-Resource-Policy' => 'cross-origin',
             'Content-Disposition' => 'inline; filename="' . basename($absolutePath) . '"',
         ]);
+    }
+
+    protected function buildPublicPhotoUrl(?string $path): ?string
+    {
+        foreach ($this->getPhotoPathCandidates($path) as $candidate) {
+            if (Storage::disk('public')->exists($candidate)) {
+                return Storage::disk('public')->url($candidate);
+            }
+        }
+
+        if (!$path || !$this->resolvePhotoAbsolutePath($path)) {
+            return null;
+        }
+
+        return Storage::disk('public')->url(ltrim($path, '/\\'));
+    }
+
+    protected function buildApiPhotoUrl(SellerVisit $visit, string $variant = 'full'): ?string
+    {
+        if ($this->getPhotoStatus($visit) !== 'available') {
+            return null;
+        }
+
+        $photoVersion = 'media-v2-available-' . ($visit->updated_at?->timestamp ?? $visit->id);
+
+        if ($variant === 'thumb') {
+            return '/api/seller-visits/photo/' . $visit->id . '/thumb?v=' . $photoVersion;
+        }
+
+        return '/api/seller-visits/photo/' . $visit->id . '?v=' . $photoVersion;
     }
 
     protected function canAccessVisits(Request $request): bool
@@ -190,9 +236,9 @@ class SellerVisitController extends Controller
     {
         $photoStatus = $this->getPhotoStatus($visit);
         $hasUsablePhoto = $photoStatus === 'available';
-        $photoVersion = $hasUsablePhoto
-            ? 'media-v2-' . $photoStatus . '-' . ($visit->updated_at?->timestamp ?? $visit->id)
-            : null;
+        $publicPhotoUrl = $hasUsablePhoto ? $this->buildPublicPhotoUrl($visit->place_photo_path) : null;
+        $apiPhotoUrl = $hasUsablePhoto ? $this->buildApiPhotoUrl($visit, 'full') : null;
+        $apiThumbUrl = $hasUsablePhoto ? $this->buildApiPhotoUrl($visit, 'thumb') : null;
 
         return [
             'id' => $visit->id,
@@ -202,12 +248,9 @@ class SellerVisitController extends Controller
             'whatsapp' => $visit->whatsapp,
             'place_photo_path' => $visit->place_photo_path,
             'photo_status' => $photoStatus,
-            'place_photo_url' => $hasUsablePhoto
-                ? '/api/seller-visits/photo/' . $visit->id . '?v=' . $photoVersion
-                : null,
-            'place_photo_thumb_url' => $hasUsablePhoto
-                ? '/api/seller-visits/photo/' . $visit->id . '/thumb?v=' . $photoVersion
-                : null,
+            'place_photo_url' => $publicPhotoUrl,
+            'place_photo_api_url' => $apiPhotoUrl,
+            'place_photo_thumb_url' => $apiThumbUrl,
             'created_at' => $visit->created_at,
             'updated_at' => $visit->updated_at,
             'seller' => $visit->relationLoaded('seller') && $visit->seller

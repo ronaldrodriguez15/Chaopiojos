@@ -359,13 +359,14 @@ const SellerVisitsModule = React.memo(() => {
                 <div className="bg-white rounded-2xl border-2 border-orange-200 p-4 space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-black uppercase tracking-wide text-orange-600">Foto cargada</p>
-                    <a href={resolveMediaUrl(selectedVisit.place_photo_url)} download className="inline-flex items-center gap-2 text-xs font-black text-orange-700 hover:text-orange-900">
+                    <a href={resolveMediaUrl(selectedVisit.place_photo_api_url || selectedVisit.place_photo_url)} download className="inline-flex items-center gap-2 text-xs font-black text-orange-700 hover:text-orange-900">
                       <Download className="w-4 h-4" />
                       Descargar
                     </a>
                   </div>
                   <BackendImage
                     src={selectedVisit.place_photo_url}
+                    fallbackSrc={selectedVisit.place_photo_api_url}
                     alt={selectedVisit.business_name}
                     className="w-full h-[22rem] rounded-2xl border border-orange-100 bg-orange-50"
                     imgClassName="object-contain"

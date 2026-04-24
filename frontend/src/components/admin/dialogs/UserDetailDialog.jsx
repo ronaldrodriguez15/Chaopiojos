@@ -2,6 +2,8 @@ import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { User, Crown, UserCheck, Building2, Copy, Link2, FileText, Download, Image as ImageIcon } from 'lucide-react';
+import BackendImage from '@/components/BackendImage';
+import { buildDownloadUrl, resolveMediaUrl } from '@/lib/media';
 
 const getRoleLabel = (role) => {
   if (role === 'admin') return 'Administrador';
@@ -180,29 +182,43 @@ const UserDetailDialog = ({
               {establishment && (
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {establishment.logo_url ? (
+                    {resolveMediaUrl(establishment.logo_url) ? (
                       <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400 space-y-3">
                         <div className="flex items-center justify-between gap-3">
                           <p className="text-xs font-bold text-yellow-600 uppercase tracking-wide">Logo</p>
-                          <a href={establishment.logo_url} download className="inline-flex items-center gap-2 text-xs font-bold text-yellow-700 hover:text-yellow-900">
+                          <a href={buildDownloadUrl(establishment.logo_url)} className="inline-flex items-center gap-2 text-xs font-bold text-yellow-700 hover:text-yellow-900">
                             <Download className="w-4 h-4" />
                             Descargar
                           </a>
                         </div>
-                        <img src={establishment.logo_url} alt={`Logo de ${establishment.business_name || user.name}`} className="w-full h-40 rounded-2xl border border-yellow-200 bg-yellow-50 object-contain" />
+                        <BackendImage
+                          src={establishment.logo_url}
+                          alt={`Logo de ${establishment.business_name || user.name}`}
+                          className="w-full h-40 rounded-2xl border border-yellow-200 bg-yellow-50"
+                          imgClassName="object-contain"
+                          fallbackClassName="border-yellow-200"
+                          iconClassName="w-12 h-12 text-yellow-300"
+                        />
                       </div>
                     ) : null}
 
-                    {establishment.citizenship_card_url ? (
+                    {resolveMediaUrl(establishment.citizenship_card_url) ? (
                       <div className="bg-white rounded-2xl p-4 border-2 border-yellow-400 space-y-3">
                         <div className="flex items-center justify-between gap-3">
                           <p className="text-xs font-bold text-yellow-600 uppercase tracking-wide">Cedula</p>
-                          <a href={establishment.citizenship_card_url} download className="inline-flex items-center gap-2 text-xs font-bold text-yellow-700 hover:text-yellow-900">
+                          <a href={buildDownloadUrl(establishment.citizenship_card_url)} className="inline-flex items-center gap-2 text-xs font-bold text-yellow-700 hover:text-yellow-900">
                             <Download className="w-4 h-4" />
                             Descargar
                           </a>
                         </div>
-                        <img src={establishment.citizenship_card_url} alt={`Cedula de ${establishment.business_name || user.name}`} className="w-full h-40 rounded-2xl border border-yellow-200 bg-yellow-50 object-contain" />
+                        <BackendImage
+                          src={establishment.citizenship_card_url}
+                          alt={`Cedula de ${establishment.business_name || user.name}`}
+                          className="w-full h-40 rounded-2xl border border-yellow-200 bg-yellow-50"
+                          imgClassName="object-contain"
+                          fallbackClassName="border-yellow-200"
+                          iconClassName="w-12 h-12 text-yellow-300"
+                        />
                       </div>
                     ) : null}
                   </div>
@@ -268,7 +284,7 @@ const UserDetailDialog = ({
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {ESTABLISHMENT_DOCUMENTS.map(({ key, label, icon: Icon }) => {
-                      const url = establishment[key];
+                      const url = resolveMediaUrl(establishment[key]);
                       if (!url) return null;
 
                       return (
@@ -285,8 +301,7 @@ const UserDetailDialog = ({
                               Ver archivo
                             </a>
                             <a
-                              href={url}
-                              download
+                              href={buildDownloadUrl(url)}
                               className="inline-flex items-center gap-2 rounded-2xl border-2 border-yellow-300 bg-white px-4 py-3 font-bold text-yellow-700 hover:bg-yellow-50"
                             >
                               <Download className="w-4 h-4" />

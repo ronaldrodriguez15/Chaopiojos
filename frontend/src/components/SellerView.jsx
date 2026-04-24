@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import MessagingModule from '@/components/MessagingModule';
 import StatsHighlightCard from '@/components/StatsHighlightCard';
+import BackendImage from '@/components/BackendImage';
 import { sellerReferralService, sellerVisitService } from '@/lib/api';
 import Pagination from '@/components/admin/Pagination';
 
@@ -874,7 +875,14 @@ const SellerView = ({ currentUser }) => {
                 {currentPlacePhotoPreview ? (
                   <div className="rounded-2xl border-2 border-cyan-200 bg-white p-4 space-y-3">
                     <p className="text-sm font-black text-cyan-700">Previsualización</p>
-                    <img src={currentPlacePhotoPreview} alt="Vista previa del establecimiento" className="w-full h-56 rounded-2xl object-cover border border-cyan-100" />
+                    <BackendImage
+                      src={currentPlacePhotoPreview}
+                      alt="Vista previa del establecimiento"
+                      className="w-full h-56 rounded-2xl border border-cyan-100 bg-cyan-50"
+                      imgClassName="object-cover"
+                      fallbackClassName="border-cyan-100"
+                      iconClassName="w-12 h-12 text-cyan-300"
+                    />
                   </div>
                 ) : null}
                 <div className="flex flex-col sm:flex-row gap-3">
@@ -897,7 +905,14 @@ const SellerView = ({ currentUser }) => {
                         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                           <div className="flex items-start gap-3">
                             {item.place_photo_url ? (
-                              <img src={item.place_photo_url} alt={item.business_name} className="w-16 h-16 rounded-2xl object-cover border-2 border-cyan-200 bg-white flex-shrink-0" />
+                              <BackendImage
+                                src={item.place_photo_url}
+                                alt={item.business_name}
+                                className="w-16 h-16 rounded-2xl border-2 border-cyan-200 bg-white flex-shrink-0"
+                                imgClassName="object-cover"
+                                fallbackClassName="border-cyan-200"
+                                iconClassName="w-6 h-6 text-cyan-400"
+                              />
                             ) : null}
                             <div>
                               <p className="text-lg font-black text-gray-800">{item.business_name}</p>
@@ -1026,7 +1041,15 @@ const SellerView = ({ currentUser }) => {
                           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                             <div className="flex items-start gap-3">
                               {item.place_photo_url ? (
-                                <img src={item.place_photo_url} alt={item.business_name} className="w-16 h-16 rounded-2xl object-cover border-2 border-orange-200 bg-white flex-shrink-0" />
+                              <BackendImage
+                                src={item.place_photo_url}
+                                fallbackSrc={item.place_photo_api_url}
+                                alt={item.business_name}
+                                className="w-16 h-16 rounded-2xl border-2 border-orange-200 bg-white flex-shrink-0"
+                                imgClassName="object-cover"
+                                fallbackClassName="border-orange-200"
+                                iconClassName="w-6 h-6 text-orange-400"
+                                />
                               ) : null}
                               <div>
                                 <p className="text-lg font-black text-gray-800">{item.business_name}</p>
@@ -1070,7 +1093,14 @@ const SellerView = ({ currentUser }) => {
                 <div className="px-6 md:px-8 pb-8 space-y-4">
                   {selectedReferral.place_photo_url && (
                     <div className="bg-white rounded-2xl border-2 border-cyan-200 p-4">
-                      <img src={selectedReferral.place_photo_url} alt={selectedReferral.business_name} className="w-full h-56 object-cover rounded-2xl" />
+                      <BackendImage
+                        src={selectedReferral.place_photo_url}
+                        alt={selectedReferral.business_name}
+                        className="w-full h-56 rounded-2xl border border-cyan-100 bg-cyan-50"
+                        imgClassName="object-cover"
+                        fallbackClassName="border-cyan-100"
+                        iconClassName="w-12 h-12 text-cyan-300"
+                      />
                     </div>
                   )}
                   <div className="bg-white rounded-2xl border-2 border-cyan-200 p-4"><p className="text-xl font-black text-gray-800">{selectedReferral.business_name}</p><p className="text-sm font-bold text-gray-600 mt-1">Contacto: {selectedReferral.contact_name}</p></div>
@@ -1102,7 +1132,15 @@ const SellerView = ({ currentUser }) => {
                 <div className="px-6 md:px-8 pb-8 space-y-4">
                   {selectedVisit.place_photo_url && (
                     <div className="bg-white rounded-2xl border-2 border-orange-200 p-4">
-                      <img src={selectedVisit.place_photo_url} alt={selectedVisit.business_name} className="w-full h-56 object-cover rounded-2xl" />
+                      <BackendImage
+                        src={selectedVisit.place_photo_url}
+                        fallbackSrc={selectedVisit.place_photo_api_url}
+                        alt={selectedVisit.business_name}
+                        className="w-full h-56 rounded-2xl border border-orange-100 bg-orange-50"
+                        imgClassName="object-cover"
+                        fallbackClassName="border-orange-100"
+                        iconClassName="w-12 h-12 text-orange-300"
+                      />
                     </div>
                   )}
                   <div className="bg-white rounded-2xl border-2 border-orange-200 p-4"><p className="text-xl font-black text-gray-800">{selectedVisit.business_name}</p><p className="text-sm font-bold text-gray-600 mt-1">Dueño: {selectedVisit.owner_name || 'No registrado'}</p></div>

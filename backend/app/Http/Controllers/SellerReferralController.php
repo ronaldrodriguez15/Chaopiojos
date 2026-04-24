@@ -19,6 +19,17 @@ use Illuminate\Validation\Rule;
 
 class SellerReferralController extends Controller
 {
+    protected function getDocumentAttributeMap(): array
+    {
+        return [
+            'chamber_of_commerce' => 'chamber_of_commerce_path',
+            'rut' => 'rut_path',
+            'place_photo' => 'place_photo_path',
+            'logo' => 'logo_path',
+            'citizenship_card' => 'citizenship_card_path',
+        ];
+    }
+
     protected function getDefaultSellerReferralValue(): float
     {
         return (float) AppSetting::getValue('seller_referral_value', '5000');
@@ -47,6 +58,91 @@ class SellerReferralController extends Controller
         }
 
         return $query;
+    }
+
+    protected function userCanAccessReferral(User $user, SellerReferral $referral): bool
+    {
+        if ($user->role === 'admin') {
+            return true;
+        }
+
+        if ($user->role === 'vendedor') {
+            return (int) $referral->seller_user_id === (int) $user->id;
+        }
+
+        if ($user->role === 'referido') {
+            return (int) $referral->referred_user_id === (int) $user->id;
+        }
+
+        return false;
+    }
+
+    protected function resolveDocumentAbsolutePath(?string $path): ?string
+    {
+        if (!$path) {
+            return null;
+        }
+
+        $normalizedPath = ltrim($path, '/\\');
+        $baseName = basename($normalizedPath);
+        $pathCandidates = array_values(array_unique(array_filter([
+            $normalizedPath,
+            $baseName,
+            'seller-referrals/' . $baseName,
+        ])));
+
+        foreach ($pathCandidates as $candidate) {
+            if (Storage::disk('public')->exists($candidate)) {
+                return Storage::disk('public')->path($candidate);
+            }
+        }
+
+        $publicCandidates = [];
+        foreach ($pathCandidates as $candidate) {
+            $publicCandidates[] = public_path($candidate);
+            $publicCandidates[] = public_path('storage/' . $candidate);
+        }
+
+        $publicCandidates[] = public_path('seller-referrals/' . $baseName);
+        $publicCandidates[] = public_path('storage/seller-referrals/' . $baseName);
+        $publicCandidates = array_values(array_unique($publicCandidates));
+
+        foreach ($publicCandidates as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    protected function buildDocumentUrl(SellerReferral $referral, string $document, ?string $path): ?string
+    {
+        if (!$path || !$this->resolveDocumentAbsolutePath($path)) {
+            return null;
+        }
+
+        $version = $referral->updated_at?->timestamp ?? $referral->id;
+
+        return sprintf('/api/seller-referrals/%d/documents/%s?v=media-v2-%d', $referral->id, $document, $version);
+    }
+
+    protected function buildFileResponse(string $absolutePath, bool $download = false)
+    {
+        $mimeType = mime_content_type($absolutePath) ?: 'application/octet-stream';
+        $contents = file_get_contents($absolutePath);
+
+        if ($contents === false) {
+            abort(404);
+        }
+
+        return response($contents, 200, [
+            'Content-Type' => $mimeType,
+            'Content-Length' => (string) filesize($absolutePath),
+            'Cache-Control' => 'private, max-age=3600',
+            'Accept-Ranges' => 'none',
+            'Content-Disposition' => sprintf('%s; filename="%s"', $download ? 'attachment' : 'inline', basename($absolutePath)),
+        ]);
     }
 
     protected function serializeReferral(SellerReferral $referral): array
@@ -80,11 +176,11 @@ class SellerReferralController extends Controller
             'place_photo_path' => $referral->place_photo_path,
             'logo_path' => $referral->logo_path,
             'citizenship_card_path' => $referral->citizenship_card_path,
-            'chamber_of_commerce_url' => $referral->chamber_of_commerce_path ? asset('storage/' . $referral->chamber_of_commerce_path) : null,
-            'rut_url' => $referral->rut_path ? asset('storage/' . $referral->rut_path) : null,
-            'place_photo_url' => $referral->place_photo_path ? asset('storage/' . $referral->place_photo_path) : null,
-            'logo_url' => $referral->logo_path ? asset('storage/' . $referral->logo_path) : null,
-            'citizenship_card_url' => $referral->citizenship_card_path ? asset('storage/' . $referral->citizenship_card_path) : null,
+            'chamber_of_commerce_url' => $this->buildDocumentUrl($referral, 'chamber_of_commerce', $referral->chamber_of_commerce_path),
+            'rut_url' => $this->buildDocumentUrl($referral, 'rut', $referral->rut_path),
+            'place_photo_url' => $this->buildDocumentUrl($referral, 'place_photo', $referral->place_photo_path),
+            'logo_url' => $this->buildDocumentUrl($referral, 'logo', $referral->logo_path),
+            'citizenship_card_url' => $this->buildDocumentUrl($referral, 'citizenship_card', $referral->citizenship_card_path),
             'created_at' => $referral->created_at,
             'updated_at' => $referral->updated_at,
             'seller' => $referral->relationLoaded('seller') && $referral->seller
@@ -148,6 +244,38 @@ class SellerReferralController extends Controller
         }
 
         Storage::disk('public')->delete($path);
+    }
+
+    public function document(Request $request, SellerReferral $sellerReferral, string $document)
+    {
+        if (!$this->canAccessReferrals($request)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes permisos para ver este documento',
+            ], 403);
+        }
+
+        $user = $request->user();
+        if (!$user || !$this->userCanAccessReferral($user, $sellerReferral)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes permisos para ver este documento',
+            ], 403);
+        }
+
+        $attribute = $this->getDocumentAttributeMap()[$document] ?? null;
+        if (!$attribute) {
+            abort(404);
+        }
+
+        $absolutePath = $this->resolveDocumentAbsolutePath($sellerReferral->{$attribute});
+        if (!$absolutePath) {
+            abort(404);
+        }
+
+        $download = filter_var($request->query('download'), FILTER_VALIDATE_BOOLEAN);
+
+        return $this->buildFileResponse($absolutePath, $download);
     }
 
     protected function replaceStoredDocument(Request $request, SellerReferral $referral, string $inputName, string $attribute, string $prefix): ?string

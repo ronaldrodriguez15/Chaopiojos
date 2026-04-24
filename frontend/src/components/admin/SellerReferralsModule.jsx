@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/use-toast';
 import Pagination from './Pagination';
 import { sellerReferralService, sellerVisitService } from '@/lib/api';
 import BackendImage from '@/components/BackendImage';
-import { resolveMediaUrl } from '@/lib/media';
+import { buildDownloadUrl, resolveMediaUrl } from '@/lib/media';
 
 const statusConfig = {
   pending_review: { label: 'Pendiente', card: 'bg-amber-50 border-amber-200', badge: 'bg-amber-100 text-amber-700 border-amber-200' },
@@ -319,6 +319,7 @@ const SellerReferralsModule = React.memo(() => {
                         <div className="flex items-start gap-3">
                           <BackendImage
                             src={item.place_photo_url}
+                            fallbackSrc={item.place_photo_api_url}
                             alt={item.business_name}
                             className="w-16 h-16 rounded-2xl border-2 border-orange-200 bg-white flex-shrink-0"
                             imgClassName="object-cover"
@@ -359,28 +360,42 @@ const SellerReferralsModule = React.memo(() => {
             <div className="max-h-[80vh] overflow-y-auto p-6 md:p-8 space-y-4">
               <div className="text-center"><h2 className="text-2xl font-black text-cyan-600 uppercase tracking-wide">Detalle del Referido</h2></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {selectedReferral.logo_url ? (
+                {resolveMediaUrl(selectedReferral.logo_url) ? (
                   <div className="bg-white rounded-2xl border-2 border-cyan-200 p-4 space-y-3">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-black uppercase tracking-wide text-cyan-600">Logo</p>
-                      <a href={selectedReferral.logo_url} download className="inline-flex items-center gap-2 text-xs font-black text-cyan-700 hover:text-cyan-900">
+                      <a href={buildDownloadUrl(selectedReferral.logo_url)} className="inline-flex items-center gap-2 text-xs font-black text-cyan-700 hover:text-cyan-900">
                         <Download className="w-4 h-4" />
                         Descargar
                       </a>
                     </div>
-                    <img src={selectedReferral.logo_url} alt={`Logo de ${selectedReferral.business_name}`} className="w-full h-44 object-contain rounded-2xl border border-cyan-100 bg-cyan-50" />
+                    <BackendImage
+                      src={selectedReferral.logo_url}
+                      alt={`Logo de ${selectedReferral.business_name}`}
+                      className="w-full h-44 rounded-2xl border border-cyan-100 bg-cyan-50"
+                      imgClassName="object-contain"
+                      fallbackClassName="border-cyan-100"
+                      iconClassName="w-12 h-12 text-cyan-300"
+                    />
                   </div>
                 ) : null}
-                {selectedReferral.citizenship_card_url ? (
+                {resolveMediaUrl(selectedReferral.citizenship_card_url) ? (
                   <div className="bg-white rounded-2xl border-2 border-cyan-200 p-4 space-y-3">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-black uppercase tracking-wide text-cyan-600">Cedula</p>
-                      <a href={selectedReferral.citizenship_card_url} download className="inline-flex items-center gap-2 text-xs font-black text-cyan-700 hover:text-cyan-900">
+                      <a href={buildDownloadUrl(selectedReferral.citizenship_card_url)} className="inline-flex items-center gap-2 text-xs font-black text-cyan-700 hover:text-cyan-900">
                         <Download className="w-4 h-4" />
                         Descargar
                       </a>
                     </div>
-                    <img src={selectedReferral.citizenship_card_url} alt={`Cedula de ${selectedReferral.business_name}`} className="w-full h-44 object-contain rounded-2xl border border-cyan-100 bg-cyan-50" />
+                    <BackendImage
+                      src={selectedReferral.citizenship_card_url}
+                      alt={`Cedula de ${selectedReferral.business_name}`}
+                      className="w-full h-44 rounded-2xl border border-cyan-100 bg-cyan-50"
+                      imgClassName="object-contain"
+                      fallbackClassName="border-cyan-100"
+                      iconClassName="w-12 h-12 text-cyan-300"
+                    />
                   </div>
                 ) : null}
               </div>
@@ -395,7 +410,7 @@ const SellerReferralsModule = React.memo(() => {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {documentActions.map(({ key, label, icon: Icon }) => {
-                  const url = selectedReferral[key];
+                  const url = resolveMediaUrl(selectedReferral[key]);
                   if (!url) return null;
 
                   return (
@@ -406,7 +421,7 @@ const SellerReferralsModule = React.memo(() => {
                           <Icon className="w-4 h-4" />
                           Ver archivo
                         </a>
-                        <a href={url} download className="inline-flex items-center gap-2 rounded-xl bg-white border-2 border-cyan-200 px-4 py-3 text-sm font-black text-cyan-700 hover:bg-cyan-100">
+                        <a href={buildDownloadUrl(url)} className="inline-flex items-center gap-2 rounded-xl bg-white border-2 border-cyan-200 px-4 py-3 text-sm font-black text-cyan-700 hover:bg-cyan-100">
                           <Download className="w-4 h-4" />
                           Descargar
                         </a>
@@ -432,13 +447,14 @@ const SellerReferralsModule = React.memo(() => {
               {selectedVisit.place_photo_url && (
                 <div className="bg-white rounded-2xl border-2 border-orange-200 p-4">
                   <div className="flex justify-end mb-3">
-                    <a href={resolveMediaUrl(selectedVisit.place_photo_url)} download className="inline-flex items-center gap-2 text-xs font-black text-orange-700 hover:text-orange-900">
+                    <a href={resolveMediaUrl(selectedVisit.place_photo_api_url || selectedVisit.place_photo_url)} download className="inline-flex items-center gap-2 text-xs font-black text-orange-700 hover:text-orange-900">
                       <Download className="w-4 h-4" />
                       Descargar
                     </a>
                   </div>
                   <BackendImage
                     src={selectedVisit.place_photo_url}
+                    fallbackSrc={selectedVisit.place_photo_api_url}
                     alt={selectedVisit.business_name}
                     className="w-full h-56 rounded-2xl border border-orange-100 bg-orange-50"
                     imgClassName="object-contain"

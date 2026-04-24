@@ -32,11 +32,27 @@ export const resolveMediaUrl = (value) => {
 
   try {
     const parsed = new URL(raw);
+    console.log('backendOrigin:', backendOrigin);
+    console.log('parsed.origin:', parsed.origin);
+    console.log('resultado:', `${backendOrigin}${parsed.pathname}`);
     if (shouldRewriteToBackend(parsed.pathname) && backendOrigin) {
       return `${backendOrigin}${parsed.pathname}${parsed.search}`;
     }
     return parsed.toString();
   } catch (error) {
     return raw;
+  }
+};
+
+export const buildDownloadUrl = (value) => {
+  const resolved = resolveMediaUrl(value);
+  if (!resolved) return '';
+
+  try {
+    const parsed = new URL(resolved, typeof window !== 'undefined' ? window.location.origin : backendOrigin || 'http://localhost');
+    parsed.searchParams.set('download', '1');
+    return parsed.toString();
+  } catch (error) {
+    return resolved.includes('?') ? `${resolved}&download=1` : `${resolved}?download=1`;
   }
 };

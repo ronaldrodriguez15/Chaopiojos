@@ -348,6 +348,29 @@ export const bookingService = {
   }
 };
 
+export const boldPaymentService = {
+  async createLink(payload) {
+    try {
+      const response = await api.post('/payments/bold/link', payload);
+      return {
+        success: true,
+        url: response.data?.url,
+        paymentLink: response.data?.payment_link,
+        amount: response.data?.amount,
+        currency: response.data?.currency,
+        description: response.data?.description,
+      };
+    } catch (error) {
+      console.error('Error generando link de Bold:', error.response?.data);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al generar el link de pago con Bold',
+        errors: error.response?.data?.errors,
+      };
+    }
+  }
+};
+
 // Servicios del catalogo
 export const serviceService = {
   async getAll() {

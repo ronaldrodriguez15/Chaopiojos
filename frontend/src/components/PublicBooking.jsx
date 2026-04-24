@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 import { motion } from 'framer-motion';
-import { bookingService, serviceService, referralService, sellerReferralService, settingsService } from '@/lib/api';
+import { bookingService, boldPaymentService, serviceService, referralService, sellerReferralService, settingsService } from '@/lib/api';
 import {
   DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE,
   BUSINESS_WHATSAPP_NUMBER,
@@ -105,6 +105,33 @@ const loadServiceCatalog = () => {
   }));
 };
 
+const buildDefaultFormState = (serviceOptions = []) => {
+  const defaultService = serviceOptions[0]?.value || 'Normal';
+
+  return {
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    notes: '',
+    serviceType: defaultService,
+    whatsapp: '',
+    direccion: '',
+    barrio: '',
+    descripcionUbicacion: '',
+    lat: null,
+    lng: null,
+    numPersonas: '1',
+    edad: '',
+    servicesPerPerson: [defaultService],
+    hasAlergias: false,
+    detalleAlergias: '',
+    referidoPor: '',
+    terminosAceptados: false,
+    paymentMethod: 'pay_later'
+  };
+};
+
 const PublicBooking = () => {
   const modalScrollRef = React.useRef(null);
   const touchStartYRef = React.useRef(null);
@@ -130,6 +157,8 @@ const PublicBooking = () => {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGeneratingBoldLink, setIsGeneratingBoldLink] = useState(false);
+  const [hasOpenedBoldCheckout, setHasOpenedBoldCheckout] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [isEmbeddedMobile, setIsEmbeddedMobile] = useState(false);
   const [requireAdvance12h, setRequireAdvance12h] = useState(() => {
@@ -157,28 +186,7 @@ const PublicBooking = () => {
   const [referralValidation, setReferralValidation] = useState({ isValid: false, isValidating: false, message: '', referrerName: '', referrerRoleLabel: '' });
   const [sellerReferralContext, setSellerReferralContext] = useState({ isActive: false, token: '', businessName: '', sellerName: '', sellerReferralId: null });
   
-  const [form, setForm] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    address: '',
-    notes: '',
-    serviceType: serviceOptions[0]?.value || 'Normal',
-    whatsapp: '',
-    direccion: '',
-    barrio: '',
-    descripcionUbicacion: '',
-    lat: null,
-    lng: null,
-    numPersonas: '1',
-    edad: '',
-    servicesPerPerson: [serviceOptions[0]?.value || 'Normal'], // Array de servicios por persona
-    hasAlergias: false,
-    detalleAlergias: '',
-    referidoPor: '',
-    terminosAceptados: false,
-    paymentMethod: 'pay_later'
-  });
+  const [form, setForm] = useState(() => buildDefaultFormState(serviceOptions));
 
   
   // Calcular total sumando todos los servicios de las personas
@@ -188,6 +196,7 @@ const PublicBooking = () => {
   }, 0);
   
   const finalTotal = totalServiceValue;
+  const paymentFingerprint = `${form.paymentMethod}|${(form.servicesPerPerson || []).join('|')}|${finalTotal}`;
 
   const today = useMemo(() => {
     const d = new Date();
@@ -203,10 +212,12 @@ const PublicBooking = () => {
         const normalized = normalizeServiceCatalog(result.services);
         if (isMounted && normalized.length) {
           setServiceOptions(normalized);
-          setForm(prev => ({ 
-            ...prev, 
+          setForm(prev => ({
+            ...prev,
             serviceType: normalized[0]?.value || prev.serviceType,
-            servicesPerPerson: [normalized[0]?.value || 'Normal']
+            servicesPerPerson: prev.servicesPerPerson?.length
+              ? prev.servicesPerPerson.map((service) => service || normalized[0]?.value || 'Normal')
+              : [normalized[0]?.value || 'Normal']
           }));
         }
       }
@@ -214,6 +225,10 @@ const PublicBooking = () => {
     loadServices();
     return () => { isMounted = false; };
   }, []);
+
+  useEffect(() => {
+    setHasOpenedBoldCheckout(false);
+  }, [paymentFingerprint]);
 
   useEffect(() => {
     let isMounted = true;
@@ -556,27 +571,101 @@ const PublicBooking = () => {
     setSelectedSlot('');
     setSelectedDate(null);
     setIsModalOpen(false);
-    setForm({
-      name: '',
-      email: '',
-      phone: '',
-      address: '',
-      notes: '',
-      serviceType: serviceOptions[0]?.value || 'Normal',
-      whatsapp: '',
-      direccion: '',
-      barrio: '',
-      descripcionUbicacion: '',
-      lat: null,
-      lng: null,
-      numPersonas: '1',
-      edad: '',
-      hasAlergias: false,
-      detalleAlergias: '',
-      referidoPor: '',
-      terminosAceptados: false,
-      paymentMethod: 'pay_later'
-    });
+    setHasOpenedBoldCheckout(false);
+    setForm(buildDefaultFormState(serviceOptions));
+  };
+
+  const handleGoToBold = async () => {
+    if (isGeneratingBoldLink) {
+      return;
+    }
+
+    if (!Array.isArray(form.servicesPerPerson) || form.servicesPerPerson.length === 0) {
+      toast({
+        title: '⚠️ Servicio requerido',
+        description: 'Selecciona al menos un servicio antes de generar el pago.',
+        duration: 4000,
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (finalTotal < 1000) {
+      toast({
+        title: '⚠️ Monto inválido',
+        description: 'El monto mínimo permitido por Bold es de $1.000 COP.',
+        duration: 4000,
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    let checkoutWindow = null;
+
+    try {
+      checkoutWindow = window.open('', '_blank');
+      if (checkoutWindow) {
+        checkoutWindow.opener = null;
+        checkoutWindow.document.write(`
+          <!doctype html>
+          <html lang="es">
+            <head>
+              <meta charset="utf-8" />
+              <title>Redirigiendo a Bold...</title>
+            </head>
+            <body style="font-family: sans-serif; margin: 0; padding: 32px; color: #1f2937;">
+              <p style="font-size: 18px; font-weight: 700; margin: 0 0 12px;">Redirigiendo a Bold...</p>
+              <p style="margin: 0;">Estamos generando tu link de pago seguro.</p>
+            </body>
+          </html>
+        `);
+        checkoutWindow.document.close();
+      }
+
+      setIsGeneratingBoldLink(true);
+
+      const result = await boldPaymentService.createLink({
+        serviceType: form.servicesPerPerson[0],
+        servicesPerPerson: form.servicesPerPerson,
+        clientName: form.name || null,
+        email: form.email || null,
+      });
+
+      if (!result.success || !result.url) {
+        if (checkoutWindow && !checkoutWindow.closed) {
+          checkoutWindow.close();
+        }
+
+        toast({
+          title: '❌ No se pudo abrir Bold',
+          description: result.message || 'No fue posible generar el link de pago.',
+          duration: 5000,
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      setHasOpenedBoldCheckout(true);
+
+      if (checkoutWindow && !checkoutWindow.closed) {
+        checkoutWindow.location.replace(result.url);
+      } else {
+        window.location.href = result.url;
+      }
+    } catch (error) {
+      if (checkoutWindow && !checkoutWindow.closed) {
+        checkoutWindow.close();
+      }
+
+      toast({
+        title: '❌ Error inesperado',
+        description: 'No pudimos generar el link de pago con Bold.',
+        duration: 5000,
+        variant: 'destructive'
+      });
+    } finally {
+      setIsGeneratingBoldLink(false);
+    }
   };
 
   const handleSubmit = async (event) => {
@@ -1189,6 +1278,7 @@ const PublicBooking = () => {
           setIsModalOpen(false);
           setShowForm(false);
           setSelectedSlot('');
+          setHasOpenedBoldCheckout(false);
         }
       }}>
         <DialogContent className={`text-[20px] md:text-xl leading-relaxed md:leading-normal bg-gradient-to-b from-blue-50 to-white font-sans ${
@@ -1617,6 +1707,69 @@ const PublicBooking = () => {
                   </div>
                 </div>
 
+                {/* Pago */}
+                <div className="bg-amber-50 p-4 rounded-2xl border-2 border-amber-200 space-y-3">
+                  <p className="font-lobster-two text-2xl md:text-3xl font-bold text-amber-700">Pago</p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleChange('paymentMethod', 'pay_now')}
+                      className={`w-full text-left rounded-xl md:rounded-2xl border-2 p-4 font-black transition-all ${
+                        form.paymentMethod === 'pay_now'
+                          ? 'bg-orange-100 border-orange-300 shadow-md'
+                          : 'bg-white border-amber-200 hover:border-orange-300'
+                      }`}
+                    >
+                      <p className="text-base md:text-lg text-gray-800">⚡ Pagar ahora</p>
+                      <p className="text-sm text-gray-600 font-bold mt-1">Genera un link dinámico con Bold por {formatCurrency(finalTotal)}</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleChange('paymentMethod', 'pay_later')}
+                      className={`w-full text-left rounded-xl md:rounded-2xl border-2 p-4 font-black transition-all ${
+                        form.paymentMethod === 'pay_later'
+                          ? 'bg-green-100 border-green-300 shadow-md'
+                          : 'bg-white border-amber-200 hover:border-green-300'
+                      }`}
+                    >
+                      <p className="text-base md:text-lg text-gray-800">⏳ Pagar después</p>
+                      <p className="text-sm text-gray-600 font-bold mt-1">El pago se realiza al finalizar el servicio</p>
+                    </button>
+                  </div>
+
+                  {form.paymentMethod === 'pay_now' && (
+                    <div className="bg-white border-2 border-amber-200 rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                      <div className="space-y-1 flex-1">
+                        <p className="text-xs uppercase tracking-wide text-amber-600 font-black">Paga seguro con Bold</p>
+                        <p className="text-base md:text-lg font-black text-gray-800">
+                          Total a pagar <span className="text-amber-600">• {formatCurrency(finalTotal)}</span>
+                        </p>
+                        {hasOpenedBoldCheckout ? (
+                          <div className="bg-green-50 border-2 border-green-200 rounded-lg p-2 text-green-700 text-xs font-black inline-flex items-center gap-2 mt-1">
+                            ✅ Link de pago abierto. Ya puedes confirmar la reserva.
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-xs text-gray-600 font-bold">Se abrirá una pestaña con el checkout de Bold.</p>
+                            <p className="text-xs text-orange-600 font-black">Debes abrir Bold para habilitar la confirmación.</p>
+                          </>
+                        )}
+                      </div>
+
+                      <Button
+                        type="button"
+                        onClick={handleGoToBold}
+                        disabled={isGeneratingBoldLink}
+                        className="bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-white font-black px-6 py-4 rounded-xl shadow-md border-b-4 border-orange-600 active:border-b-0 active:translate-y-0.5 transition"
+                      >
+                        {isGeneratingBoldLink ? 'Generando link...' : 'Ir a Bold'}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
                 {/* Términos */}
                 <div className={`p-4 rounded-2xl border-2 ${fieldErrors.terminosAceptados ? 'bg-red-50 border-red-300' : 'bg-green-50 border-green-200'}`}>
                   <div className="flex items-start gap-3">
@@ -1651,7 +1804,7 @@ const PublicBooking = () => {
               <Button
                 form="public-booking-form"
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || (form.paymentMethod === 'pay_now' && !hasOpenedBoldCheckout)}
                 className="font-lobster-two w-full bg-orange-500 hover:bg-orange-600 disabled:hover:bg-orange-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-xl md:text-2xl py-4 md:py-5 rounded-xl md:rounded-2xl shadow-lg hover:shadow-xl border-b-4 border-orange-700 active:border-b-0 active:translate-y-0.5 transition-all duration-200 hover:scale-[1.01]"
               >
                 <Check className="w-5 h-5 md:w-6 md:h-6 mr-2" /> {isSubmitting ? 'Procesando...' : 'Confirmar Reserva'}

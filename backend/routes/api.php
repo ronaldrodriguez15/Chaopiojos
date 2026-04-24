@@ -12,6 +12,7 @@ use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\AppSettingController;
 use App\Http\Controllers\AdminMessageController;
+use App\Http\Controllers\BoldPaymentController;
 use App\Http\Controllers\SellerReferralController;
 use App\Http\Controllers\SellerVisitController;
 use App\Http\Controllers\ProfileController;
@@ -32,6 +33,7 @@ use App\Http\Controllers\GeolocationController;
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/ical-proxy', [ICalProxyController::class, 'fetchICalFeed']);
 Route::post('/bookings', [BookingController::class, 'store']); // Ruta publica para crear reservas
+Route::post('/payments/bold/link', [BoldPaymentController::class, 'createLink']);
 Route::get('/services', [ServiceController::class, 'index']);
 Route::post('/validate-referral-code', [UserController::class, 'validateReferralCode']); // Validar código de referido
 Route::get('/booking-settings', [AppSettingController::class, 'bookingSettings']);
@@ -83,6 +85,7 @@ Route::middleware(['auth:sanctum', 'active.user'])->group(function () {
     Route::get('/seller-referrals/statistics', [SellerReferralController::class, 'statistics']);
     Route::get('/seller-referrals/earnings', [SellerReferralController::class, 'earnings']);
     Route::get('/seller-referrals/partner-dashboard', [SellerReferralController::class, 'partnerDashboard']);
+    Route::get('/seller-referrals/{sellerReferral}/documents/{document}', [SellerReferralController::class, 'document']);
     Route::post('/seller-referrals', [SellerReferralController::class, 'store']);
     Route::put('/seller-referrals/{id}', [SellerReferralController::class, 'update']);
     Route::put('/seller-referrals/{id}/review', [SellerReferralController::class, 'review']);
