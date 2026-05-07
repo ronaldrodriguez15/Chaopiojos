@@ -32,8 +32,9 @@ class BookingController extends Controller
                 'sellerReferral:id,business_name,seller_user_id',
                 'sellerReferral.seller:id,name,email',
             ])
-            ->orderBy('fecha', 'asc')
-            ->orderBy('hora', 'asc')
+            ->orderBy('fecha', 'desc')
+            ->orderBy('hora', 'desc')
+            ->orderBy('id', 'desc')
             ->get()
             ->map(function ($booking) {
                 $bookingArray = $booking->toArray();

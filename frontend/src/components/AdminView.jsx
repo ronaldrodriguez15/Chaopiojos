@@ -106,6 +106,7 @@ const UsersModule = lazy(() => import('@/components/admin/UsersModule'));
 const ProductsModule = lazy(() => import('@/components/admin/ProductsModule'));
 const ServicesModule = lazy(() => import('@/components/admin/ServicesModule'));
 const EarningsModule = lazy(() => import('@/components/admin/EarningsModule'));
+const ConfirmationsModule = lazy(() => import('@/components/admin/ConfirmationsModule'));
 const RequestsModule = lazy(() => import('@/components/admin/RequestsModule'));
 const SellerReferralsModule = lazy(() => import('@/components/admin/SellerReferralsModule'));
 const SellerVisitsModule = lazy(() => import('@/components/admin/SellerVisitsModule'));
@@ -1496,6 +1497,9 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
                 <TabsTrigger value="schedule" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-yellow-400 data-[state=active]:text-white transition-all">
                   📅 Agendamientos
                 </TabsTrigger>
+                <TabsTrigger value="confirmations" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-teal-500 data-[state=active]:text-white transition-all">
+                  ✅ Confirmaciones
+                </TabsTrigger>
                 <TabsTrigger value="users" className="w-full justify-start rounded-xl py-2 px-3 font-bold text-sm data-[state=active]:bg-blue-400 data-[state=active]:text-white transition-all">
                   👥 Usuarios
                 </TabsTrigger>
@@ -1570,6 +1574,16 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
             onAssignFromCalendar={handleAssignFromCalendar}
             onDeleteBooking={onDeleteBooking}
           />
+        </TabsContent>
+
+        <TabsContent value="confirmations" className="space-y-6">
+          <Suspense fallback={<div>Cargando...</div>}>
+            <ConfirmationsModule
+              appointments={displayAppointments}
+              piojologists={piojologists}
+              whatsappTemplate={whatsappTemplateDraft}
+            />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="users" className="space-y-6">

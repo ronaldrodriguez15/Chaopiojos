@@ -85,3 +85,50 @@ export const buildBookingWhatsappMessage = (template, data = {}) => {
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 };
+
+export const extractWhatsappRecommendations = (template) => {
+  const source = (typeof template === 'string' && template.trim())
+    ? template
+    : DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE;
+
+  const lines = source.split(/\r?\n/);
+  const startIndex = lines.findIndex((line) => /prepararte|recomend/i.test(line));
+  if (startIndex === -1) {
+    return source === DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE
+      ? source.trim()
+      : extractWhatsappRecommendations(DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE);
+  }
+
+  const endIndex = lines.findIndex((line, index) => (
+    index > startIndex && /confirmo mi asistencia|gracias por confiar/i.test(line)
+  ));
+
+  return lines
+    .slice(startIndex, endIndex === -1 ? lines.length : endIndex)
+    .map((line) => line.trimEnd())
+    .filter((line, index, list) => {
+      const clean = line.trim();
+      if (!clean) return true;
+      if (/^-{3,}$/.test(clean)) {
+        const previous = list[index - 1]?.trim();
+        const next = list[index + 1]?.trim();
+        return Boolean(previous && next);
+      }
+      return true;
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
+export const buildBookingConfirmationReminderMessage = (template, data = {}) => {
+  const recommendations = extractWhatsappRecommendations(template);
+  const clientName = data.clientName || 'cliente';
+  const fecha = data.fecha || '';
+
+  return [
+    `Hola, buen dia ${clientName}, nos gustaria confirmar tu agendamiento para el dia ${fecha}, recuerda estas recomendaciones:`,
+    '',
+    recommendations
+  ].join('\n').trim();
+};
