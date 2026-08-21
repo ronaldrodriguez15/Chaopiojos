@@ -167,6 +167,14 @@ const PublicBooking = () => {
   const [serviceOptions, setServiceOptions] = useState(() =>
     loadServiceCatalog(),
   );
+  const [allowedServiceLevels, setAllowedServiceLevels] = useState(null);
+  const availableServiceOptions = useMemo(() => {
+    if (!Array.isArray(allowedServiceLevels)) return serviceOptions;
+    const allowed = new Set(allowedServiceLevels.map((level) => level.toLocaleLowerCase("es")));
+    return serviceOptions.filter((service) =>
+      allowed.has(String(service.value).trim().toLocaleLowerCase("es")),
+    );
+  }, [allowedServiceLevels, serviceOptions]);
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat("es-CO", {
       style: "currency",
@@ -203,6 +211,8 @@ const PublicBooking = () => {
     }
     return true;
   });
+  const [blockedWeekdays, setBlockedWeekdays] = useState([]);
+  const [blockedDates, setBlockedDates] = useState([]);
   const [whatsappConfirmationTemplate, setWhatsappConfirmationTemplate] =
     useState(() => {
       try {
@@ -232,6 +242,38 @@ const PublicBooking = () => {
   });
 
   const [form, setForm] = useState(() => buildDefaultFormState(serviceOptions));
+
+  useEffect(() => {
+    const whatsapp = form.whatsapp.replace(/\D/g, "");
+    if (whatsapp.length !== 10) {
+      setAllowedServiceLevels(null);
+      return undefined;
+    }
+
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      const result = await bookingService.getServiceLevels(whatsapp);
+      if (active) setAllowedServiceLevels(result.success ? result.allowedLevels : null);
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [form.whatsapp]);
+
+  useEffect(() => {
+    if (!availableServiceOptions.length) return;
+    const allowed = new Set(availableServiceOptions.map((service) => service.value));
+    setForm((prev) => {
+      const fallback = availableServiceOptions[0].value;
+      const nextLevels = prev.servicesPerPerson.map((level) =>
+        allowed.has(level) ? level : fallback,
+      );
+      if (nextLevels.every((level, index) => level === prev.servicesPerPerson[index])) return prev;
+      return { ...prev, serviceType: nextLevels[0], servicesPerPerson: nextLevels };
+    });
+  }, [availableServiceOptions]);
 
   // Calcular total sumando todos los servicios de las personas
   const totalServiceValue = form.servicesPerPerson.reduce(
@@ -299,6 +341,8 @@ const PublicBooking = () => {
           DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE;
         setRequireAdvance12h(next);
         setWhatsappConfirmationTemplate(nextTemplate);
+        setBlockedWeekdays(result.settings?.blockedWeekdays || []);
+        setBlockedDates(result.settings?.blockedDates || []);
         try {
           localStorage.setItem("booking_require_12h", next ? "1" : "0");
           localStorage.setItem("booking_whatsapp_template", nextTemplate);
@@ -327,6 +371,8 @@ const PublicBooking = () => {
           event.detail.whatsappConfirmationTemplate,
         );
       }
+      if (Array.isArray(event?.detail?.blockedWeekdays)) setBlockedWeekdays(event.detail.blockedWeekdays);
+      if (Array.isArray(event?.detail?.blockedDates)) setBlockedDates(event.detail.blockedDates);
     };
 
     const onStorage = (event) => {
@@ -626,18 +672,19 @@ const PublicBooking = () => {
       const key = buildDateKey(day);
       const isToday = buildDateKey(today) === key;
       const isCurrentMonth = day.getMonth() === currentMonth.getMonth();
-      // Cupos ilimitados - todos los das tienen slots disponibles
-      const availableSlots = baseSlots;
+      const isBlocked = blockedWeekdays.includes(day.getDay()) || blockedDates.includes(key);
+      const availableSlots = isBlocked ? [] : baseSlots;
 
       return {
         date: day,
         key,
         isToday,
         isCurrentMonth,
+        isBlocked,
         slots: availableSlots,
       };
     });
-  }, [currentMonth]);
+  }, [currentMonth, blockedWeekdays, blockedDates]);
 
   const selectedDayInfo = calendarDays.find((day) =>
     selectedDate ? day.key === buildDateKey(selectedDate) : false,
@@ -686,6 +733,7 @@ const PublicBooking = () => {
     setHasOpenedBoldCheckout(false);
     setBoldCheckoutSession(null);
     setForm(buildDefaultFormState(serviceOptions));
+    setAllowedServiceLevels(null);
   };
 
   const handleGoToBold = async () => {
@@ -1276,7 +1324,7 @@ const PublicBooking = () => {
                 {/* Calendar grid */}
                 <div className="grid grid-cols-7 gap-2 md:gap-3">
                   {calendarDays.map((dayInfo) => {
-                    const { date, key, isToday, isCurrentMonth, slots } =
+                    const { date, key, isToday, isCurrentMonth, isBlocked, slots } =
                       dayInfo;
                     const dateLabel = date.getDate();
                     const isPast = date < today;
@@ -1287,7 +1335,7 @@ const PublicBooking = () => {
                       : false;
 
                     const cellClasses = [
-                      "rounded-xl md:rounded-2xl border-2 min-h-[82px] md:min-h-[118px] flex items-center justify-center p-2 md:p-3 transition-all",
+                      "relative rounded-xl md:rounded-2xl border-2 min-h-[82px] md:min-h-[118px] flex items-center justify-center p-2 md:p-3 transition-all",
                       isCurrentMonth
                         ? "bg-white border-orange-100"
                         : "bg-gray-50 border-gray-100 opacity-40",
@@ -1325,6 +1373,11 @@ const PublicBooking = () => {
                             return;
                           }
 
+                          if (isBlocked) {
+                            toast({ title: 'Día no disponible', description: 'La administración bloqueó este día para agendamientos.', duration: 3000, variant: 'destructive' });
+                            return;
+                          }
+
                           if (hasSlots) {
                             setSelectedDate(date);
                             setSelectedSlot("");
@@ -1346,6 +1399,7 @@ const PublicBooking = () => {
                         >
                           {dateLabel}
                         </div>
+                        {isBlocked && isCurrentMonth ? <span className="absolute mt-16 md:mt-24 text-[9px] md:text-xs font-black text-red-500">CERRADO</span> : null}
                       </motion.div>
                     );
                   })}
@@ -1808,7 +1862,7 @@ const PublicBooking = () => {
                               .map(
                                 (_, idx) =>
                                   form.servicesPerPerson[idx] ||
-                                  serviceOptions[0]?.value ||
+                                  availableServiceOptions[0]?.value ||
                                   "Normal",
                               );
                             setForm({
@@ -1855,7 +1909,7 @@ const PublicBooking = () => {
                                 className="w-full rounded-xl md:rounded-2xl border-2 border-slate-200 bg-white px-4 md:px-5 py-3 md:py-4 font-bold text-gray-800 focus:outline-none focus:border-slate-500 text-base md:text-lg cursor-pointer"
                                 value={
                                   form.servicesPerPerson[idx] ||
-                                  serviceOptions[0]?.value
+                                  availableServiceOptions[0]?.value
                                 }
                                 onChange={(e) => {
                                   const newServices = [
@@ -1868,7 +1922,7 @@ const PublicBooking = () => {
                                   });
                                 }}
                               >
-                                {serviceOptions.map((service) => (
+                                {availableServiceOptions.map((service) => (
                                   <option
                                     key={service.value}
                                     value={service.value}

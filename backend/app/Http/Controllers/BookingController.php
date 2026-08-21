@@ -11,10 +11,48 @@ use App\Models\ReferralCommission;
 use App\Services\BoldPaymentSyncService;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Carbon\Carbon;
 
 class BookingController extends Controller
 {
+    private function normalizeClientKey(?string $whatsapp): string
+    {
+        return preg_replace('/\D+/', '', (string) $whatsapp) ?: '';
+    }
+
+    private function pendingCancellationPenalty(string $clientKey, bool $lock = false): ?Booking
+    {
+        if ($clientKey === '') return null;
+
+        $query = Booking::where('client_key', $clientKey)
+            ->whereIn('estado', ['cancelado', 'cancelled'])
+            ->whereNull('cancellation_penalty_used_at')
+            ->orderBy('id');
+
+        if ($lock) $query->lockForUpdate();
+
+        return $query->first();
+    }
+
+    private function isPenalizedLevelAllowed(?string $level): bool
+    {
+        return in_array(Str::lower(trim((string) $level)), ['elevado', 'muy alto'], true);
+    }
+
+    public function serviceLevels(Request $request)
+    {
+        $request->validate(['whatsapp' => ['required', 'string', 'max:255']]);
+        $hasRestriction = $this->pendingCancellationPenalty(
+            $this->normalizeClientKey($request->input('whatsapp'))
+        ) !== null;
+
+        return response()->json([
+            'allowedLevels' => $hasRestriction ? ['Elevado', 'Muy Alto'] : null,
+        ]);
+    }
+
     private function getDefaultSellerReferralValue(): float
     {
         return (float) AppSetting::getValue('seller_referral_value', '5000');
@@ -124,6 +162,31 @@ class BookingController extends Controller
             }
         }
 
+        $bookingDate = Carbon::parse($request->input('fecha'))->startOfDay();
+        $blockedWeekdays = json_decode((string) AppSetting::getValue('booking_blocked_weekdays', '[]'), true);
+        $blockedDates = json_decode((string) AppSetting::getValue('booking_blocked_dates', '[]'), true);
+        $blockedWeekdays = is_array($blockedWeekdays) ? array_map('intval', $blockedWeekdays) : [];
+        $blockedDates = is_array($blockedDates) ? $blockedDates : [];
+
+        if (in_array($bookingDate->dayOfWeek, $blockedWeekdays, true) || in_array($bookingDate->format('Y-m-d'), $blockedDates, true)) {
+            return response()->json([
+                'message' => 'La fecha seleccionada no está disponible para agendamientos.',
+                'errors' => ['fecha' => ['Selecciona otro día disponible.']],
+            ], 422);
+        }
+
+        $clientKey = $this->normalizeClientKey($request->input('whatsapp'));
+        $penalty = $this->pendingCancellationPenalty($clientKey);
+        $requestedLevels = $request->input('servicesPerPerson', []);
+        if ($penalty && (empty($requestedLevels) || collect($requestedLevels)->contains(
+            fn ($level) => !$this->isPenalizedLevelAllowed($level)
+        ))) {
+            return response()->json([
+                'message' => 'Error de validación',
+                'errors' => ['servicesPerPerson' => ['Selecciona un nivel disponible para cada persona.']],
+            ], 422);
+        }
+
         $referralSource = $this->resolveReferralSource(
             $request->input('referralCode'),
             $request->input('sellerReferralToken'),
@@ -160,6 +223,7 @@ class BookingController extends Controller
             'serviceType' => $request->serviceType,
             'services_per_person' => $request->servicesPerPerson,
             'whatsapp' => $request->whatsapp,
+            'client_key' => $clientKey,
             'email' => $request->email,
             'direccion' => $request->direccion,
             'barrio' => $request->barrio,
@@ -178,6 +242,16 @@ class BookingController extends Controller
             'customer_payment_link_id' => $paymentMethod === 'pay_now' ? $paymentLinkId : null,
             'estado' => 'pendiente'
         ]);
+
+        if ($penalty) {
+            $consumed = Booking::whereKey($penalty->id)
+                ->whereNull('cancellation_penalty_used_at')
+                ->update(['cancellation_penalty_used_at' => now()]);
+            if ($consumed === 1) {
+                $booking->penalty_source_booking_id = $penalty->id;
+                $booking->save();
+            }
+        }
 
         if ($paymentMethod === 'pay_now') {
             $booking = $boldPaymentSync->syncBookingFromStoredEvents($booking);
@@ -258,6 +332,7 @@ class BookingController extends Controller
                 'plan_type' => ['nullable', 'string', 'max:255'],
                 'price_confirmed' => ['nullable', 'numeric'],
                 'service_notes' => ['nullable', 'string'],
+                'cancellation_reason' => ['nullable', 'string', 'max:2000'],
                 'additional_costs' => ['nullable', 'numeric', 'min:0'],
                 'payment_status_to_piojologist' => ['nullable', 'string', Rule::in(['pending', 'paid'])],
                 'paymentMethod' => ['nullable', Rule::in(['pay_now', 'pay_later'])],
@@ -281,6 +356,30 @@ class BookingController extends Controller
         $requestedStatus = strtolower((string) $request->input('status', $request->input('estado', $booking->estado)));
         if ($requestedStatus === 'completado') {
             $requestedStatus = 'completed';
+        }
+
+        if (in_array($requestedStatus, ['cancelado', 'cancelled'], true)) {
+            $user = $request->user();
+            if (!$user || $user->role !== 'piojologa' || (int) $booking->piojologist_id !== (int) $user->id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No tienes permiso para cancelar este servicio.',
+                ], 403);
+            }
+            if (!in_array($originalEstado, ['accepted', 'aceptado', 'confirmado'], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Solo se pueden cancelar servicios confirmados.',
+                ], 422);
+            }
+            if (trim((string) $request->input('cancellation_reason')) === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Debes indicar el motivo de cancelación.',
+                    'errors' => ['cancellation_reason' => ['El motivo es obligatorio.']],
+                ], 422);
+            }
+            $requestedStatus = 'cancelado';
         }
 
         if (
@@ -416,7 +515,7 @@ class BookingController extends Controller
             $booking->estado = $request->estado;
         }
         if ($request->has('status')) {
-            $booking->estado = $request->status;
+            $booking->estado = $requestedStatus;
             // Si se marca como completado y no se especificó payment_status, establecerlo como pending
         }
 
@@ -438,6 +537,12 @@ class BookingController extends Controller
 
         if ($request->has('paymentMethod')) {
             $booking->payment_method = $request->paymentMethod;
+        }
+        if ($request->has('cancellation_reason')) {
+            $booking->cancellation_reason = trim((string) $request->cancellation_reason);
+        }
+        if ($booking->estado === 'cancelado') {
+            $booking->client_key = $this->normalizeClientKey($booking->whatsapp);
         }
         if ($request->has('paymentLinkId')) {
             $incomingPaymentLinkId = trim((string) $request->paymentLinkId);

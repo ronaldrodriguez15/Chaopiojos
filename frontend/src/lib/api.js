@@ -292,6 +292,15 @@ export const profileService = {
 
 // Servicios de bookings
 export const bookingService = {
+  async getServiceLevels(whatsapp) {
+    try {
+      const response = await api.post('/bookings/service-levels', { whatsapp });
+      return { success: true, allowedLevels: response.data?.allowedLevels ?? null };
+    } catch (error) {
+      return { success: false, allowedLevels: null };
+    }
+  },
+
   async getAll() {
     try {
       const response = await api.get('/bookings');
@@ -918,7 +927,9 @@ export const settingsService = {
         { from: 21, to: 40, value: 7000 },
         { from: 41, to: null, value: 100000 },
       ],
-      termsAndConditions: DEFAULT_TERMS_AND_CONDITIONS
+      termsAndConditions: DEFAULT_TERMS_AND_CONDITIONS,
+      blockedWeekdays: [],
+      blockedDates: []
     };
     try {
       const response = await api.get('/booking-settings');
@@ -954,7 +965,9 @@ export const settingsService = {
         { from: 21, to: 40, value: 7000 },
         { from: 41, to: null, value: 100000 },
       ],
-      termsAndConditions: DEFAULT_TERMS_AND_CONDITIONS
+      termsAndConditions: DEFAULT_TERMS_AND_CONDITIONS,
+      blockedWeekdays: [],
+      blockedDates: []
     };
     try {
       const response = await api.put('/booking-settings', payload);

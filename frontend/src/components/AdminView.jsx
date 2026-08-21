@@ -33,6 +33,13 @@ const DEFAULT_PARTNER_COMMISSION_TIERS = [
   { from: 41, to: null, value: 100000 },
 ];
 
+const BOOKING_WEEKDAYS = [
+  { value: 1, label: 'Lunes' }, { value: 2, label: 'Martes' },
+  { value: 3, label: 'Miércoles' }, { value: 4, label: 'Jueves' },
+  { value: 5, label: 'Viernes' }, { value: 6, label: 'Sábado' },
+  { value: 0, label: 'Domingo' },
+];
+
 const normalizePartnerCommissionTiers = (tiers) => {
   if (!Array.isArray(tiers) || tiers.length === 0) return DEFAULT_PARTNER_COMMISSION_TIERS;
 
@@ -158,6 +165,10 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
   const [partnerCommissionSettingsSaving, setPartnerCommissionSettingsSaving] = useState(false);
   const [termsSettingsDraft, setTermsSettingsDraft] = useState(DEFAULT_TERMS_AND_CONDITIONS);
   const [termsSettingsSaving, setTermsSettingsSaving] = useState(false);
+  const [blockedWeekdays, setBlockedWeekdays] = useState([]);
+  const [blockedDates, setBlockedDates] = useState([]);
+  const [blockedDateDraft, setBlockedDateDraft] = useState('');
+  const [scheduleSettingsSaving, setScheduleSettingsSaving] = useState(false);
 
 
   // Persist active tab across refresh
@@ -265,6 +276,8 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
           ...DEFAULT_TERMS_AND_CONDITIONS,
           ...(result.settings?.termsAndConditions || {})
         });
+        setBlockedWeekdays(result.settings?.blockedWeekdays || []);
+        setBlockedDates(result.settings?.blockedDates || []);
         try {
           localStorage.setItem('booking_whatsapp_template', template);
         } catch (e) {
@@ -372,6 +385,28 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
 
   const handleResetSmsTemplate = () => {
     setWhatsappTemplateDraft(DEFAULT_WHATSAPP_CONFIRMATION_TEMPLATE);
+  };
+
+  const handleSaveScheduleSettings = async () => {
+    setScheduleSettingsSaving(true);
+    const result = await settingsService.updateBookingSettings({ blockedWeekdays, blockedDates });
+    setScheduleSettingsSaving(false);
+    if (!result.success) {
+      toast({ title: '❌ Error', description: result.message || 'No se pudieron guardar los horarios', variant: 'destructive' });
+      return;
+    }
+    const savedWeekdays = result.settings?.blockedWeekdays || blockedWeekdays;
+    const savedDates = result.settings?.blockedDates || blockedDates;
+    setBlockedWeekdays(savedWeekdays);
+    setBlockedDates(savedDates);
+    window.dispatchEvent(new CustomEvent('booking-settings-updated', { detail: { blockedWeekdays: savedWeekdays, blockedDates: savedDates } }));
+    toast({ title: '✅ Horarios actualizados', description: 'Los días bloqueados ya no aceptarán agendamientos.' });
+  };
+
+  const handleAddBlockedDate = () => {
+    if (!blockedDateDraft || blockedDates.includes(blockedDateDraft)) return;
+    setBlockedDates((dates) => [...dates, blockedDateDraft].sort());
+    setBlockedDateDraft('');
   };
 
   const handleTermsDraftChange = (role, value) => {
@@ -1736,8 +1771,9 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
             </div>
 
             <Tabs value={settingsTab} onValueChange={handleSettingsTabChange} className="space-y-6">
-              <TabsList className="grid grid-cols-2 xl:grid-cols-5 bg-slate-50 border-2 border-slate-200 rounded-2xl p-2 h-auto gap-2">
+              <TabsList className="grid grid-cols-2 xl:grid-cols-6 bg-slate-50 border-2 border-slate-200 rounded-2xl p-2 h-auto gap-2">
                 <TabsTrigger value="agenda" className="rounded-xl py-3 font-black data-[state=active]:bg-slate-500 data-[state=active]:text-white">Agenda</TabsTrigger>
+                <TabsTrigger value="horarios" className="rounded-xl py-3 font-black data-[state=active]:bg-orange-500 data-[state=active]:text-white">Horarios</TabsTrigger>
                 <TabsTrigger value="vendedores" className="rounded-xl py-3 font-black data-[state=active]:bg-emerald-500 data-[state=active]:text-white">Vendedores</TabsTrigger>
                 <TabsTrigger value="establecimientos" className="rounded-xl py-3 font-black data-[state=active]:bg-sky-500 data-[state=active]:text-white">Establecimientos</TabsTrigger>
                 <TabsTrigger value="mensajes" className="rounded-xl py-3 font-black data-[state=active]:bg-teal-500 data-[state=active]:text-white">Mensajes</TabsTrigger>
@@ -1770,6 +1806,36 @@ const AdminView = ({ currentUser, users, handleCreateUser, handleUpdateUser, han
                       {bookingSettingsLoading ? 'Guardando...' : bookingRequireAdvance12h ? 'Activo' : 'Inactivo'}
                     </Button>
                   </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="horarios" className="space-y-4">
+                <div className="bg-orange-50 border-2 border-orange-200 rounded-2xl p-4 md:p-5 space-y-5">
+                  <div>
+                    <p className="text-xs font-black text-orange-600 uppercase tracking-wide">Disponibilidad de clientes</p>
+                    <h4 className="text-xl font-black text-orange-800">Días sin agendamiento</h4>
+                    <p className="text-sm font-bold text-orange-700">Marca los días semanales que deseas bloquear. También puedes bloquear fechas puntuales.</p>
+                  </div>
+                  <div className="bg-white border-2 border-orange-200 rounded-2xl p-4">
+                    <p className="text-sm font-black text-gray-800 mb-3">Bloquear cada semana</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                      {BOOKING_WEEKDAYS.map((day) => {
+                        const checked = blockedWeekdays.includes(day.value);
+                        return <button key={day.value} type="button" onClick={() => setBlockedWeekdays((days) => checked ? days.filter((value) => value !== day.value) : [...days, day.value])} className={`rounded-xl border-2 px-3 py-3 font-black transition ${checked ? 'bg-red-500 border-red-600 text-white' : 'bg-white border-orange-200 text-gray-700 hover:border-orange-400'}`}>{day.label}{checked ? ' · Bloqueado' : ''}</button>;
+                      })}
+                    </div>
+                  </div>
+                  <div className="bg-white border-2 border-orange-200 rounded-2xl p-4 space-y-3">
+                    <p className="text-sm font-black text-gray-800">Bloquear una fecha específica</p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input type="date" min={new Date().toISOString().slice(0, 10)} value={blockedDateDraft} onChange={(event) => setBlockedDateDraft(event.target.value)} className="flex-1 rounded-xl border-2 border-orange-200 px-4 py-3 font-bold" />
+                      <Button type="button" onClick={handleAddBlockedDate} disabled={!blockedDateDraft || blockedDates.includes(blockedDateDraft)} className="bg-orange-500 hover:bg-orange-600 text-white font-black rounded-xl">Agregar fecha</Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {blockedDates.length === 0 ? <p className="text-xs font-bold text-gray-500">No hay fechas puntuales bloqueadas.</p> : blockedDates.map((date) => <span key={date} className="inline-flex items-center gap-2 rounded-full bg-red-50 border border-red-200 px-3 py-2 text-sm font-black text-red-700">{new Date(`${date}T00:00:00`).toLocaleDateString('es-CO')}<button type="button" aria-label={`Quitar ${date}`} onClick={() => setBlockedDates((dates) => dates.filter((value) => value !== date))} className="text-red-500 hover:text-red-800">×</button></span>)}
+                    </div>
+                  </div>
+                  <Button type="button" onClick={handleSaveScheduleSettings} disabled={scheduleSettingsSaving || bookingSettingsLoading} className="bg-orange-500 hover:bg-orange-600 text-white font-black rounded-xl px-5">{scheduleSettingsSaving ? 'Guardando...' : 'Guardar horarios'}</Button>
                 </div>
               </TabsContent>
 

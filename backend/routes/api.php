@@ -34,6 +34,7 @@ use App\Http\Controllers\GeolocationController;
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/ical-proxy', [ICalProxyController::class, 'fetchICalFeed']);
 Route::post('/bookings', [BookingController::class, 'store']); // Ruta publica para crear reservas
+Route::post('/bookings/service-levels', [BookingController::class, 'serviceLevels']);
 Route::post('/payments/bold/link', [BoldPaymentController::class, 'createLink']);
 Route::post('/payments/bold/webhook', [BoldWebhookController::class, 'handle']);
 Route::get('/services', [ServiceController::class, 'index']);

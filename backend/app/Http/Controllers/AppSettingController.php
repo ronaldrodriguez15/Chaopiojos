@@ -14,6 +14,24 @@ class AppSettingController extends Controller
     private const TERMS_PIOJOLOGA_KEY = 'terms_conditions_piojologa';
     private const TERMS_SELLER_KEY = 'terms_conditions_vendedor';
     private const TERMS_PARTNER_KEY = 'terms_conditions_referido';
+    private const BOOKING_BLOCKED_WEEKDAYS_KEY = 'booking_blocked_weekdays';
+    private const BOOKING_BLOCKED_DATES_KEY = 'booking_blocked_dates';
+
+    private function getBookingAvailabilitySettings(): array
+    {
+        $weekdays = json_decode((string) AppSetting::getValue(self::BOOKING_BLOCKED_WEEKDAYS_KEY, '[]'), true);
+        $dates = json_decode((string) AppSetting::getValue(self::BOOKING_BLOCKED_DATES_KEY, '[]'), true);
+
+        return [
+            'blockedWeekdays' => collect(is_array($weekdays) ? $weekdays : [])
+                ->map(fn ($day) => (int) $day)
+                ->filter(fn ($day) => $day >= 0 && $day <= 6)
+                ->unique()->sort()->values()->all(),
+            'blockedDates' => collect(is_array($dates) ? $dates : [])
+                ->filter(fn ($date) => is_string($date) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date))
+                ->unique()->sort()->values()->all(),
+        ];
+    }
 
     private function getDefaultWhatsappTemplate(): string
     {
@@ -188,6 +206,7 @@ class AppSettingController extends Controller
                 json_encode($this->getDefaultPartnerCommissionTiers())
             )
         );
+        $availability = $this->getBookingAvailabilitySettings();
 
         return response()->json([
             'success' => true,
@@ -197,6 +216,7 @@ class AppSettingController extends Controller
                 'sellerReferralValue' => $sellerReferralValue,
                 'partnerCommissionTiers' => $partnerCommissionTiers,
                 'termsAndConditions' => $this->getTermsConditionsSettings(),
+                ...$availability,
             ],
         ]);
     }
@@ -223,6 +243,10 @@ class AppSettingController extends Controller
             'termsAndConditions.piojologa' => 'sometimes|string|min:1|max:12000',
             'termsAndConditions.vendedor' => 'sometimes|string|min:1|max:12000',
             'termsAndConditions.referido' => 'sometimes|string|min:1|max:12000',
+            'blockedWeekdays' => 'sometimes|array',
+            'blockedWeekdays.*' => 'integer|between:0,6|distinct',
+            'blockedDates' => 'sometimes|array',
+            'blockedDates.*' => 'date_format:Y-m-d|distinct',
         ]);
 
         if (
@@ -231,6 +255,8 @@ class AppSettingController extends Controller
             && !array_key_exists('sellerReferralValue', $validated)
             && !array_key_exists('partnerCommissionTiers', $validated)
             && !array_key_exists('termsAndConditions', $validated)
+            && !array_key_exists('blockedWeekdays', $validated)
+            && !array_key_exists('blockedDates', $validated)
         ) {
             return response()->json([
                 'success' => false,
@@ -265,6 +291,12 @@ class AppSettingController extends Controller
                 AppSetting::setValue(self::TERMS_PARTNER_KEY, trim($terms['referido']));
             }
         }
+        if (array_key_exists('blockedWeekdays', $validated)) {
+            AppSetting::setValue(self::BOOKING_BLOCKED_WEEKDAYS_KEY, json_encode(array_values($validated['blockedWeekdays'])));
+        }
+        if (array_key_exists('blockedDates', $validated)) {
+            AppSetting::setValue(self::BOOKING_BLOCKED_DATES_KEY, json_encode(array_values($validated['blockedDates'])));
+        }
 
         $savedRequireAdvance12h = AppSetting::getValue(self::BOOKING_REQUIRE_12H_KEY, '1');
         $requireAdvance12h = !in_array((string) $savedRequireAdvance12h, ['0', 'false', 'False', 'FALSE'], true);
@@ -276,6 +308,7 @@ class AppSettingController extends Controller
                 json_encode($this->getDefaultPartnerCommissionTiers())
             )
         );
+        $availability = $this->getBookingAvailabilitySettings();
 
         return response()->json([
             'success' => true,
@@ -286,6 +319,7 @@ class AppSettingController extends Controller
                 'sellerReferralValue' => $sellerReferralValue,
                 'partnerCommissionTiers' => $partnerCommissionTiers,
                 'termsAndConditions' => $this->getTermsConditionsSettings(),
+                ...$availability,
             ],
         ]);
     }

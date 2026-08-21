@@ -95,6 +95,10 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   // Estados para diálogo de confirmación de rechazo
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [appointmentToReject, setAppointmentToReject] = useState(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [appointmentToCancel, setAppointmentToCancel] = useState(null);
+  const [cancellationReason, setCancellationReason] = useState('');
+  const [isCancellingService, setIsCancellingService] = useState(false);
   
   // Estado para modal de desglose de servicios
   const [serviceBreakdownOpen, setServiceBreakdownOpen] = useState(false);
@@ -561,6 +565,57 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
   const handleCancelReject = () => {
     setRejectDialogOpen(false);
     setAppointmentToReject(null);
+  };
+
+  const openCancellationDialog = (appointment) => {
+    setAppointmentToCancel(appointment);
+    setCancellationReason('');
+    setCancelDialogOpen(true);
+  };
+
+  const handleConfirmCancellation = async () => {
+    const reason = cancellationReason.trim();
+    if (!appointmentToCancel || !reason) {
+      toast({
+        title: 'Motivo requerido',
+        description: 'Indica por qué se cancela el servicio.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const appointmentId = appointmentToCancel.id;
+    const backendId = appointmentToCancel.backendId || appointmentToCancel.bookingId || appointmentId;
+    setIsCancellingService(true);
+    try {
+      const result = await bookingService.update(backendId, {
+        status: 'cancelado',
+        cancellation_reason: reason
+      });
+      if (!result.success) {
+        toast({ title: 'Error', description: result.message || 'No se pudo cancelar el servicio', variant: 'destructive' });
+        return;
+      }
+
+      const updateCancelled = (apt) =>
+        apt.id === appointmentId || apt.backendId === backendId || apt.bookingId === backendId
+          ? { ...apt, status: 'cancelled', cancellationReason: reason, cancellation_reason: reason }
+          : apt;
+      if (appointmentToCancel.isPublicBooking) {
+        updateBookings && updateBookings((bookings || []).map(updateCancelled));
+      } else {
+        updateAppointments(appointments.map(updateCancelled));
+      }
+      setCancelDialogOpen(false);
+      setAppointmentToCancel(null);
+      setCancellationReason('');
+      toast({ title: 'Servicio cancelado', description: 'La cancelación quedó registrada.' });
+    } catch (error) {
+      console.error('Error al cancelar servicio:', error);
+      toast({ title: 'Error', description: 'No se pudo cancelar el servicio', variant: 'destructive' });
+    } finally {
+      setIsCancellingService(false);
+    }
   };
 
   const onCompleteService = async () => {
@@ -1151,6 +1206,17 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
                   >
                     <span>🗺️</span>
                     <span>Ver en Google Maps</span>
+                  </button>
+                )}
+
+                {apt.status === 'accepted' && (
+                  <button
+                    type="button"
+                    onClick={() => openCancellationDialog(apt)}
+                    className="w-full bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 text-white font-black py-3 px-4 rounded-2xl transition-all shadow-lg hover:shadow-xl active:scale-95 flex items-center justify-center gap-2 mb-3"
+                  >
+                    <X className="w-5 h-5" />
+                    <span>Cancelado</span>
                   </button>
                 )}
 
@@ -1909,6 +1975,58 @@ const PiojologistView = ({ currentUser, appointments, updateAppointments, bookin
       </Tabs>
       
       {/* Diálogo de Confirmación de Rechazo */}
+      <Dialog
+        open={cancelDialogOpen}
+        onOpenChange={(open) => {
+          if (isCancellingService) return;
+          setCancelDialogOpen(open);
+          if (!open) {
+            setAppointmentToCancel(null);
+            setCancellationReason('');
+          }
+        }}
+      >
+        <DialogContent className="rounded-3xl border-4 border-red-300 p-6 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black text-red-700">Cancelar servicio</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm font-semibold text-gray-600">
+            Confirma la cancelación del servicio de {appointmentToCancel?.clientName || 'este cliente'} e indica el motivo.
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="cancellation-reason" className="font-bold">Observaciones *</Label>
+            <textarea
+              id="cancellation-reason"
+              value={cancellationReason}
+              onChange={(event) => setCancellationReason(event.target.value)}
+              maxLength={2000}
+              rows={5}
+              disabled={isCancellingService}
+              placeholder="Describe el motivo de la cancelación"
+              className="w-full resize-y rounded-2xl border-2 border-red-200 p-3 font-medium text-gray-800 focus:border-red-400 focus:outline-none"
+            />
+          </div>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              disabled={isCancellingService}
+              onClick={() => setCancelDialogOpen(false)}
+              className="rounded-xl bg-gray-200 px-5 py-3 font-bold text-gray-700 disabled:opacity-50"
+            >
+              Volver
+            </button>
+            <button
+              type="button"
+              disabled={isCancellingService || !cancellationReason.trim()}
+              onClick={handleConfirmCancellation}
+              className="rounded-xl bg-red-600 px-5 py-3 font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isCancellingService ? 'Cancelando...' : 'Confirmar cancelación'}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
         <DialogContent className="rounded-[3rem] border-4 border-red-400 p-0 overflow-hidden bg-red-50 max-w-lg shadow-2xl">
           <DialogHeader className="sr-only">
